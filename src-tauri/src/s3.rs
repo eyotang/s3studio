@@ -11,7 +11,10 @@ use aws_sdk_s3::{
     Client,
 };
 use serde::Serialize;
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{BTreeSet, HashMap},
+    time::Duration,
+};
 use tauri::State;
 
 async fn client(store: &AccountStore, id: &str) -> Result<(Client, String), String> {
@@ -317,12 +320,75 @@ pub async fn delete_objects(
     account_id: String,
     bucket: String,
     keys: Vec<String>,
-) -> Result<(), String> {
-    if keys.is_empty() || keys.iter().any(|key| key.is_empty() || key.ends_with('/')) {
-        return Err("请选择文件；文件夹暂不支持递归删除。".into());
-    }
+    folders: Vec<String>,
+) -> Result<usize, String> {
     let client = bucket_client(&store, &account_id, &bucket).await?;
-    for chunk in keys.chunks(1000) {
+    delete_selection(&client, &bucket, keys, folders).await
+}
+
+async fn delete_selection(
+    client: &Client,
+    bucket: &str,
+    keys: Vec<String>,
+    folders: Vec<String>,
+) -> Result<usize, String> {
+    if (keys.is_empty() && folders.is_empty())
+        || keys
+            .iter()
+            .any(|key| key.is_empty() || key.ends_with('/') || key.len() > 1024)
+        || folders
+            .iter()
+            .any(|prefix| prefix.len() < 2 || !prefix.ends_with('/') || prefix.len() > 1024)
+    {
+        return Err("请选择有效文件或目录，不能删除存储桶根目录。".into());
+    }
+    let mut roots = Vec::<String>::new();
+    for folder in folders.into_iter().collect::<BTreeSet<_>>() {
+        if !roots.iter().any(|root| folder.starts_with(root)) {
+            roots.push(folder);
+        }
+    }
+    let mut selected = keys.into_iter().collect::<BTreeSet<_>>();
+    // Enumerate the entire snapshot before deleting: a listing failure cannot
+    // leave a partially deleted directory, and concurrent new uploads are excluded.
+    for root in &roots {
+        let mut token = None;
+        let mut seen = BTreeSet::new();
+        loop {
+            let page = client
+                .list_objects_v2()
+                .bucket(bucket)
+                .prefix(root)
+                .max_keys(1000)
+                .set_continuation_token(token)
+                .send()
+                .await
+                .map_err(failure)?;
+            for object in page.contents() {
+                let key = object.key().ok_or("服务端列出的对象缺少键名。")?;
+                if !key.starts_with(root) {
+                    return Err("服务端返回了所选目录以外的对象，已停止删除。".into());
+                }
+                selected.insert(key.to_owned());
+            }
+            if !page.is_truncated().unwrap_or(false) {
+                break;
+            }
+            let next = page
+                .next_continuation_token()
+                .ok_or("服务端未返回目录分页标记，已停止删除。")?
+                .to_owned();
+            if next.is_empty() || !seen.insert(next.clone()) {
+                return Err("服务端目录分页标记重复，已停止删除。".into());
+            }
+            token = Some(next);
+        }
+    }
+    let (markers, files): (Vec<_>, Vec<_>) =
+        selected.into_iter().partition(|key| key.ends_with('/'));
+    let mut deleted = 0;
+    // Folder markers are removed only after every file batch succeeds.
+    for chunk in files.chunks(1000).chain(markers.chunks(1000)) {
         let identifiers = chunk
             .iter()
             .map(|key| {
@@ -339,17 +405,25 @@ pub async fn delete_objects(
             .map_err(failure)?;
         let result = client
             .delete_objects()
-            .bucket(&bucket)
+            .bucket(bucket)
             .delete(delete)
             .send()
             .await
-            .map_err(failure)?;
+            .map_err(|error| {
+                format!(
+                    "已完成 {} 个对象的删除，本批请求失败，请刷新列表确认：{}",
+                    deleted,
+                    failure(error)
+                )
+            })?;
         if !result.errors().is_empty() {
             return Err(format!(
-                "部分对象删除失败，请刷新列表确认：{}",
+                "已删除至少 {} 个对象，部分对象删除失败，请刷新列表确认：{}",
+                deleted + chunk.len().saturating_sub(result.errors().len()),
                 result
                     .errors()
                     .iter()
+                    .take(10)
                     .map(|e| format!(
                         "{}: {}",
                         e.key().unwrap_or(""),
@@ -359,8 +433,9 @@ pub async fn delete_objects(
                     .join("；")
             ));
         }
+        deleted += chunk.len();
     }
-    Ok(())
+    Ok(deleted)
 }
 
 fn copy_source(bucket: &str, key: &str) -> String {
@@ -553,6 +628,131 @@ mod tests {
         assert!(url.contains("X-Amz-Signature="));
         assert!(url.contains("X-Amz-Expires=3600"));
         assert!(url.contains("a%20b.png"));
+    }
+
+    #[tokio::test]
+    async fn recursive_delete_lists_all_pages_deduplicates_and_deletes_markers_last() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let client = test_client(format!("http://{}", server.server_addr()));
+        let thread = std::thread::spawn(move || {
+            let first = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            assert!(first.url().contains("prefix=photos%2F"));
+            assert!(!first.url().contains("delimiter"));
+            let contents = (0..1000)
+                .map(|i| {
+                    format!("<Contents><Key>photos/sub/{i:04}.jpg</Key><Size>1</Size></Contents>")
+                })
+                .collect::<String>();
+            first.respond(tiny_http::Response::from_string(format!("<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>page2</NextContinuationToken>{contents}</ListBucketResult>"))).unwrap();
+            let second = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            assert!(second.url().contains("continuation-token=page2"));
+            second.respond(tiny_http::Response::from_string("<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>photos/extra.jpg</Key></Contents><Contents><Key>photos/</Key></Contents><Contents><Key>photos/sub/</Key></Contents></ListBucketResult>")).unwrap();
+            let mut deleted = BTreeSet::new();
+            for expected in [1000, 2, 2] {
+                let mut request = server
+                    .recv_timeout(Duration::from_secs(10))
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(request.method(), &tiny_http::Method::Post);
+                assert!(request.url().contains("delete"));
+                let mut body = String::new();
+                request.as_reader().read_to_string(&mut body).unwrap();
+                let keys = body
+                    .split("<Key>")
+                    .skip(1)
+                    .map(|s| s.split("</Key>").next().unwrap())
+                    .collect::<Vec<_>>();
+                assert_eq!(keys.len(), expected);
+                let markers = deleted.len() == 1002;
+                for key in keys {
+                    assert_eq!(key.ends_with('/'), markers);
+                    assert!(deleted.insert(key.to_owned()));
+                }
+                request
+                    .respond(tiny_http::Response::from_string("<DeleteResult/>"))
+                    .unwrap();
+            }
+            assert!(deleted.contains("outside.txt"));
+            assert_eq!(deleted.len(), 1004);
+        });
+        let count = delete_selection(
+            &client,
+            "bucket",
+            vec!["photos/sub/0000.jpg".into(), "outside.txt".into()],
+            vec!["photos/".into(), "photos/sub/".into(), "photos/".into()],
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 1004);
+        thread.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn recursive_delete_rejects_root_and_outside_keys_before_deleting() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let client = test_client(format!("http://{}", server.server_addr()));
+        for root in ["", "/", "photos"] {
+            assert!(
+                delete_selection(&client, "bucket", vec![], vec![root.into()])
+                    .await
+                    .is_err()
+            );
+        }
+        let thread = std::thread::spawn(move || {
+            let request = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            request.respond(tiny_http::Response::from_string("<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>photos-other/a.jpg</Key></Contents></ListBucketResult>")).unwrap();
+            assert!(server
+                .recv_timeout(Duration::from_millis(100))
+                .unwrap()
+                .is_none());
+        });
+        assert!(
+            delete_selection(&client, "bucket", vec![], vec!["photos/".into()])
+                .await
+                .unwrap_err()
+                .contains("目录以外")
+        );
+        thread.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn recursive_delete_reports_partial_failure_and_keeps_directory_markers() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let client = test_client(format!("http://{}", server.server_addr()));
+        let thread = std::thread::spawn(move || {
+            let request = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            request.respond(tiny_http::Response::from_string("<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>photos/a.jpg</Key></Contents><Contents><Key>photos/</Key></Contents></ListBucketResult>")).unwrap();
+            let mut request = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            let mut body = String::new();
+            request.as_reader().read_to_string(&mut body).unwrap();
+            assert!(!body.contains("<Key>photos/</Key>"));
+            request.respond(tiny_http::Response::from_string("<DeleteResult><Error><Key>photos/a.jpg</Key><Code>AccessDenied</Code><Message>denied</Message></Error></DeleteResult>")).unwrap();
+            assert!(server
+                .recv_timeout(Duration::from_millis(100))
+                .unwrap()
+                .is_none());
+        });
+        let error = delete_selection(&client, "bucket", vec![], vec!["photos/".into()])
+            .await
+            .unwrap_err();
+        assert!(error.contains("部分对象删除失败"));
+        assert!(error.contains("photos/a.jpg"));
+        thread.join().unwrap();
     }
     #[test]
     fn bucket_validation_matches_s3_rules() {

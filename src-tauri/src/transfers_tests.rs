@@ -333,6 +333,45 @@ async fn default_eight_settings_persist_and_reject_invalid_values() {
     assert_eq!(workspace.engine().settings().await.concurrency, 12);
     assert_eq!(engine.0.limiter.gate.lock().unwrap().limit, 12);
 }
+
+#[tokio::test]
+async fn update_reservation_blocks_new_and_resumed_transfers_and_releases_on_failure() {
+    let workspace = Workspace::new();
+    let engine = workspace.engine();
+    let guard = engine.reserve_for_update().await.unwrap();
+    assert!(engine.reserve_for_update().await.is_err());
+    assert!(engine
+        .enqueue(
+            Direction::Download,
+            "account".into(),
+            "bucket".into(),
+            "file".into(),
+            workspace.0.join("file")
+        )
+        .await
+        .is_err());
+    assert!(engine.list().await.is_empty());
+    drop(guard);
+    let id = enqueue(
+        &engine,
+        Direction::Download,
+        workspace.0.join("file"),
+        "file",
+    )
+    .await;
+    assert!(engine.reserve_for_update().await.is_err());
+    engine
+        .edit(&id, true, |job| job.view.status = "paused".into())
+        .await
+        .unwrap();
+    let guard = engine.reserve_for_update().await.unwrap();
+    let mock = Mock::new(128);
+    assert!(engine.start(&id, mock.client()).await.is_err());
+    assert_eq!(engine.job(&id).await.unwrap().view.status, "paused");
+    drop(guard);
+    engine.start(&id, mock.client()).await.unwrap();
+    until(&engine, &id, |job| job.view.status == "done").await;
+}
 #[tokio::test]
 async fn live_global_limit_waits_on_reduction_and_wakes_on_increase() {
     let workspace = Workspace::new();

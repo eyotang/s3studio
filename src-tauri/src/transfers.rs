@@ -136,6 +136,7 @@ impl Limiter {
     }
 }
 struct Inner {
+    updating: std::sync::atomic::AtomicBool,
     path: PathBuf,
     db: Mutex<Database>,
     active: Mutex<HashMap<String, watch::Sender<Stop>>>,
@@ -145,6 +146,16 @@ struct Inner {
 }
 #[derive(Clone)]
 pub struct Engine(Arc<Inner>);
+
+pub(crate) struct UpdateGuard(Engine);
+impl Drop for UpdateGuard {
+    fn drop(&mut self) {
+        self.0
+             .0
+            .updating
+            .store(false, std::sync::atomic::Ordering::Release);
+    }
+}
 struct Receipt {
     number: u32,
     part: Part,
@@ -258,6 +269,7 @@ impl Engine {
         }
         let concurrency = db.settings.concurrency;
         Ok(Self(Arc::new(Inner {
+            updating: std::sync::atomic::AtomicBool::new(false),
             path,
             db: Mutex::new(db),
             active: Mutex::new(HashMap::new()),
@@ -401,6 +413,9 @@ impl Engine {
             .to_string_lossy()
             .into_owned();
         let mut db = self.0.db.lock().await;
+        if self.0.updating.load(std::sync::atomic::Ordering::Acquire) {
+            return Err("正在更新应用，请完成更新后再添加传输任务。".into());
+        }
         if db.jobs.iter().any(|j| {
             !terminal(&j.view.status)
                 && ((direction == Direction::Download
@@ -450,6 +465,9 @@ impl Engine {
     }
     pub async fn start(&self, id: &str, client: Client) -> Result<(), String> {
         let mut active = self.0.active.lock().await;
+        if self.0.updating.load(std::sync::atomic::Ordering::Acquire) {
+            return Err("正在更新应用，请完成更新后再继续传输。".into());
+        }
         if active.contains_key(id) {
             return Err("任务正在运行或停止中，请稍后重试。".into());
         }
@@ -472,6 +490,28 @@ impl Engine {
             engine.run(id, client, sender, receiver).await;
         });
         Ok(())
+    }
+    pub(crate) async fn reserve_for_update(&self) -> Result<UpdateGuard, String> {
+        let active = self.0.active.lock().await;
+        let db = self.0.db.lock().await;
+        if !active.is_empty()
+            || db.jobs.iter().any(|j| {
+                matches!(
+                    j.view.status.as_str(),
+                    "queued" | "preparing" | "running" | "pausing" | "finalizing"
+                )
+            })
+        {
+            return Err("请先暂停或完成正在运行的传输任务，再安装应用更新。".into());
+        }
+        if self
+            .0
+            .updating
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
+            return Err("应用更新已经在进行中。".into());
+        }
+        Ok(UpdateGuard(self.clone()))
     }
     pub async fn pause(&self, id: &str) -> Result<(), String> {
         let active = self.0.active.lock().await;

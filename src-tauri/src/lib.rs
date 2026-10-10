@@ -2,13 +2,17 @@ mod accounts;
 mod s3;
 mod transfer_commands;
 mod transfers;
+mod updater;
 
 use accounts::AccountStore;
 use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -20,6 +24,8 @@ pub fn run() {
                     let _ = handle.emit("transfer", transfer);
                 }),
             )?);
+            app.manage(updater::UpdaterState::new());
+            updater::schedule(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -43,6 +49,10 @@ pub fn run() {
             transfer_commands::resume_transfer,
             transfer_commands::cancel_transfer,
             transfer_commands::clear_finished_transfers,
+            updater::get_app_update_status,
+            updater::check_app_update,
+            updater::install_app_update,
+            updater::open_update_download_page,
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 S3 Studio");

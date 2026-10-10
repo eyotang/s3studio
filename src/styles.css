@@ -813,6 +813,48 @@ h1 {
   margin-left: 6px;
   color: #c3c8d1;
 }
+
+.update-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.update-trigger:hover,
+.update-available {
+  color: #2684d9;
+}
+.update-status {
+  color: #6c7480;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.update-status small {
+  font-size: 11px;
+}
+.update-status progress {
+  width: 100%;
+  accent-color: #2684d9;
+}
+.update-notes {
+  max-height: 240px;
+  overflow: auto;
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #e6eaf0;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #536173;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.7;
+}
 .empty-state {
   min-height: 350px;
   display: flex;

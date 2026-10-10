@@ -68,7 +68,32 @@ test("preview refuses real mutations and keeps credentials out of browser storag
   await page.keyboard.press("Escape");
   await expect(modal).not.toBeVisible();
   await page.getByLabel("选择 Brand assets", { exact: true }).check();
-  await expect(page.getByLabel("删除所选文件")).toBeDisabled();
+  await expect(page.getByLabel("删除所选项目")).toBeEnabled();
+  await page.getByLabel("删除所选项目").click();
+  await expect(modal).toContainText("递归删除 1 个目录及其中所有文件和子目录");
+  await modal.getByRole("button", { name: "确认删除" }).click();
+  await expect(modal.getByRole("alert")).toContainText("当前是界面预览");
+  await expect(page.locator("tbody tr")).toHaveCount(9);
+});
+
+test("update preview explains its mode and restores keyboard focus", async ({
+  page,
+}) => {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("github.com")) requests.push(request.url());
+  });
+  await page.goto("/");
+  await page.getByLabel("检查应用更新").click();
+  const modal = page.getByRole("dialog");
+  await expect(modal).toContainText("开发模式与网页预览不检查更新");
+  await expect(
+    modal.getByRole("button", { name: "检查更新", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(modal).not.toBeVisible();
+  await expect(page.getByLabel("检查应用更新")).toBeFocused();
+  expect(requests).toEqual([]);
 });
 
 test("minimum desktop width fits the app and dialogs", async ({ page }) => {

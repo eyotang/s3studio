@@ -36,7 +36,11 @@ import {
   X,
 } from "lucide-react";
 import { api, native } from "./api";
-import TransfersPanel, { useTransferManager } from "./TransfersPanel";
+import TransfersPanel, {
+  activeTransfer,
+  useTransferManager,
+} from "./TransfersPanel";
+import AppUpdater from "./AppUpdater";
 import { filterObjects, formatBytes, objectName } from "./utils";
 import type {
   Account,
@@ -108,7 +112,9 @@ export default function App() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [bucketLoading, setBucketLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [operationBusy, setBusy] = useState(false);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const busy = operationBusy || updateBusy;
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -373,12 +379,13 @@ export default function App() {
         await loadObjects();
         notify("对象已复制");
       } else if (dialog?.type === "delete") {
-        await api("delete_objects", {
+        const count = await api<number>("delete_objects", {
           ...args,
           keys: chosen.filter((o) => !o.folder).map((o) => o.key),
+          folders: chosen.filter((o) => o.folder).map((o) => o.key),
         });
         await loadObjects();
-        notify("所选对象已删除");
+        notify(`已删除 ${count} 个对象`);
       } else if (dialog?.type === "removeAccount") {
         await api("remove_account", { accountId: activeId });
         await loadAccounts();
@@ -747,9 +754,9 @@ export default function App() {
                   </button>
                   <button
                     className="danger-text"
-                    disabled={busy || chosen.some((o) => o.folder)}
+                    disabled={busy}
                     title="删除"
-                    aria-label="删除所选文件"
+                    aria-label="删除所选项目"
                     onClick={() => openDialog({ type: "delete" })}
                   >
                     <Trash2 size={16} />
@@ -1050,9 +1057,11 @@ export default function App() {
             <span>
               <ShieldCheck size={13} /> 本地凭据 · 直接连接 · 不限账户
             </span>
-            <span>
-              S3 Studio <span className="version">v0.2.2</span>
-            </span>
+            <AppUpdater
+              busy={busy}
+              activeTransfers={transferManager.transfers.some(activeTransfer)}
+              onBusyChange={setUpdateBusy}
+            />
           </footer>
         </section>
       </main>
@@ -1103,7 +1112,7 @@ export default function App() {
                   folder: "新建文件夹",
                   bucket: "创建存储桶",
                   copy: "复制对象",
-                  delete: "删除所选文件？",
+                  delete: "删除所选项目？",
                   upload: "上传文件",
                   removeAccount: "移除这个账户？",
                   help: "为云端工作而设计",
@@ -1118,7 +1127,9 @@ export default function App() {
                   folder: "在当前目录中创建一个新的文件夹。",
                   bucket: "在当前账户和区域中创建新的 S3 存储桶。",
                   copy: "输入目标对象的完整路径，复制到当前存储桶。",
-                  delete: `即将删除 ${chosen.length} 个对象。未启用版本控制的对象无法恢复。`,
+                  delete: chosen.some((o) => o.folder)
+                    ? `将递归删除 ${chosen.filter((o) => o.folder).length} 个目录及其中所有文件和子目录，并删除 ${chosen.filter((o) => !o.folder).length} 个所选文件。未启用版本控制的对象无法恢复。`
+                    : `即将删除 ${chosen.length} 个文件。未启用版本控制的对象无法恢复。`,
                   upload:
                     "接下来选择本地文件。当前目录中同名的对象将被覆盖；大文件自动分片上传。",
                   removeAccount:
@@ -1141,7 +1152,7 @@ export default function App() {
                 </p>
                 <p>③ 使用 ⌘ / Ctrl + F 搜索，Escape 关闭弹窗或取消选择。</p>
                 <p>
-                  仅删除所选文件，不递归删除文件夹。分享链接有效期 1
+                  删除目录会同时删除其中所有文件和子目录。分享链接有效期 1
                   小时。传输活动支持暂停、继续和失败重试；关闭应用后，再次打开可从断点继续。
                 </p>
                 <p>

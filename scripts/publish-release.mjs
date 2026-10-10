@@ -9,8 +9,22 @@ const tag = `v${version}`;
 if (process.env.GITHUB_REF_NAME !== tag)
   throw new Error("Release tag mismatch");
 const files = (await readdir(directory)).sort();
-if (files.length !== 6 || !files.includes("SHA256SUMS.txt"))
-  throw new Error("Expected five installers and SHA256SUMS.txt");
+if (
+  files.length !== 10 ||
+  !files.includes("SHA256SUMS.txt") ||
+  !files.includes("latest.json")
+)
+  throw new Error(
+    "Expected five installers, three signatures, latest.json and SHA256SUMS.txt",
+  );
+const manifest = JSON.parse(
+  await readFile(path.join(directory, "latest.json"), "utf8"),
+);
+if (
+  manifest.version !== version ||
+  Object.keys(manifest.platforms).length !== 3
+)
+  throw new Error("Updater manifest does not match release");
 const expected = new Map();
 for (const file of files)
   expected.set(file, (await stat(path.join(directory, file))).size);
@@ -57,7 +71,30 @@ if (
   remote.some((asset) => expected.get(asset.name) !== asset.size)
 )
   throw new Error("Remote release assets do not match the verified installers");
-gh(["release", "edit", tag, "--draft=false", "--latest"]);
+const latest = gh(["release", "view", "--json", "tagName"], true);
+const previous =
+  latest.status === 0
+    ? JSON.parse(latest.stdout)
+        .tagName.match(/^v(\d+)\.(\d+)\.(\d+)$/)
+        ?.slice(1)
+        .map(Number)
+    : undefined;
+const parts = version.split(".").map(Number);
+const newer =
+  !previous ||
+  parts.some(
+    (part, i) =>
+      part > previous[i] &&
+      parts.slice(0, i).every((v, n) => v === previous[n]),
+  ) ||
+  parts.every((v, i) => v === previous[i]);
+gh([
+  "release",
+  "edit",
+  tag,
+  "--draft=false",
+  newer ? "--latest" : "--latest=false",
+]);
 const url = gh([
   "release",
   "view",

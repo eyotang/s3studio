@@ -58,9 +58,21 @@ jobs:
           exit "$result"
       - name: Build desktop installers
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ runner.os != 'macOS' && github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ runner.os != 'macOS' && github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: |
+          update_args=()
+          if [ "$RUNNER_OS" != "macOS" ]; then
+            if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+              update_args=(--config src-tauri/tauri.release.conf.json)
+            elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+              echo 'Missing TAURI_SIGNING_PRIVATE_KEY for release signing' >&2
+              exit 1
+            fi
+          fi
           set +e
-          npm run tauri build -- ${{ matrix.args }} 2>&1 | tee desktop-build.log
+          npm run tauri build -- ${{ matrix.args }} "${update_args[@]}" 2>&1 | tee desktop-build.log
           result=${PIPESTATUS[0]}
           printf '### Desktop installers\n```text\n' >> "$GITHUB_STEP_SUMMARY"
           tail -n 100 desktop-build.log >> "$GITHUB_STEP_SUMMARY"
@@ -76,6 +88,7 @@ jobs:
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
             src-tauri/target/**/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.sig
           if-no-files-found: error
   release:
     if: startsWith(github.ref, 'refs/tags/v')

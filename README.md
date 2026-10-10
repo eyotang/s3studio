@@ -69,7 +69,7 @@ MinIO 例子：Endpoint 为 `http://localhost:9000`，Region 为 `us-east-1`，�
 
 账户需要相应的 S3 权限：列出桶需要 `s3:ListAllMyBuckets`，浏览需要 `s3:ListBucket`，文件操作需要 `s3:GetObject`、`s3:PutObject`、`s3:DeleteObject`；恢复分片上传需要 `s3:ListMultipartUploadParts`，取消清理需要 `s3:AbortMultipartUpload`，建桶需要 `s3:CreateBucket`。下载版本控制桶的固定对象版本可能需要 `s3:GetObjectVersion`。复制需要源对象读取和目标写入权限；为防止覆盖，复制前会检查目标对象是否存在。权限不足会在界面显示服务错误。
 
-选择文件后，搜索栏右侧提供下载、复制、分享和删除操作。双击文件夹进入，双击文件显示对象详情。
+选择文件后，搜索栏右侧提供下载、复制、分享和删除操作。目录也可直接选中删除，确认后递归删除全部子目录和文件，支持多目录与文件混合选择。后端完整分页枚举，以每批最多 1000 个对象删除；目录标记最后删除，部分失败会显示失败路径。双击文件夹进入，双击文件显示对象详情。
 
 账户元数据文件位于 Tauri 的应用数据目录，文件名 `accounts.json`；凭据位于系统密钥库，服务名 `com.s3studio.desktop`，每个账户使用独立 UUID。
 
@@ -101,7 +101,21 @@ npm run tauri build
 
 安装包输出到 `src-tauri/target/release/bundle/`：Windows 为 NSIS/MSI，Ubuntu 为 deb/AppImage，macOS 为 app/DMG。应分别在对应操作系统构建；`.github/workflows/build.yml` 已配置三平台构建和产物上传，其中 macOS 生成同时支持 Apple Silicon 和 Intel 的 Universal 包，位于 `src-tauri/target/universal-apple-darwin/release/bundle/`。
 
-推送与应用版本一致的 `v<版本号>` 标签后，工作流等待三平台测试与构建全部通过，汇总五个安装包并生成 SHA-256 校验清单，先上传到草稿 Release，核对远端文件数量和大小后再正式发布。当前配置生成未签名安装包。
+推送与应用版本一致的 `v<版本号>` 标签后，工作流等待三平台测试与构建全部通过，汇总五个安装包、三份更新签名和 `latest.json`，生成 SHA-256 校验清单，先上传到草稿 Release，核对远端文件数量和大小后再正式发布。Windows / AppImage 更新包使用专用密钥签名；安装包尚未配置系统代码签名，macOS 尚未进行 Apple 公证。
+
+## 软件更新
+
+底栏点击版本号检查更新。发布版启动 20 秒后自动检查，此后每 24 小时检查；自动检查失败静默重试，手动检查会显示错误。参考 [Metra](https://github.com/eyotang/Metra) 的检查与确认流程，用户确认后才下载或打开下载页。
+
+Windows NSIS / MSI 安装版和 Linux AppImage 在应用内下载，校验签名与签名中的版本号后安装并重启。更新前必须暂停或完成所有传输；更新期间不允许新增或恢复传输。macOS、deb 与直接运行的可执行文件打开对应 Release 页手动更新。开发模式与网页预览不检查更新。0.2.2 首次升级需手动安装 0.2.3。
+
+GitHub Actions 使用仓库 Secret `TAURI_SIGNING_PRIVATE_KEY`，有密码时另设 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。与其匹配的公钥固定在 `src-tauri/tauri.conf.json`；私钥应离线备份，不能提交到仓库或放入安装包。发布脚本会验证三份实际更新包签名与版本绑定，错误密钥或缺少签名会阻止发布。更新清单由本仓库 Release 的 `latest.json` 提供。
+
+macOS 若提示无法打开，将应用放入「应用程序」后，核对 Release 来源及 SHA-256，再执行：
+
+```bash
+sudo xattr -d com.apple.quarantine "/Applications/S3 Studio.app"
+```
 
 Windows Release 构建后可运行 `powershell -NoProfile -File scripts/smoke-desktop.ps1` 检查原生程序启动；测试会结束自己启动的进程，报告保存到 `artifacts/native-startup.json`。
 
@@ -109,10 +123,10 @@ Windows Release 构建后可运行 `powershell -NoProfile -File scripts/smoke-de
 
 单文件上传上限为 5 TiB，单次服务端复制受 S3 CopyObject 的 5 GB 限制。大文件上传时请勿修改源文件；实际传输速度取决于网络、磁盘和服务端限制，并发并不保证按路数线性提升。
 
-删除仅作用于所选文件，不递归删除文件夹；删除前有明确确认。上传会覆盖当前目录中的同名对象；版本控制桶的恢复行为由服务端设置决定。分享链接有效期也受临时凭据到期时间影响。
+删除目录会递归删除其中所有当前可见对象，不清除版本控制桶的历史版本；删除前有明确确认。目录先完整枚举后删除，枚举完成后新上传的对象不会被此次删除，请避免删除期间向同一目录写入。上传会覆盖当前目录中的同名对象；版本控制桶的恢复行为由服务端设置决定。分享链接有效期也受临时凭据到期时间影响。
 
 首版暂不包含 SSO/AssumeRole、ACL/策略编辑、版本管理、跨账户复制、目录同步、Glacier 恢复、文件夹批量下载以及 CloudFront 管理。S3 兼容服务的具体 API 兼容程度需以实际联调为准。
 
-本机已通过 **4 项前端基础测试、5 项界面测试、19 项 Rust 测试**，以及 Windows Release 编译和原生启动检查。覆盖并发配置保存与动态调整、本地模拟 S3 的签名、分页、共享并发限制、上传/下载暂停恢复、损坏断点校验、文件变化保护、提交后重启恢复和取消清理。Windows NSIS 安装包位于 `src-tauri/target/release/bundle/nsis/S3 Studio_0.2.2_x64-setup.exe`；校验信息保存于 `artifacts/windows-build.json`，启动报告保存于 `artifacts/native-startup.json`。
+测试覆盖并发配置保存与动态调整、本地模拟 S3 的签名、完整分页递归删除、部分删除失败、共享并发限制、上传/下载暂停恢复、损坏断点校验、文件变化保护、提交后重启恢复、更新期间传输保护，以及更新包签名、公钥与版本绑定。Windows 原生启动报告保存于 `artifacts/native-startup.json`。
 
 未使用真实云账户访问你的数据；macOS、Ubuntu 的原生运行需由三平台构建或各自机器验证。

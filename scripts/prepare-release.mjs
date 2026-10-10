@@ -8,6 +8,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { verifyUpdateSignature } from "./update-signature.mjs";
 
 const [input, output] = process.argv.slice(2);
 if (!input || !output)
@@ -47,6 +49,12 @@ const packages = [
 await mkdir(output, { recursive: true });
 if ((await readdir(output)).length) throw new Error("Output must be empty");
 const checksums = [];
+const platforms = {};
+const platformNames = {
+  ".exe": "windows-x86_64-nsis",
+  ".msi": "windows-x86_64-msi",
+  ".AppImage": "linux-x86_64-appimage",
+};
 for (const [extension, suffix] of packages) {
   const matches = files.filter((file) => file.endsWith(extension));
   if (matches.length !== 1)
@@ -68,7 +76,47 @@ for (const [extension, suffix] of packages) {
   if (!size) throw new Error(`Empty package: ${name}`);
   checksums.push(`${hash.digest("hex")}  ${name}`);
   console.log(`${name}: ${size} bytes`);
+  if (platformNames[extension]) {
+    const signature = (await readFile(`${source}.sig`, "utf8")).trim();
+    await verifyUpdateSignature(
+      target,
+      signature,
+      tauri.plugins.updater.pubkey,
+      version,
+    );
+    const signatureName = `${name}.sig`;
+    await writeFile(path.join(output, signatureName), signature + "\n");
+    checksums.push(
+      `${createHash("sha256")
+        .update(signature + "\n")
+        .digest("hex")}  ${signatureName}`,
+    );
+    platforms[platformNames[extension]] = {
+      signature,
+      url: `https://github.com/eyotang/s3studio/releases/download/v${version}/${name}`,
+    };
+  }
 }
+const date = spawnSync("git", ["show", "-s", "--format=%cI", "HEAD"], {
+  encoding: "utf8",
+});
+if (date.status !== 0 || Number.isNaN(Date.parse(date.stdout.trim())))
+  throw new Error("Cannot determine release date");
+const manifest =
+  JSON.stringify(
+    {
+      version,
+      notes: await readFile(`docs/releases/${version}.md`, "utf8"),
+      pub_date: date.stdout.trim(),
+      platforms,
+    },
+    null,
+    2,
+  ) + "\n";
+await writeFile(path.join(output, "latest.json"), manifest);
+checksums.push(
+  `${createHash("sha256").update(manifest).digest("hex")}  latest.json`,
+);
 await writeFile(
   path.join(output, "SHA256SUMS.txt"),
   checksums.join("\n") + "\n",
