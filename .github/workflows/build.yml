@@ -39,6 +39,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          cache-on-failure: true
       - name: Linux native dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev
@@ -53,6 +54,7 @@ jobs:
           printf '### Rust tests\n```text\n' >> "$GITHUB_STEP_SUMMARY"
           tail -n 100 rust-tests.log >> "$GITHUB_STEP_SUMMARY"
           printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$result" -ne 0 ]; then node scripts/annotate-ci.mjs rust-tests.log; fi
           exit "$result"
       - name: Build desktop installers
         shell: bash
@@ -63,6 +65,7 @@ jobs:
           printf '### Desktop installers\n```text\n' >> "$GITHUB_STEP_SUMMARY"
           tail -n 100 desktop-build.log >> "$GITHUB_STEP_SUMMARY"
           printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$result" -ne 0 ]; then node scripts/annotate-ci.mjs desktop-build.log; fi
           exit "$result"
       - uses: actions/upload-artifact@v4
         with:
