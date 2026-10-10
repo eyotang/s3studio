@@ -1,0 +1,54 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1024"
+  height="1024"
+  viewBox="0 0 1024 1024"
+>
+  <defs>
+    <linearGradient
+      id="surface"
+      x1="160"
+      y1="96"
+      x2="848"
+      y2="944"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#83bfff" />
+      <stop offset=".48" stop-color="#529eff" />
+      <stop offset="1" stop-color="#237bf0" />
+    </linearGradient>
+    <linearGradient
+      id="edge"
+      x1="224"
+      y1="80"
+      x2="784"
+      y2="944"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#ffffff" stop-opacity=".42" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity=".12" />
+    </linearGradient>
+  </defs>
+  <rect x="80" y="80" width="864" height="864" rx="192" fill="url(#surface)" />
+  <rect
+    x="82"
+    y="82"
+    width="860"
+    height="860"
+    rx="190"
+    fill="none"
+    stroke="url(#edge)"
+    stroke-width="4"
+  />
+  <g transform="translate(512 512) scale(1.12) translate(-512 -480)">
+    <path
+      d="M720 280H440L296 424l300 156H304v100h280l144-144-300-156h292Z"
+      fill="#ffffff"
+      stroke="#ffffff"
+      stroke-width="6"
+      stroke-linejoin="round"
+    />
+    <path d="m296 424 132-44 60 31-107 57Z" fill="#d6eaff" />
+    <path d="m728 536-132 44-60-31 107-57Z" fill="#d6eaff" />
+  </g>
+</svg>

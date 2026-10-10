@@ -1,0 +1,23 @@
+{
+  "name": "S3 Studio",
+  "version": "0.2.2",
+  "concept": "三层几何存储标志",
+  "designDirection": "Apple 风格的留白、光学平衡与克制渐变；保留原浅蓝色底，使用三层相连的等距几何线条表达对象存储。",
+  "method": "最终图形使用 SVG 矢量绘制；PNG、ICO、ICNS 由 Tauri CLI 导出。",
+  "source": "s3-studio-logo.svg",
+  "uiAsset": "../../public/brand/s3-studio-logo.svg",
+  "monochromeMark": "../../public/brand/s3-studio-mark.svg",
+  "desktopIcons": "../../src-tauri/icons",
+  "palette": {
+    "top": "#83bfff",
+    "middle": "#529eff",
+    "bottom": "#237bf0",
+    "mark": "#ffffff"
+  },
+  "exploration": {
+    "file": "jade-exploration.png",
+    "generator": "built-in image_gen",
+    "prompt": "Use case: logo-brand. Create one production-ready desktop app icon for S3 Studio. Actual isolated icon asset, not mockup, no text. Square canvas. Deep jade green rounded-square tile, opaque rich saturated jade color all the way to its perfectly smooth outer edge, and truly transparent pixels outside the tile. Inside: warm porcelain white bold sculptural cloud-outline joined seamlessly to an open storage tray, one distinctive continuous symbol expressing cloud object storage. Large simple geometry with broad strokes, perfectly readable at 32 pixels. Front-facing symmetrical centered composition. Modern Apple-inspired minimalism with very subtle satin shading and a soft ivory symbol. The jade tile fills 88 percent of the canvas, consistent transparent margins. Absolutely no white, pale or gray patches along or outside the tile boundary; outside must be completely transparent with no shadow or specks. No blue, no letters, no numbers, no Apple or AWS brand logos, no tiny lines, no clutter. Professional crisp clean app icon.",
+    "usedInApplication": false
+  }
+}
