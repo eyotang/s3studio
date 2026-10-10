@@ -5,6 +5,7 @@ const failures = log.indexOf("\nfailures:");
 const diagnostic = (failures >= 0 ? log.slice(failures) : log)
   .split(/\r?\n/)
   .filter((line) => !/^\s*(Compiling|Finished|Running)\b/.test(line))
+  .map((line) => line.slice(0, 1000))
   .slice(-100)
   .join("\n")
   .slice(-20000);

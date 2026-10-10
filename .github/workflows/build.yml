@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: desktop-${{ github.ref }}
+  group: desktop-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 env:
   CARGO_BUILD_JOBS: "2"
