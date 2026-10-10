@@ -40,6 +40,7 @@ struct Mock {
     state: Arc<StdMutex<Remote>>,
     maximum: Arc<AtomicUsize>,
     shutdown: Arc<AtomicBool>,
+    hold_downloads: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 fn header(name: &str, value: impl ToString) -> Header {
@@ -62,14 +63,16 @@ impl Mock {
         let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
         let endpoint = format!("http://{}", server.server_addr());
         let shutdown = Arc::new(AtomicBool::new(false));
+        let hold_downloads = Arc::new(AtomicBool::new(false));
         let active = Arc::new(AtomicUsize::new(0));
         let maximum = Arc::new(AtomicUsize::new(0));
         let thread = {
-            let (data, state, shutdown, maximum) = (
+            let (data, state, shutdown, maximum, hold_downloads) = (
                 data.clone(),
                 state.clone(),
                 shutdown.clone(),
                 maximum.clone(),
+                hold_downloads.clone(),
             );
             std::thread::spawn(move || {
                 let mut handlers = vec![];
@@ -77,8 +80,9 @@ impl Mock {
                     if let Some(request) = server.recv_timeout(Duration::from_millis(20)).unwrap() {
                         let (data, state, active, maximum) =
                             (data.clone(), state.clone(), active.clone(), maximum.clone());
+                        let hold_downloads = hold_downloads.clone();
                         handlers.push(std::thread::spawn(move || {
-                            handle(request, data, state, active, maximum)
+                            handle(request, data, state, active, maximum, hold_downloads)
                         }));
                     }
                 }
@@ -93,6 +97,7 @@ impl Mock {
             state,
             maximum,
             shutdown,
+            hold_downloads,
             thread: Some(thread),
         }
     }
@@ -120,6 +125,7 @@ impl Mock {
 impl Drop for Mock {
     fn drop(&mut self) {
         self.shutdown.store(true, Ordering::SeqCst);
+        self.hold_downloads.store(false, Ordering::SeqCst);
         if let Some(thread) = self.thread.take() {
             thread.join().unwrap();
         }
@@ -137,6 +143,7 @@ fn handle(
     state: Arc<StdMutex<Remote>>,
     active: Arc<AtomicUsize>,
     maximum: Arc<AtomicUsize>,
+    hold_downloads: Arc<AtomicBool>,
 ) {
     let url = url::Url::parse(&format!("http://localhost{}", request.url())).unwrap();
     let query = url.query_pairs().into_owned().collect::<HashMap<_, _>>();
@@ -245,6 +252,11 @@ fn handle(
             remote.etag.clone()
         };
         assert_eq!(request_header(&request, "If-Match"), Some(etag.clone()));
+        // Keep later ranges incomplete until the test has observed "paused".
+        // A fixed delay races with part-one hashing on slower CI machines.
+        while number > 1 && hold_downloads.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
         std::thread::sleep(Duration::from_millis(if number == 1 { 220 } else { 700 }));
         let _ = request.respond(
             Response::from_data(data[begin..=end].to_vec())
@@ -292,6 +304,7 @@ async fn enqueue(engine: &Engine, direction: Direction, path: PathBuf, key: &str
         .unwrap()
 }
 async fn paused_download(workspace: &Workspace, mock: &Mock) -> (Engine, String, Job) {
+    mock.hold_downloads.store(true, Ordering::SeqCst);
     let engine = workspace.engine();
     engine.set_settings(2).await.unwrap();
     let id = enqueue(
@@ -305,6 +318,7 @@ async fn paused_download(workspace: &Workspace, mock: &Mock) -> (Engine, String,
     until(&engine, &id, |j| j.completed.contains_key(&1)).await;
     engine.pause(&id).await.unwrap();
     let job = until(&engine, &id, |j| j.view.status == "paused").await;
+    mock.hold_downloads.store(false, Ordering::SeqCst);
     (engine, id, job)
 }
 
