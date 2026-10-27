@@ -18,3 +18,8 @@ artifacts/*
 accounts.json
 transfers.json
 .release-secrets/
+
+src-core/target/
+src-gpui/target/
+
+src-gpui/bundle/

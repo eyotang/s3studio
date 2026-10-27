@@ -409,9 +409,6 @@ h1 {
   margin: 0;
   overflow-wrap: anywhere;
 }
-.heading-dot {
-  color: var(--blue);
-}
 .page-heading p {
   font-size: 11px;
   color: #9299a6;

@@ -4268,7 +4268,35 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "s3-studio"
-version = "0.2.3"
+version = "0.3.0"
+dependencies = [
+ "aws-credential-types",
+ "aws-sdk-s3",
+ "aws-smithy-types",
+ "keyring",
+ "mime_guess",
+ "percent-encoding",
+ "reqwest",
+ "rfd",
+ "rustls 0.23.45",
+ "s3-studio-core",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tauri-plugin-updater",
+ "tiny_http",
+ "tokio",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "s3-studio-core"
+version = "0.3.0"
 dependencies = [
  "aws-credential-types",
  "aws-sdk-s3",
@@ -4283,11 +4311,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tauri-plugin-updater",
- "tiny_http",
  "tokio",
  "url",
  "uuid",

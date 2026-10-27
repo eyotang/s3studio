@@ -1,0 +1,49 @@
+[package]
+name = "s3-studio-gpui"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.92"
+
+[[bin]]
+name = "s3-studio"
+path = "src/main.rs"
+
+[dependencies]
+gpui-kit = "=0.8.1"
+s3-studio-core = { path = "../src-core" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+futures = "0.3"
+dirs = "6"
+chrono = "0.4"
+icu_collator = "2.4"
+icu_locale = "2.4"
+semver = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream"] }
+tauri = { version = "2", default-features = false }
+tauri-plugin-updater = "=2.13.2"
+open = "5"
+image = { version = "0.25", default-features = false, features = ["png"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[dev-dependencies]
+gpui-kit = { version = "=0.8.1", features = ["test-support"] }
+
+[profile.dev]
+debug = 0
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 8
+
+# Upstream 0.3.10 uses unstable Option::map_or_default on stable Rust.
+[patch.crates-io]
+gpui-pre-macos = { path = "vendor/gpui-pre-macos" }
+
+tauri-plugin-updater = { path = "vendor/tauri-plugin-updater" }

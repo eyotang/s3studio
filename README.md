@@ -1,6 +1,6 @@
 # S3 Studio
 
-基于 **Tauri 2 + React + TypeScript + Rust + AWS SDK for Rust** 的跨平台图形化 S3 客户端。以 Apple 的清晰层级、柔和材质、留白和原生交互为设计参考，支持 macOS、Ubuntu 和 Windows，**账户数量不设上限**。
+基于 **GPUI + GPUI Kit + Rust + AWS SDK for Rust** 的跨平台图形化 S3 客户端。以 Apple 的清晰层级、柔和材质、留白和原生交互为设计参考，支持 macOS、Ubuntu 和 Windows，**账户数量不设上限**。
 
 ![工作空间预览](artifacts/workspace-preview.png)
 
@@ -34,7 +34,7 @@ Logo 以 Apple Design 的克制、留白和几何层级为参考：保留浅蓝�
 ## 开发环境
 
 - Node.js 22.12+（本机验证：22.23.1）。
-- 最新稳定版 Rust（本机验证：1.97.0；依赖版本固定在 `src-tauri/Cargo.lock`）。
+- 最新稳定版 Rust（本机验证：1.97.0；原生依赖固定在 `src-gpui/Cargo.lock`，共享后端测试依赖固定在 `src-core/Cargo.lock`）。
 - Windows：MSVC C++ Build Tools 和 WebView2。
 - macOS：Xcode Command Line Tools。
 - Ubuntu：以下原生开发依赖；桌面会话中需要运行且解锁支持 Secret Service 的密钥库，如 GNOME Keyring。
@@ -48,7 +48,7 @@ sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev lib
 
 ```bash
 npm ci
-npm run tauri dev
+npm run dev:native
 ```
 
 只查看界面：
@@ -71,7 +71,7 @@ MinIO 例子：Endpoint 为 `http://localhost:9000`，Region 为 `us-east-1`，�
 
 选择文件后，搜索栏右侧提供下载、复制、分享和删除操作。目录也可直接选中删除，确认后递归删除全部子目录和文件，支持多目录与文件混合选择。后端完整分页枚举，以每批最多 1000 个对象删除；目录标记最后删除，部分失败会显示失败路径。双击文件夹进入，双击文件显示对象详情。
 
-账户元数据文件位于 Tauri 的应用数据目录，文件名 `accounts.json`；凭据位于系统密钥库，服务名 `com.s3studio.desktop`，每个账户使用独立 UUID。
+账户元数据文件继续使用原版的应用数据目录，文件名 `accounts.json`；凭据位于系统密钥库，服务名 `com.s3studio.desktop`，每个账户使用独立 UUID。
 
 ## 并发、暂停与断点续传
 
@@ -93,11 +93,15 @@ MinIO 例子：Endpoint 为 `http://localhost:9000`，Region 为 `us-east-1`，�
 npm test
 npm run test:ui
 npm run build
-cargo test --locked --manifest-path src-tauri/Cargo.toml
-npm run tauri build
+cargo test --locked --manifest-path src-core/Cargo.toml
+cargo test --locked --manifest-path src-gpui/Cargo.toml
+npm run build:native
+npm run tauri bundle -- --ci
 ```
 
-界面测试默认用已安装的 Microsoft Edge。若没有 Edge，可将 `playwright.config.ts` 的 `channel` 改为 `chrome`，或删除 `channel` 并运行 `npx playwright install chromium`。
+原版网页对照测试默认使用 Chromium；首次运行前执行 `npx playwright install chromium`，也可以设置 `PLAYWRIGHT_CHANNEL` 使用已有浏览器。原生界面使用 GPUI Kit 的测试支持验证交互；`npm run preview:native` 启动示例数据预览，`npm run dev:native` 启动真实账户模式。
+
+`src-core` 复用原有账户、S3 和传输引擎，`src-gpui` 提供原生界面。安装包仍由 Tauri bundler 生成，以保留应用 ID、包类型标记、更新签名和现有发布流程。macOS Universal 构建使用 `npm run build:native -- --universal`，再执行 `npm run tauri bundle -- --ci --target universal-apple-darwin --bundles app,dmg`。原版 React/Tauri 入口保留作迁移对照。
 
 安装包输出到 `src-tauri/target/release/bundle/`：Windows 为 NSIS/MSI，Ubuntu 为 deb/AppImage，macOS 为 app/DMG。应分别在对应操作系统构建；`.github/workflows/build.yml` 已配置三平台构建和产物上传，其中 macOS 生成同时支持 Apple Silicon 和 Intel 的 Universal 包，位于 `src-tauri/target/universal-apple-darwin/release/bundle/`。
 
@@ -129,4 +133,4 @@ Windows Release 构建后可运行 `powershell -NoProfile -File scripts/smoke-de
 
 测试覆盖并发配置保存与动态调整、本地模拟 S3 的签名、完整分页递归删除、部分删除失败、共享并发限制、上传/下载暂停恢复、损坏断点校验、文件变化保护、提交后重启恢复、更新期间传输保护，以及更新包签名、公钥与版本绑定。Windows 原生启动报告保存于 `artifacts/native-startup.json`。
 
-未使用真实云账户访问你的数据；macOS、Ubuntu 的原生运行需由三平台构建或各自机器验证。
+测试不使用真实云账户；三平台构建分别验证安装包，macOS 原生界面另有自动交互测试。

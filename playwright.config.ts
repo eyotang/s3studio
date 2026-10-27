@@ -6,7 +6,7 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:1420",
     viewport: { width: 1280, height: 900 },
     browserName: "chromium",
-    channel: "msedge",
+    channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
   },
   webServer: {
     command: "npm run dev",

@@ -598,10 +598,7 @@ export default function App() {
           <div className="page-heading">
             <div>
               <div className="eyebrow">OBJECT STORAGE</div>
-              <h1>
-                {bucket || "欢迎来到 S3 Studio"}
-                <span className="heading-dot">.</span>
-              </h1>
+              <h1>{bucket || "欢迎来到 S3 Studio"}</h1>
               <p>
                 {bucket
                   ? "让每一份文件，都有自己的位置。"
@@ -1261,7 +1258,7 @@ export default function App() {
                       <input
                         type="checkbox"
                         name="pathStyle"
-                        defaultChecked={dialog.account?.pathStyle}
+                        defaultChecked={dialog.account?.pathStyle ?? true}
                       />{" "}
                       使用路径风格访问 <span>MinIO 等服务推荐开启</span>
                     </label>
