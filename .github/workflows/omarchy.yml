@@ -1,0 +1,59 @@
+name: Supplement release with Omarchy package
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Download and verify published Linux binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          mkdir -p artifacts/omarchy-input
+          gh release download "v$version" --pattern '*.deb' --pattern SHA256SUMS.txt --dir artifacts/omarchy-input
+          cd artifacts/omarchy-input
+          sha256sum --ignore-missing -c SHA256SUMS.txt
+      - name: Build and test Omarchy package
+        run: bash scripts/build-omarchy.sh artifacts/omarchy-input/*.deb artifacts/omarchy
+      - name: Prepare supplement
+        run: |
+          mkdir -p artifacts/omarchy-release
+          cp artifacts/omarchy/*.pkg.tar.zst "artifacts/omarchy-release/S3-Studio_${VERSION}_omarchy_x86_64.pkg.tar.zst"
+          cd artifacts/omarchy-release
+          sha256sum *.pkg.tar.zst > SHA256SUMS-Omarchy.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omarchy-release
+          path: artifacts/omarchy-release/*
+          if-no-files-found: error
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omarchy-diagnostics
+          path: artifacts/omarchy/*.log
+          if-no-files-found: ignore
+  publish:
+    needs: package
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: omarchy-release
+          path: artifacts/omarchy-release
+      - name: Add verified package to existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-omarchy.mjs artifacts/omarchy-release

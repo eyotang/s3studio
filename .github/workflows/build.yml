@@ -106,6 +106,9 @@ jobs:
           printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
           if [ "$result" -ne 0 ]; then node scripts/annotate-ci.mjs desktop-build.log; fi
           exit "$result"
+      - name: Build and test Omarchy package
+        if: runner.os == 'Linux'
+        run: bash scripts/build-omarchy.sh src-tauri/target/release/bundle/deb/*.deb artifacts/omarchy
       - uses: actions/upload-artifact@v4
         with:
           name: s3-studio-${{ matrix.os }}
@@ -116,6 +119,7 @@ jobs:
             src-tauri/target/release/bundle/**/*.AppImage
             src-tauri/target/**/bundle/**/*.dmg
             src-tauri/target/release/bundle/**/*.sig
+            artifacts/omarchy/*.pkg.tar.zst
           if-no-files-found: error
   release:
     if: startsWith(github.ref, 'refs/tags/v')

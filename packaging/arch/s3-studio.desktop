@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=S3 Studio
+Comment=Browse and transfer files in S3-compatible object storage
+Exec=s3-studio
+Icon=com.s3studio.desktop
+Terminal=false
+Categories=Network;FileTransfer;Utility;
+StartupNotify=true

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p artifacts
-src-tauri/target/release/s3-studio --preview > artifacts/native-startup-linux.log 2>&1 &
+"${1:-src-tauri/target/release/s3-studio}" --preview > artifacts/native-startup-linux.log 2>&1 &
 native_pid=$!
 trap 'kill "$native_pid" 2>/dev/null || true' EXIT
 for attempt in {1..30}; do

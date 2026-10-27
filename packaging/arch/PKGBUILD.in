@@ -1,0 +1,31 @@
+pkgname=s3-studio
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Native graphical client for S3-compatible object storage'
+arch=('x86_64')
+url='https://github.com/eyotang/s3studio'
+depends=('glibc' 'gcc-libs' 'gtk3' 'webkit2gtk-4.1' 'openssl'
+         'libxkbcommon-x11' 'libxcb' 'wayland' 'fontconfig'
+         'vulkan-icd-loader' 'libsecret' 'xdg-utils'
+         'xdg-desktop-portal' 'hicolor-icon-theme')
+optdepends=('gnome-keyring: Secret Service credential storage'
+            'xdg-desktop-portal-hyprland: file dialogs in Hyprland'
+            'xdg-desktop-portal-gtk: fallback file dialogs')
+options=('!strip' '!debug')
+source=('s3-studio.deb')
+noextract=('s3-studio.deb')
+sha256sums=('@SHA256@')
+
+prepare() {
+    mkdir -p "$srcdir/payload"
+    local archive
+    archive=$(bsdtar -tf "$srcdir/s3-studio.deb" | sed -n '/^data\.tar\./p')
+    test -n "$archive"
+    bsdtar -xOf "$srcdir/s3-studio.deb" "$archive" | bsdtar -xf - -C "$srcdir/payload"
+}
+
+package() {
+    install -Dm755 "$srcdir/payload/usr/bin/s3-studio" "$pkgdir/usr/bin/s3-studio"
+    install -Dm644 "$startdir/s3-studio.desktop" "$pkgdir/usr/share/applications/com.s3studio.desktop.desktop"
+    install -Dm644 "$startdir/icon.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/com.s3studio.desktop.png"
+}

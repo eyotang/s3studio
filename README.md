@@ -1,6 +1,6 @@
 # S3 Studio
 
-基于 **GPUI + GPUI Kit + Rust + AWS SDK for Rust** 的跨平台图形化 S3 客户端。以 Apple 的清晰层级、柔和材质、留白和原生交互为设计参考，支持 macOS、Ubuntu 和 Windows，**账户数量不设上限**。
+基于 **GPUI + GPUI Kit + Rust + AWS SDK for Rust** 的跨平台图形化 S3 客户端。以 Apple 的清晰层级、柔和材质、留白和原生交互为设计参考，支持 macOS、Ubuntu、Omarchy / Arch Linux 和 Windows，**账户数量不设上限**。
 
 ![工作空间预览](artifacts/workspace-preview.png)
 
@@ -9,6 +9,19 @@
 在 [GitHub Releases](https://github.com/eyotang/s3studio/releases/latest) 下载 Windows x64（EXE / MSI）、macOS Universal（Apple Silicon / Intel，DMG）和 Ubuntu 22.04+ amd64（deb / AppImage）安装包。每次发布附带 `SHA256SUMS.txt`，可核对下载文件。
 
 当前安装包未进行代码签名或 macOS 公证，系统可能提示来源无法验证。macOS 允许打开的选项位于系统设置「隐私与安全性」。Ubuntu 需要运行并解锁 Secret Service 密钥库，例如 GNOME Keyring。
+
+### Omarchy / Arch Linux x86_64
+
+下载 Release 中的 `S3-Studio_<版本>_omarchy_x86_64.pkg.tar.zst`，核对 SHA-256 后安装。例如 0.3.0 的补充包使用独立的 `SHA256SUMS-Omarchy.txt`：
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS-Omarchy.txt
+sudo pacman -U ./S3-Studio_0.3.0_omarchy_x86_64.pkg.tar.zst
+```
+
+安装后从应用启动器打开 **S3 Studio**，也可运行 `s3-studio`。应用名称、ID、账户配置和系统密钥库与其他发行版一致；需要运行且解锁 Secret Service 密钥库（如 GNOME Keyring），以及桌面环境的文件选择 portal。卸载使用 `sudo pacman -R s3-studio`，不会删除个人账户和传输配置。
+
+此包尚未加入 AUR 或 Omarchy 软件仓库。应用内继续检查原更新源，打开发布页下载新包，再用 `pacman -U` 升级。当前支持 x86_64；没有发布 ARM64 包。CI 使用 Arch Linux 容器验证安装、动态库、桌面入口、X11 / 原生 Wayland 窗口启动及卸载；没有覆盖所有 Omarchy 实机和显卡。
 
 ## 已实现
 
@@ -105,7 +118,9 @@ npm run tauri bundle -- --ci
 
 安装包输出到 `src-tauri/target/release/bundle/`：Windows 为 NSIS/MSI，Ubuntu 为 deb/AppImage，macOS 为 app/DMG。应分别在对应操作系统构建；`.github/workflows/build.yml` 已配置三平台构建和产物上传，其中 macOS 生成同时支持 Apple Silicon 和 Intel 的 Universal 包，位于 `src-tauri/target/universal-apple-darwin/release/bundle/`。
 
-推送与应用版本一致的 `v<版本号>` 标签后，工作流等待三平台测试与构建全部通过，汇总五个安装包、三份更新签名和 `latest.json`，生成 SHA-256 校验清单，先上传到草稿 Release，核对远端文件数量和大小后再正式发布。Windows / AppImage 更新包使用专用密钥签名；安装包尚未配置系统代码签名，macOS 尚未进行 Apple 公证。
+推送与应用版本一致的 `v<版本号>` 标签后，工作流等待三平台测试与构建全部通过，汇总六个安装包（含 Omarchy）、三份更新签名和 `latest.json`，生成 SHA-256 校验清单，先上传到草稿 Release，核对远端文件数量和大小后再正式发布。Windows / AppImage 更新包使用专用密钥签名；安装包尚未配置系统代码签名，macOS 尚未进行 Apple 公证。
+
+Omarchy 包复用同版本 deb 中的原生可执行文件，通过 Arch 的 `makepkg` 生成，安装后使用系统动态库，不需要 FUSE。Linux CI 使用 `bash scripts/build-omarchy.sh <本仓库内的.deb路径> artifacts/omarchy` 构建与验证，需要 Docker。`Supplement release with Omarchy package` 工作流用于给当前已发布版本补包，不覆盖已有附件、更新清单或签名。
 
 ## 软件更新
 

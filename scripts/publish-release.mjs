@@ -10,12 +10,12 @@ if (process.env.GITHUB_REF_NAME !== tag)
   throw new Error("Release tag mismatch");
 const files = (await readdir(directory)).sort();
 if (
-  files.length !== 10 ||
+  files.length !== 11 ||
   !files.includes("SHA256SUMS.txt") ||
   !files.includes("latest.json")
 )
   throw new Error(
-    "Expected five installers, three signatures, latest.json and SHA256SUMS.txt",
+    "Expected six installers, three signatures, latest.json and SHA256SUMS.txt",
   );
 const manifest = JSON.parse(
   await readFile(path.join(directory, "latest.json"), "utf8"),

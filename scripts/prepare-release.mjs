@@ -45,6 +45,7 @@ const packages = [
   [".dmg", "macOS_universal.dmg"],
   [".deb", "ubuntu22.04_amd64.deb"],
   [".AppImage", "linux_x86_64.AppImage"],
+  [".pkg.tar.zst", "omarchy_x86_64.pkg.tar.zst"],
 ];
 await mkdir(output, { recursive: true });
 if ((await readdir(output)).length) throw new Error("Output must be empty");
