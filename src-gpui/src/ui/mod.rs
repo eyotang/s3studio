@@ -148,6 +148,10 @@ impl Render for Workspace {
                 "Segoe UI"
             })
             .track_focus(&self.focus)
+            .when(self.can_open_app_dialog(), |root| {
+                root.on_action(cx.listener(Self::show_about))
+                    .on_action(cx.listener(Self::check_for_updates))
+            })
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 let key = &event.keystroke;
                 if (key.modifiers.platform || key.modifiers.control) && key.key == "f" {

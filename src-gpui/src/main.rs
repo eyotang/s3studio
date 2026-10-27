@@ -10,7 +10,10 @@ mod updater;
 mod workspace;
 use gpui::{prelude::*, *};
 use std::borrow::Cow;
-actions!(s3_studio, [Quit, Hide, HideOthers, ShowAll]);
+actions!(
+    s3_studio,
+    [Quit, Hide, HideOthers, ShowAll, About, CheckForUpdates]
+);
 struct Assets;
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
@@ -54,6 +57,9 @@ fn main() -> anyhow::Result<()> {
                 ]);
                 cx.set_menus([
                     Menu::new("S3 Studio").items([
+                        MenuItem::action("About S3 Studio", About),
+                        MenuItem::action("检查更新…", CheckForUpdates),
+                        MenuItem::separator(),
                         MenuItem::os_submenu("Services", SystemMenuType::Services),
                         MenuItem::separator(),
                         MenuItem::action("Hide S3 Studio", Hide),

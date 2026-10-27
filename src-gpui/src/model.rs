@@ -18,6 +18,7 @@ pub enum Dialog {
     Upload,
     RemoveAccount,
     Help,
+    About,
     TransferSettings,
     CancelTransfer(String),
     Update,
@@ -34,6 +35,7 @@ impl Dialog {
             Self::Upload => "上传文件",
             Self::RemoveAccount => "移除这个账户？",
             Self::Help => "为云端工作而设计",
+            Self::About => "关于 S3 Studio",
             Self::TransferSettings => "传输设置",
             Self::CancelTransfer(_) => "取消传输？",
             Self::Update => "软件更新",
@@ -50,6 +52,7 @@ impl Dialog {
             Self::RemoveAccount => "移除账户",
             Self::TransferSettings => "保存设置",
             Self::Help => "开始使用",
+            Self::About => "关闭",
             Self::CancelTransfer(_) => "取消并清理",
             Self::Update => "检查更新",
         }

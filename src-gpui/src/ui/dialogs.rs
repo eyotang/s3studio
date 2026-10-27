@@ -53,6 +53,7 @@ impl Workspace {
             }
             Dialog::RemoveAccount => "删除本机保存的账户配置和凭据，云端文件不受影响。".into(),
             Dialog::Help => "一个基于 Tauri 的跨平台 S3 工作空间。".into(),
+            Dialog::About => "云端文件，井然有序。".into(),
             Dialog::TransferSettings => {
                 "设置整个应用的并发上限，所有上传和下载任务共同使用。建议从默认 8 路开始。".into()
             }
@@ -116,18 +117,23 @@ impl Workspace {
                             linear_color_stop(rgb(0xe3efff), 0.),
                             linear_color_stop(rgb(0xf2f7ff), 1.),
                         ))
-                        .child(icon(
-                            if account {
-                                "key-round"
-                            } else if dialog == Dialog::Delete {
-                                "trash-2"
-                            } else if dialog == Dialog::Update {
-                                "sparkles"
-                            } else {
-                                "cloud"
-                            },
-                            26.,
-                        )),
+                        .when(dialog == Dialog::About, |s| {
+                            s.child(img("brand.svg").size(px(50.)))
+                        })
+                        .when(dialog != Dialog::About, |s| {
+                            s.child(icon(
+                                if account {
+                                    "key-round"
+                                } else if dialog == Dialog::Delete {
+                                    "trash-2"
+                                } else if dialog == Dialog::Update {
+                                    "sparkles"
+                                } else {
+                                    "cloud"
+                                },
+                                26.,
+                            ))
+                        }),
                 )
             })
             .child(
@@ -170,6 +176,8 @@ impl Workspace {
                 "首次使用需具备相应的 S3 权限；Ubuntu 需启动支持 Secret Service 的密钥库。",
             ].into_iter().map(|s|label(s,12.,0x8591a4).line_height(relative(1.9)).my(px(6.)))),
             Dialog::Update=>modal=modal.child(self.render_update_status()),
+            Dialog::About=>modal=modal.child(label(format!("版本 {}", env!("CARGO_PKG_VERSION")),14.,0x4b5362).id("about-version"))
+                .child(label("跨平台 S3 文件工作空间",12.,0x8591a4).mt(px(12.))),
             _=>{}
         }
         if !self.dialog_error.is_empty() {
@@ -189,6 +197,23 @@ impl Workspace {
                     .mt(px(20.))
                     .w_full()
                     .on_click(cx.listener(|this, _, window, cx| this.close_dialog(window, cx))),
+            );
+        } else if dialog == Dialog::About {
+            modal = modal.child(
+                row()
+                    .justify_end()
+                    .gap(px(9.))
+                    .mt(px(24.))
+                    .child(
+                        secondary("about-check-update", "检查更新…").on_click(cx.listener(
+                            |this, _, window, cx| {
+                                this.check_for_updates(&crate::CheckForUpdates, window, cx)
+                            },
+                        )),
+                    )
+                    .child(primary("about-close", "关闭").on_click(
+                        cx.listener(|this, _, window, cx| this.close_dialog(window, cx)),
+                    )),
             );
         } else if dialog == Dialog::Update {
             let status = &self.update_status;

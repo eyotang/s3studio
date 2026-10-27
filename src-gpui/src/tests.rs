@@ -34,6 +34,75 @@ async fn setup(cx: &mut TestAppContext) -> (gpui::AnyWindowHandle, gpui::Entity<
     result
 }
 #[gpui::test]
+async fn app_menu_actions_open_about_and_existing_update_dialog(cx: &mut TestAppContext) {
+    let (window, view) = setup(cx).await;
+    cx.update_window(window, |_, window, cx| {
+        window.dispatch_action(Box::new(crate::About), cx);
+    })
+    .unwrap();
+    cx.update_window(window, |_, window, cx| {
+        assert_eq!(view.read(cx).dialog, Some(Dialog::About));
+        window.click("about-close", cx);
+        window.dispatch_action(Box::new(crate::CheckForUpdates), cx);
+    })
+    .unwrap();
+    cx.update_window(window, |_, window, cx| {
+        assert_eq!(view.read(cx).dialog, Some(Dialog::Update));
+        assert_eq!(window.find("check-update").disabled(), Some(true));
+        assert!(
+            !view.read(cx).update_pending,
+            "Preview menu must not request updates"
+        );
+        window.click("close-dialog", cx);
+        window.dispatch_action(Box::new(crate::About), cx);
+    })
+    .unwrap();
+    cx.update_window(window, |_, window, cx| {
+        window.click("about-check-update", cx);
+        assert_eq!(view.read(cx).dialog, Some(Dialog::Update));
+        view.update(cx, |view, cx| {
+            view.update_status.mode = "manual";
+            view.update_status.phase = "idle";
+            view.check_for_updates(&crate::CheckForUpdates, window, cx);
+            assert!(
+                view.update_pending,
+                "Menu must invoke the existing update command"
+            );
+            view.show_about(&crate::About, window, cx);
+            assert_eq!(
+                view.dialog,
+                Some(Dialog::Update),
+                "Pending updates must stay visible"
+            );
+        });
+    })
+    .unwrap();
+}
+
+#[gpui::test]
+async fn app_menu_preserves_unsaved_account_form(cx: &mut TestAppContext) {
+    let (window, view) = setup(cx).await;
+    cx.update_window(window, |_, window, cx| {
+        window.click("add-account", cx);
+        window.click("name", cx);
+        window.input("Unsaved account", cx);
+        window.dispatch_action(Box::new(crate::About), cx);
+        window.dispatch_action(Box::new(crate::CheckForUpdates), cx);
+    })
+    .unwrap();
+    cx.update_window(window, |_, _, cx| {
+        let view = view.read(cx);
+        assert_eq!(view.dialog, Some(Dialog::Account(None)));
+        assert_eq!(
+            view.form.inputs["name"].read(cx).value().as_str(),
+            "Unsaved account"
+        );
+        assert!(!view.update_pending);
+    })
+    .unwrap();
+}
+
+#[gpui::test]
 async fn new_account_defaults_to_path_style_and_edit_preserves_false(cx: &mut TestAppContext) {
     let (window, view) = setup(cx).await;
     cx.update_window(window, |_, window, cx| {

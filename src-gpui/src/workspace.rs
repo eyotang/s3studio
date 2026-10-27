@@ -160,10 +160,38 @@ impl Workspace {
         this.request("list_accounts", json!({}), Pending::Accounts(None));
         this.request("list_transfers", json!({}), Pending::Transfers);
         this.request("get_transfer_settings", json!({}), Pending::Settings);
+        window.focus(&this.focus, cx);
         this
     }
     pub fn is_busy(&self) -> bool {
         self.busy || self.update_status.installing()
+    }
+    pub fn can_open_app_dialog(&self) -> bool {
+        !self.is_busy()
+            && !self.update_pending
+            && matches!(
+                self.dialog,
+                None | Some(Dialog::About | Dialog::Help | Dialog::Update)
+            )
+    }
+    pub fn show_about(&mut self, _: &crate::About, window: &mut Window, cx: &mut Context<Self>) {
+        if self.can_open_app_dialog() {
+            self.open_dialog(Dialog::About, window, cx);
+        }
+    }
+    pub fn check_for_updates(
+        &mut self,
+        _: &crate::CheckForUpdates,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.can_open_app_dialog() {
+            return;
+        }
+        self.open_dialog(Dialog::Update, window, cx);
+        if self.update_status.mode != "disabled" && self.update_status.phase != "checking" {
+            self.update_action("check_app_update", cx);
+        }
     }
     pub fn update_action(&mut self, command: &'static str, cx: &mut Context<Self>) {
         if self.update_pending || self.update_status.installing() {
@@ -494,7 +522,7 @@ impl Workspace {
         let Some(dialog) = self.dialog.clone() else {
             return;
         };
-        if dialog == Dialog::Help {
+        if matches!(dialog, Dialog::Help | Dialog::About) {
             self.close_dialog(window, cx);
             return;
         }
@@ -587,7 +615,7 @@ impl Workspace {
                 self.control("cancel_transfer", id, cx);
                 return;
             }
-            Dialog::Update | Dialog::Help => return,
+            Dialog::Update | Dialog::Help | Dialog::About => return,
         };
         self.busy = true;
         self.dialog_error.clear();
