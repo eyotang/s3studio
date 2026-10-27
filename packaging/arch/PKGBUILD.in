@@ -4,9 +4,9 @@ pkgrel=1
 pkgdesc='Native graphical client for S3-compatible object storage'
 arch=('x86_64')
 url='https://github.com/eyotang/s3studio'
-depends=('glibc' 'gcc-libs' 'gtk3' 'webkit2gtk-4.1' 'openssl'
+depends=('glibc' 'gcc-libs' 'dbus'
          'libxkbcommon-x11' 'libxcb' 'wayland' 'fontconfig'
-         'vulkan-icd-loader' 'libsecret' 'xdg-utils'
+         'vulkan-icd-loader' 'xdg-utils'
          'xdg-desktop-portal' 'hicolor-icon-theme')
 optdepends=('gnome-keyring: Secret Service credential storage'
             'xdg-desktop-portal-hyprland: file dialogs in Hyprland'

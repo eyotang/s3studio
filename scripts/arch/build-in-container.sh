@@ -15,6 +15,7 @@ pacman -Syu --noconfirm --needed "${depends[@]}"
 useradd --create-home builder
 chown -R builder:builder "$work"
 cd "$work"
+trap 'cp artifacts/*.log "$output/" 2>/dev/null || true' EXIT
 runuser -u builder -- makepkg --cleanbuild --noconfirm
 package_file="$work/s3-studio-$version-1-x86_64.pkg.tar.zst"
 test -s "$package_file"
@@ -27,7 +28,7 @@ pacman -Qkk s3-studio
 pacman -S --noconfirm --needed desktop-file-utils xorg-server-xvfb xorg-xauth xorg-xwininfo weston vulkan-swrast ttf-dejavu
 desktop-file-validate /usr/share/applications/com.s3studio.desktop.desktop
 runuser -u builder -- dbus-run-session -- xvfb-run -a bash /work/scripts/smoke-linux.sh /usr/bin/s3-studio
-runuser -u builder -- dbus-run-session -- bash /work/scripts/arch/smoke-wayland.sh
+runuser -u builder -- dbus-run-session -- xvfb-run -a bash /work/scripts/arch/smoke-wayland.sh
 cp artifacts/* "$output/"
 pacman -R --noconfirm s3-studio
 test ! -e /usr/bin/s3-studio

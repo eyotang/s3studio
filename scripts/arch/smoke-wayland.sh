@@ -5,7 +5,6 @@ export XDG_RUNTIME_DIR
 XDG_RUNTIME_DIR=$(mktemp -d)
 chmod 700 "$XDG_RUNTIME_DIR"
 export WAYLAND_DISPLAY=s3-studio-test
-unset DISPLAY
 app_pid=''
 compositor_pid=''
 cleanup() {
@@ -14,7 +13,9 @@ cleanup() {
     rm -rf "$XDG_RUNTIME_DIR"
 }
 trap cleanup EXIT
-weston --backend=headless --renderer=pixman --socket="$WAYLAND_DISPLAY" --idle-time=0 > artifacts/omarchy-compositor.log 2>&1 &
+# A nested desktop supplies wl_seat (headless Weston has no input devices).
+# Only the compositor uses X11; the application below must use native Wayland.
+weston --backend=x11 --renderer=pixman --socket="$WAYLAND_DISPLAY" --idle-time=0 > artifacts/omarchy-compositor.log 2>&1 &
 compositor_pid=$!
 for attempt in {1..30}; do
     [[ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]] && break
@@ -22,6 +23,7 @@ for attempt in {1..30}; do
     sleep 0.5
 done
 test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+unset DISPLAY
 WAYLAND_DEBUG=1 /usr/bin/s3-studio --preview > artifacts/omarchy-wayland.log 2>&1 &
 app_pid=$!
 for attempt in {1..60}; do
