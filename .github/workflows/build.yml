@@ -76,6 +76,13 @@ jobs:
       - name: Windows native startup
         if: runner.os == 'Windows'
         run: ./scripts/smoke-desktop.ps1
+      - name: Windows startup diagnostics
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-startup-diagnostics
+          path: artifacts/native-startup*
+          if-no-files-found: ignore
       - name: Build desktop installers
         shell: bash
         env:
