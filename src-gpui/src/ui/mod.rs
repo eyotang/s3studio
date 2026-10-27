@@ -12,6 +12,20 @@ use s3_studio_core::s3::S3Object;
 pub(super) const BLUE: u32 = 0x007aff;
 pub(super) const MUTED: u32 = 0x92949f;
 pub(super) const LINE: u32 = 0xebecf0;
+pub fn configure_theme(cx: &mut App) {
+    gpui::component::Theme::change(gpui::component::ThemeMode::Light, None, cx);
+    gpui::component::Theme::update(cx, |theme| {
+        theme.primary = rgb(0x007aff).into();
+        theme.primary_hover = rgb(0x006deb).into();
+        theme.primary_active = rgb(0x006deb).into();
+        theme.primary_foreground = rgb(0xffffff).into();
+        theme.ring = rgb(0x007aff).into();
+        theme.foreground = rgb(0x4b5362).into();
+        theme.muted_foreground = rgb(0xaeb5c2).into();
+        theme.input = rgb(0xe0e5ec).into();
+    });
+}
+
 pub(super) fn row() -> Div {
     div().flex().items_center()
 }

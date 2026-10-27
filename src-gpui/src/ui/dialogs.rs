@@ -156,7 +156,7 @@ impl Workspace {
             Dialog::Account(id)=>{
                 modal=modal.child(self.field("name","账户名称")).child(row().gap(px(13.)).items_start().child(self.field("accessKey","Access Key ID")).child(self.field("region","Region")))
                     .child(self.field("secretKey","Secret Access Key")).child(self.field("sessionToken","Session Token  可选 · 临时凭据")).child(self.field("endpoint","Endpoint  可选 · S3 兼容服务"))
-                    .child(row().gap(px(5.)).mb(px(16.)).child(Checkbox::new("pathStyle").accessibility_label("使用路径风格访问").checked(self.form.path_style).xsmall().on_click(cx.listener(|this,checked,_,cx|{this.form.path_style=*checked;cx.notify();}))).child(label("使用路径风格访问",10.,0x778294)).child(label("MinIO 等服务推荐开启",9.,0xadb5c3)))
+                    .child(row().gap(px(5.)).mb(px(16.)).child(Checkbox::new("pathStyle").accessibility_label("使用路径风格访问").checked(self.form.path_style).xsmall().on_click(cx.listener(|this,checked,_,cx|{this.form.path_style = *checked;cx.notify();}))).child(label("使用路径风格访问",10.,0x778294)).child(label("MinIO 等服务推荐开启",9.,0xadb5c3)))
                     .when(id.is_some(),|s|s.child(button("remove-account","移除账户").text_size(px(10.)).text_color(rgb(0xd18282)).justify_start().child(icon("trash-2",14.)).child("移除账户").on_click(cx.listener(|this,_,window,cx|this.open_dialog(Dialog::RemoveAccount,window,cx)))));
             },
             Dialog::Folder=>modal=modal.child(self.field("name","文件夹名称")),Dialog::Bucket=>modal=modal.child(self.field("name","存储桶名称")),Dialog::Copy=>modal=modal.child(self.field("name","目标对象键")),

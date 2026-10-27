@@ -1,0 +1,18 @@
+{
+  "bundle": {
+    "linux": {
+      "deb": {
+        "depends": [
+          "libgtk-3-0",
+          "libwebkit2gtk-4.1-0",
+          "libxkbcommon0",
+          "libxkbcommon-x11-0",
+          "libxcb1",
+          "libwayland-client0",
+          "libfontconfig1",
+          "libvulkan1"
+        ]
+      }
+    }
+  }
+}

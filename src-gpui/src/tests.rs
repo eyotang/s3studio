@@ -12,7 +12,7 @@ async fn setup(cx: &mut TestAppContext) -> (gpui::AnyWindowHandle, gpui::Entity<
     let (backend, receiver) = Backend::open(true).unwrap();
     let result = cx.update(|cx| {
         gpui::init(cx);
-        gpui::component::Theme::change(gpui::component::ThemeMode::Light, None, cx);
+        crate::ui::configure_theme(cx);
         gpui::open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::new(
@@ -190,6 +190,51 @@ async fn update_dialog_preserves_modes_progress_and_revision_order(cx: &mut Test
         assert_ne!(window.find("check-update").disabled(), Some(true));
         window.click("close-dialog", cx);
         assert!(view.read(cx).dialog.is_none());
+    })
+    .unwrap();
+}
+
+#[gpui::test]
+async fn active_transfers_block_update_install_and_pending_blocks_close(cx: &mut TestAppContext) {
+    let (window, view) = setup(cx).await;
+    cx.update_window(window, |_, window, cx| {
+        window.click("help", cx);
+        window.click("help-start", cx);
+        assert!(view.read(cx).dialog.is_none());
+        view.update(cx, |view, cx| {
+            view.transfers.push(
+                serde_json::from_value(serde_json::json!({
+                    "id":"test-transfer", "name":"test.zip", "accountId":"demo-aws",
+                    "bucket":"studio-assets", "key":"test.zip", "direction":"upload",
+                    "status":"running", "bytes":1, "total":2
+                }))
+                .unwrap(),
+            );
+            view.accept_update(crate::updater::Status {
+                revision: 10,
+                mode: "inApp",
+                phase: "available",
+                version: Some("0.3.1".into()),
+                ..Default::default()
+            });
+            view.open_dialog(Dialog::Update, window, cx);
+        });
+        window.render_frame(cx);
+        assert_eq!(window.find("install-update").disabled(), Some(true));
+        view.update(cx, |view, cx| {
+            view.transfers[0].status = "paused".into();
+            cx.notify();
+        });
+        window.render_frame(cx);
+        assert_ne!(window.find("install-update").disabled(), Some(true));
+        view.update(cx, |view, cx| {
+            view.update_pending = true;
+            cx.notify();
+        });
+        window.render_frame(cx);
+        assert_eq!(window.find("close-dialog").disabled(), Some(true));
+        view.update(cx, |view, cx| view.close_dialog(window, cx));
+        assert_eq!(view.read(cx).dialog, Some(Dialog::Update));
     })
     .unwrap();
 }

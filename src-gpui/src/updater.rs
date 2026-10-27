@@ -183,14 +183,22 @@ pub async fn check(state: Arc<UpdaterState>, user_initiated: bool) -> Result<Sta
                     .map_err(|e| e.to_string())?;
             let config = serde_json::from_value(config["plugins"]["updater"].clone())
                 .map_err(|e| e.to_string())?;
-            let update =
+            let builder =
                 UpdaterBuilder::standalone(stable_version(&previous.current_version)?, config)
-                    .timeout(Duration::from_secs(15))
-                    .build()
-                    .map_err(|e| e.to_string())?
-                    .check()
-                    .await
-                    .map_err(|e| e.to_string())?;
+                    .timeout(Duration::from_secs(15));
+            // Same path override as UpdaterExt: update the outer AppImage, not its mounted executable.
+            #[cfg(target_os = "linux")]
+            let builder = if let Some(path) = std::env::var_os("APPIMAGE") {
+                builder.executable_path(std::path::PathBuf::from(path))
+            } else {
+                builder
+            };
+            let update = builder
+                .build()
+                .map_err(|e| e.to_string())?
+                .check()
+                .await
+                .map_err(|e| e.to_string())?;
             if let Some(mut update) = update {
                 stable_version(&update.version)?;
                 let allowed = format!("{RELEASES}/download/v{}/", update.version);
