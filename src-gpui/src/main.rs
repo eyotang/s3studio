@@ -22,10 +22,7 @@ actions!(
         ShowAll,
         About,
         CheckForUpdates,
-        OpenSettings,
-        LanguageSystem,
-        LanguageChinese,
-        LanguageEnglish
+        OpenSettings
     ]
 );
 struct Assets;
@@ -119,16 +116,6 @@ pub fn set_app_menus(cx: &App) {
             MenuItem::action(crate::i18n::t("关于 S3 Studio"), About),
             MenuItem::action(crate::i18n::t("检查更新…"), CheckForUpdates),
             MenuItem::action(i18n::t("设置…"), OpenSettings),
-            MenuItem::submenu(
-                Menu::new(i18n::t("语言")).items([
-                    MenuItem::action(i18n::t("跟随系统"), LanguageSystem)
-                        .checked(i18n::preference() == i18n::Language::System),
-                    MenuItem::action("简体中文", LanguageChinese)
-                        .checked(i18n::preference() == i18n::Language::Chinese),
-                    MenuItem::action("English", LanguageEnglish)
-                        .checked(i18n::preference() == i18n::Language::English),
-                ]),
-            ),
             MenuItem::separator(),
             MenuItem::os_submenu(i18n::t("服务"), SystemMenuType::Services),
             MenuItem::separator(),
