@@ -865,7 +865,7 @@ impl Workspace {
                         Dialog::TransferSettings => {
                             self.settings =
                                 serde_json::from_value(data).map_err(|e| e.to_string())?;
-                            crate::i18n::t("传输并发设置已保存").into()
+                            crate::i18n::t("设置保存成功").into()
                         }
                         Dialog::Delete => {
                             self.load_objects(false, cx);

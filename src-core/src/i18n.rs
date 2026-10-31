@@ -55,7 +55,7 @@ fn translate(text: &str, english: bool) -> &str {
         "账户已安全保存" => "Account saved securely",
         "账户已移除" => "Account removed",
         "存储桶已创建" => "Bucket created",
-        "传输并发设置已保存" => "Transfer concurrency saved",
+        "设置保存成功" => "Settings saved successfully",
         "文件夹已创建" => "Folder created",
         "对象已复制" => "Object copied",
         "已复制分享链接，1 小时内有效" => "Share link copied; valid for 1 hour",
