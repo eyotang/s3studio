@@ -58,6 +58,13 @@ pub fn select(value: Preference, window: &mut Window, cx: &mut App) -> std::io::
     Ok(())
 }
 pub fn apply(window: Option<&mut Window>, cx: &mut App) {
+    // Theme::change only updates GPUI controls; macOS window chrome uses
+    // NSApplication.appearance. Clear the override when following the system.
+    cx.set_window_appearance(match preference() {
+        Preference::System => None,
+        Preference::Light => Some(gpui::WindowAppearance::Light),
+        Preference::Dark => Some(gpui::WindowAppearance::Dark),
+    });
     let mode = match preference() {
         Preference::Light => ThemeMode::Light,
         Preference::Dark => ThemeMode::Dark,

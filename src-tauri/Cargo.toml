@@ -1,6 +1,6 @@
 [package]
 name = "s3-studio"
-version = "0.4.1"
+version = "0.4.2"
 description = "A beautiful cross-platform S3 workspace"
 authors = ["S3 Studio"]
 edition = "2021"
