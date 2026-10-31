@@ -1,3 +1,4 @@
+use crate::appearance::{rgb, rgba};
 mod dialogs;
 mod transfers;
 use crate::{
@@ -13,17 +14,7 @@ pub(super) const BLUE: u32 = 0x007aff;
 pub(super) const MUTED: u32 = 0x92949f;
 pub(super) const LINE: u32 = 0xebecf0;
 pub fn configure_theme(cx: &mut App) {
-    gpui::component::Theme::change(gpui::component::ThemeMode::Light, None, cx);
-    gpui::component::Theme::update(cx, |theme| {
-        theme.primary = rgb(0x007aff).into();
-        theme.primary_hover = rgb(0x006deb).into();
-        theme.primary_active = rgb(0x006deb).into();
-        theme.primary_foreground = rgb(0xffffff).into();
-        theme.ring = rgb(0x007aff).into();
-        theme.foreground = rgb(0x4b5362).into();
-        theme.muted_foreground = rgb(0xaeb5c2).into();
-        theme.input = rgb(0xe0e5ec).into();
-    });
+    crate::appearance::apply(None, cx);
 }
 
 pub(super) fn row() -> Div {
@@ -74,7 +65,7 @@ pub(super) fn primary(id: impl Into<ElementId>, text: &str) -> Button {
         .py(px(10.))
         .rounded(px(8.))
         .bg(rgb(BLUE))
-        .text_color(rgb(0xffffff))
+        .text_color(gpui::rgb(0xffffff))
         .hover(|s| s.bg(rgb(0x006deb)))
         .child(text.to_owned())
 }
@@ -114,6 +105,7 @@ pub(super) fn file_icon(object: &S3Object, size: f32) -> AnyElement {
 }
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        crate::appearance::sync(window, cx);
         let size = window.viewport_size();
         let width = f32::from(size.width);
         let narrow = width <= 1050.;
@@ -158,8 +150,11 @@ impl Render for Workspace {
                 this.change_language(crate::i18n::Language::English, window, cx)
             }))
             .when(self.can_open_app_dialog(), |root| {
-                root.on_action(cx.listener(Self::show_about))
-                    .on_action(cx.listener(Self::check_for_updates))
+                root.on_action(cx.listener(|this, _: &crate::OpenSettings, window, cx| {
+                    this.open_dialog(Dialog::TransferSettings, window, cx);
+                }))
+                .on_action(cx.listener(Self::show_about))
+                .on_action(cx.listener(Self::check_for_updates))
             })
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 let key = &event.keystroke;
@@ -475,34 +470,14 @@ impl Workspace {
             .child(
                 col()
                     .px(px(9.))
-                    .when(!cfg!(target_os = "macos"), |s| {
-                        s.child(label(crate::i18n::t("语言"), 10., 0x777f8f)).child(
-                            row().gap(px(4.)).mt(px(7.)).children(
-                                [
-                                    (
-                                        "language-system",
-                                        crate::i18n::t("跟随系统"),
-                                        crate::i18n::Language::System,
-                                    ),
-                                    ("language-zh", "中文", crate::i18n::Language::Chinese),
-                                    ("language-en", "English", crate::i18n::Language::English),
-                                ]
-                                .into_iter()
-                                .map(|(id, text, language)| {
-                                    secondary(id, text)
-                                        .px(px(7.))
-                                        .py(px(6.))
-                                        .text_size(px(10.))
-                                        .when(crate::i18n::preference() == language, |s| {
-                                            s.text_color(rgb(BLUE)).border_color(rgb(BLUE))
-                                        })
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.change_language(language, window, cx)
-                                        }))
-                                }),
-                            ),
-                        )
-                    })
+                    .child(
+                        secondary("app-settings", crate::i18n::t("设置"))
+                            .mb(px(14.))
+                            .disabled(!self.can_open_app_dialog())
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_dialog(Dialog::TransferSettings, window, cx)
+                            })),
+                    )
                     .child(
                         row()
                             .gap(px(10.))
@@ -690,7 +665,7 @@ impl Workspace {
                     .child(
                         button("upload", crate::i18n::t("上传文件"))
                             .bg(rgb(BLUE))
-                            .text_color(rgb(0xffffff))
+                            .text_color(gpui::rgb(0xffffff))
                             .px(px(15.))
                             .py(px(10.))
                             .rounded(px(8.))

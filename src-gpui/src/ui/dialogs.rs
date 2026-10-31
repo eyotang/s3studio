@@ -173,7 +173,7 @@ impl Workspace {
                     .when(id.is_some(),|s|s.child(button("remove-account",crate::i18n::t("移除账户")).text_size(px(10.)).text_color(rgb(0xd18282)).justify_start().child(icon("trash-2",14.)).child(crate::i18n::t("移除账户")).on_click(cx.listener(|this,_,window,cx|this.open_dialog(Dialog::RemoveAccount,window,cx)))));
             },
             Dialog::Folder=>modal=modal.child(self.field("name",crate::i18n::t("文件夹名称"))),Dialog::Bucket=>modal=modal.child(self.field("name",crate::i18n::t("存储桶名称"))),Dialog::Copy=>modal=modal.child(self.field("name",crate::i18n::t("目标对象键"))),
-            Dialog::TransferSettings=>modal=modal.child(self.field("concurrency",crate::i18n::t("并发数量"))).child(label(crate::i18n::t("支持 1–32 路。设置自动保存；降低上限时，已开始的分片会先完成，后续分片按新上限执行。"),12.,0x99a2b1).line_height(relative(1.8)).mb(px(23.))),
+            Dialog::TransferSettings=>modal=modal.child(self.preferences(cx)).child(self.field("concurrency",crate::i18n::t("并发数量"))).child(label(crate::i18n::t("支持 1–32 路。设置自动保存；降低上限时，已开始的分片会先完成，后续分片按新上限执行。"),12.,0x99a2b1).line_height(relative(1.8)).mb(px(23.))),
             Dialog::Delete=>modal=modal.child(col().id("delete-list").max_h(px(160.)).overflow_y_scroll().px(px(14.)).py(px(10.)).rounded(px(8.)).bg(rgb(0xfafbfd)).children(self.chosen().iter().map(|o|row().py(px(7.)).gap(px(7.)).child(file_icon(o,20.)).child(label(model::object_name(&o.key,&self.prefix).to_owned(),11.,0x808d9f))))),
             Dialog::Help=>modal=modal.children([
                 crate::i18n::t("① 添加账户：填写 Access Key、Secret Key 和 Region。MinIO 等服务可以配置 Endpoint 和路径风格。"),
@@ -322,6 +322,83 @@ impl Workspace {
             .on_click(cx.listener(|this, _, window, cx| this.close_dialog(window, cx)))
             .child(modal.focus_trap("modal-trap", &self.modal_focus))
             .into_any_element()
+    }
+    fn preferences(&self, cx: &mut Context<Self>) -> Div {
+        let languages = [
+            (
+                "settings-language-system",
+                crate::i18n::t("跟随系统"),
+                crate::i18n::Language::System,
+            ),
+            (
+                "settings-language-zh",
+                "简体中文",
+                crate::i18n::Language::Chinese,
+            ),
+            (
+                "settings-language-en",
+                "English",
+                crate::i18n::Language::English,
+            ),
+        ];
+        let themes = [
+            (
+                "theme-system",
+                crate::i18n::t("跟随系统"),
+                crate::appearance::Preference::System,
+            ),
+            (
+                "theme-light",
+                crate::i18n::t("亮色"),
+                crate::appearance::Preference::Light,
+            ),
+            (
+                "theme-dark",
+                crate::i18n::t("暗色"),
+                crate::appearance::Preference::Dark,
+            ),
+        ];
+        col()
+            .gap(px(12.))
+            .mb(px(24.))
+            .child(label(crate::i18n::t("语言"), 12., MUTED))
+            .child(
+                row()
+                    .gap(px(6.))
+                    .children(languages.into_iter().map(|(id, text, language)| {
+                        secondary(id, text)
+                            .when(crate::i18n::preference() == language, |s| {
+                                s.border_color(gpui::rgb(BLUE))
+                            })
+                            .disabled(self.is_busy())
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.change_language(language, window, cx)
+                            }))
+                    })),
+            )
+            .child(label(crate::i18n::t("主题"), 12., MUTED))
+            .child(
+                row()
+                    .gap(px(6.))
+                    .children(themes.into_iter().map(|(id, text, theme)| {
+                        secondary(id, text)
+                            .when(crate::appearance::preference() == theme, |s| {
+                                s.border_color(gpui::rgb(BLUE))
+                            })
+                            .disabled(self.is_busy())
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                if let Err(error) = crate::appearance::select(theme, window, cx) {
+                                    this.dialog_error = error.to_string();
+                                }
+                                cx.notify();
+                            }))
+                    })),
+            )
+            .child(label(
+                crate::i18n::t("语言和主题立即生效并自动保存。"),
+                11.,
+                MUTED,
+            ))
     }
     fn render_update_status(&self) -> AnyElement {
         let status = &self.update_status;
