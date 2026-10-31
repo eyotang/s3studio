@@ -29,35 +29,42 @@ impl Workspace {
         };
         let account = matches!(dialog, Dialog::Account(_));
         let description = match &dialog {
-            Dialog::Account(_) => "所有凭据仅保存于本机系统密钥库，账户数量没有限制。".into(),
-            Dialog::Folder => "在当前目录中创建一个新的文件夹。".into(),
-            Dialog::Bucket => "在当前账户和区域中创建新的 S3 存储桶。".into(),
-            Dialog::Copy => "输入目标对象的完整路径，复制到当前存储桶。".into(),
+            Dialog::Account(_) => {
+                crate::i18n::t("所有凭据仅保存于本机系统密钥库，账户数量没有限制。").into()
+            }
+            Dialog::Folder => crate::i18n::t("在当前目录中创建一个新的文件夹。").into(),
+            Dialog::Bucket => crate::i18n::t("在当前账户和区域中创建新的 S3 存储桶。").into(),
+            Dialog::Copy => crate::i18n::t("输入目标对象的完整路径，复制到当前存储桶。").into(),
             Dialog::Delete => {
                 let chosen = self.chosen();
                 let folders = chosen.iter().filter(|o| o.folder).count();
                 if folders > 0 {
-                    format!(
+                    crate::lf!(
                         "将递归删除 {folders} 个目录及其中所有文件和子目录，并删除 {} 个所选文件。未启用版本控制的对象无法恢复。",
-                        chosen.len() - folders
+                        chosen.len() - folders,
+                        folders = folders
                     )
                 } else {
-                    format!(
+                    crate::lf!(
                         "即将删除 {} 个文件。未启用版本控制的对象无法恢复。",
                         chosen.len()
                     )
                 }
             }
-            Dialog::Upload => {
-                "接下来选择本地文件。当前目录中同名的对象将被覆盖；大文件自动分片上传。".into()
+            Dialog::Upload => crate::i18n::t(
+                "接下来选择本地文件。当前目录中同名的对象将被覆盖；大文件自动分片上传。",
+            )
+            .into(),
+            Dialog::RemoveAccount => {
+                crate::i18n::t("删除本机保存的账户配置和凭据，云端文件不受影响。").into()
             }
-            Dialog::RemoveAccount => "删除本机保存的账户配置和凭据，云端文件不受影响。".into(),
-            Dialog::Help => "一个基于 Tauri 的跨平台 S3 工作空间。".into(),
-            Dialog::About => "云端文件，井然有序。".into(),
-            Dialog::TransferSettings => {
-                "设置整个应用的并发上限，所有上传和下载任务共同使用。建议从默认 8 路开始。".into()
-            }
-            Dialog::CancelTransfer(id) => format!(
+            Dialog::Help => crate::i18n::t("一个基于 Tauri 的跨平台 S3 工作空间。").into(),
+            Dialog::About => crate::i18n::t("云端文件，井然有序。").into(),
+            Dialog::TransferSettings => crate::i18n::t(
+                "设置整个应用的并发上限，所有上传和下载任务共同使用。建议从默认 8 路开始。",
+            )
+            .into(),
+            Dialog::CancelTransfer(id) => crate::lf!(
                 "{} 的断点将被清理；已经存在的源文件和目标文件不受影响。",
                 self.transfers
                     .iter()
@@ -65,11 +72,11 @@ impl Workspace {
                     .map(|t| t.name.as_str())
                     .unwrap_or("")
             ),
-            Dialog::Update => format!(
+            Dialog::Update => crate::lf!(
                 "当前版本 {}{}",
                 self.update_status.current_version,
                 if self.update_status.version.is_some() {
-                    " · 有新版本可用"
+                    crate::i18n::t(" · 有新版本可用")
                 } else {
                     ""
                 }
@@ -94,9 +101,9 @@ impl Workspace {
                     icon_button(
                         "close-dialog",
                         if dialog == Dialog::Update {
-                            "关闭更新窗口"
+                            crate::i18n::t("关闭更新窗口")
                         } else {
-                            "关闭弹窗"
+                            crate::i18n::t("关闭弹窗")
                         },
                         "x",
                     )
@@ -143,7 +150,7 @@ impl Workspace {
                             .version
                             .as_ref()
                             .map(|v| format!("S3 Studio {v}"))
-                            .unwrap_or_else(|| "软件更新".into())
+                            .unwrap_or_else(|| crate::i18n::t("软件更新").into())
                     } else {
                         dialog.title().into()
                     },
@@ -160,24 +167,24 @@ impl Workspace {
             );
         match &dialog{
             Dialog::Account(id)=>{
-                modal=modal.child(self.field("name","账户名称")).child(row().gap(px(13.)).items_start().child(self.field("accessKey","Access Key ID")).child(self.field("region","Region")))
-                    .child(self.field("secretKey","Secret Access Key")).child(self.field("sessionToken","Session Token  可选 · 临时凭据")).child(self.field("endpoint","Endpoint  可选 · S3 兼容服务"))
-                    .child(row().gap(px(5.)).mb(px(16.)).child(Checkbox::new("pathStyle").accessibility_label("使用路径风格访问").checked(self.form.path_style).xsmall().on_click(cx.listener(|this,checked,_,cx|{this.form.path_style = *checked;cx.notify();}))).child(label("使用路径风格访问",10.,0x778294)).child(label("MinIO 等服务推荐开启",9.,0xadb5c3)))
-                    .when(id.is_some(),|s|s.child(button("remove-account","移除账户").text_size(px(10.)).text_color(rgb(0xd18282)).justify_start().child(icon("trash-2",14.)).child("移除账户").on_click(cx.listener(|this,_,window,cx|this.open_dialog(Dialog::RemoveAccount,window,cx)))));
+                modal=modal.child(self.field("name",crate::i18n::t("账户名称"))).child(row().gap(px(13.)).items_start().child(self.field("accessKey","Access Key ID")).child(self.field("region","Region")))
+                    .child(self.field("secretKey","Secret Access Key")).child(self.field("sessionToken",crate::i18n::t("Session Token  可选 · 临时凭据"))).child(self.field("endpoint",crate::i18n::t("Endpoint  可选 · S3 兼容服务")))
+                    .child(row().gap(px(5.)).mb(px(16.)).child(Checkbox::new("pathStyle").accessibility_label(crate::i18n::t("使用路径风格访问")).checked(self.form.path_style).xsmall().on_click(cx.listener(|this,checked,_,cx|{this.form.path_style = *checked;cx.notify();}))).child(label(crate::i18n::t("使用路径风格访问"),10.,0x778294)).child(label(crate::i18n::t("MinIO 等服务推荐开启"),9.,0xadb5c3)))
+                    .when(id.is_some(),|s|s.child(button("remove-account",crate::i18n::t("移除账户")).text_size(px(10.)).text_color(rgb(0xd18282)).justify_start().child(icon("trash-2",14.)).child(crate::i18n::t("移除账户")).on_click(cx.listener(|this,_,window,cx|this.open_dialog(Dialog::RemoveAccount,window,cx)))));
             },
-            Dialog::Folder=>modal=modal.child(self.field("name","文件夹名称")),Dialog::Bucket=>modal=modal.child(self.field("name","存储桶名称")),Dialog::Copy=>modal=modal.child(self.field("name","目标对象键")),
-            Dialog::TransferSettings=>modal=modal.child(self.field("concurrency","并发数量")).child(label("支持 1–32 路。设置自动保存；降低上限时，已开始的分片会先完成，后续分片按新上限执行。",12.,0x99a2b1).line_height(relative(1.8)).mb(px(23.))),
+            Dialog::Folder=>modal=modal.child(self.field("name",crate::i18n::t("文件夹名称"))),Dialog::Bucket=>modal=modal.child(self.field("name",crate::i18n::t("存储桶名称"))),Dialog::Copy=>modal=modal.child(self.field("name",crate::i18n::t("目标对象键"))),
+            Dialog::TransferSettings=>modal=modal.child(self.field("concurrency",crate::i18n::t("并发数量"))).child(label(crate::i18n::t("支持 1–32 路。设置自动保存；降低上限时，已开始的分片会先完成，后续分片按新上限执行。"),12.,0x99a2b1).line_height(relative(1.8)).mb(px(23.))),
             Dialog::Delete=>modal=modal.child(col().id("delete-list").max_h(px(160.)).overflow_y_scroll().px(px(14.)).py(px(10.)).rounded(px(8.)).bg(rgb(0xfafbfd)).children(self.chosen().iter().map(|o|row().py(px(7.)).gap(px(7.)).child(file_icon(o,20.)).child(label(model::object_name(&o.key,&self.prefix).to_owned(),11.,0x808d9f))))),
             Dialog::Help=>modal=modal.children([
-                "① 添加账户：填写 Access Key、Secret Key 和 Region。MinIO 等服务可以配置 Endpoint 和路径风格。",
-                "② 选择存储桶，双击文件夹浏览。选择文件后可下载、复制、分享或删除。",
-                "③ 使用 ⌘ / Ctrl + F 搜索，Escape 关闭弹窗或取消选择。",
-                "删除目录会同时删除其中所有文件和子目录。分享链接有效期 1 小时。传输活动支持暂停、继续和失败重试；关闭应用后，再次打开可从断点继续。",
-                "首次使用需具备相应的 S3 权限；Ubuntu 需启动支持 Secret Service 的密钥库。",
+                crate::i18n::t("① 添加账户：填写 Access Key、Secret Key 和 Region。MinIO 等服务可以配置 Endpoint 和路径风格。"),
+                crate::i18n::t("② 选择存储桶，双击文件夹浏览。选择文件后可下载、复制、分享或删除。"),
+                crate::i18n::t("③ 使用 ⌘ / Ctrl + F 搜索，Escape 关闭弹窗或取消选择。"),
+                crate::i18n::t("删除目录会同时删除其中所有文件和子目录。分享链接有效期 1 小时。传输活动支持暂停、继续和失败重试；关闭应用后，再次打开可从断点继续。"),
+                crate::i18n::t("首次使用需具备相应的 S3 权限；Ubuntu 需启动支持 Secret Service 的密钥库。"),
             ].into_iter().map(|s|label(s,12.,0x8591a4).line_height(relative(1.9)).my(px(6.)))),
             Dialog::Update=>modal=modal.child(self.render_update_status()),
-            Dialog::About=>modal=modal.child(label(format!("版本 {}", env!("CARGO_PKG_VERSION")),14.,0x4b5362).id("about-version"))
-                .child(label("跨平台 S3 文件工作空间",12.,0x8591a4).mt(px(12.))),
+            Dialog::About=>modal=modal.child(label(crate::lf!("版本 {}", env!("CARGO_PKG_VERSION")),14.,0x4b5362).id("about-version"))
+                .child(label(crate::i18n::t("跨平台 S3 文件工作空间"),12.,0x8591a4).mt(px(12.))),
             _=>{}
         }
         if !self.dialog_error.is_empty() {
@@ -193,7 +200,7 @@ impl Workspace {
         }
         if dialog == Dialog::Help {
             modal = modal.child(
-                primary("help-start", "开始使用")
+                primary("help-start", crate::i18n::t("开始使用"))
                     .mt(px(20.))
                     .w_full()
                     .on_click(cx.listener(|this, _, window, cx| this.close_dialog(window, cx))),
@@ -205,13 +212,13 @@ impl Workspace {
                     .gap(px(9.))
                     .mt(px(24.))
                     .child(
-                        secondary("about-check-update", "检查更新…").on_click(cx.listener(
-                            |this, _, window, cx| {
+                        secondary("about-check-update", crate::i18n::t("检查更新…")).on_click(
+                            cx.listener(|this, _, window, cx| {
                                 this.check_for_updates(&crate::CheckForUpdates, window, cx)
-                            },
-                        )),
+                            }),
+                        ),
                     )
-                    .child(primary("about-close", "关闭").on_click(
+                    .child(primary("about-close", crate::i18n::t("关闭")).on_click(
                         cx.listener(|this, _, window, cx| this.close_dialog(window, cx)),
                     )),
             );
@@ -226,7 +233,7 @@ impl Workspace {
                     .pt(px(19.))
                     .mt(px(22.))
                     .child(
-                        secondary("check-update", "检查更新")
+                        secondary("check-update", crate::i18n::t("检查更新"))
                             .disabled(
                                 self.update_pending
                                     || status.installing()
@@ -242,11 +249,11 @@ impl Workspace {
                     primary(
                         "install-update",
                         if status.installing() {
-                            "正在更新…"
+                            crate::i18n::t("正在更新…")
                         } else if status.mode == "inApp" {
-                            "下载并安装"
+                            crate::i18n::t("下载并安装")
                         } else {
-                            "打开下载页"
+                            crate::i18n::t("打开下载页")
                         },
                     )
                     .disabled(
@@ -280,9 +287,9 @@ impl Workspace {
                         secondary(
                             "cancel-dialog",
                             if matches!(dialog, Dialog::CancelTransfer(_)) {
-                                "保留任务"
+                                crate::i18n::t("保留任务")
                             } else {
-                                "取消"
+                                crate::i18n::t("取消")
                             },
                         )
                         .disabled(self.is_busy())
@@ -292,7 +299,7 @@ impl Workspace {
                         primary(
                             "submit-dialog",
                             if self.is_busy() {
-                                "处理中…"
+                                crate::i18n::t("处理中…")
                             } else {
                                 dialog.submit_label()
                             },
@@ -324,15 +331,15 @@ impl Workspace {
             &self.update_error
         };
         let message = if status.mode == "disabled" {
-            "开发模式与网页预览不检查更新。安装发布版后即可使用。"
+            crate::i18n::t("开发模式与网页预览不检查更新。安装发布版后即可使用。")
         } else if status.phase == "checking" {
-            "正在检查新版本…"
+            crate::i18n::t("正在检查新版本…")
         } else if status.phase == "installing" {
-            "签名校验通过，正在安装更新…"
+            crate::i18n::t("签名校验通过，正在安装更新…")
         } else if status.phase == "downloading" {
-            "正在下载并校验更新包…"
+            crate::i18n::t("正在下载并校验更新包…")
         } else if status.last_checked.is_some() && status.version.is_none() && error.is_empty() {
-            "已是最新版本。"
+            crate::i18n::t("已是最新版本。")
         } else {
             ""
         };
@@ -378,7 +385,7 @@ impl Workspace {
             .and_then(|t| chrono::DateTime::from_timestamp_millis(t as i64))
         {
             content = content.child(label(
-                format!(
+                crate::lf!(
                     "上次检查：{}",
                     time.with_timezone(&chrono::Local)
                         .format("%Y/%-m/%-d %H:%M:%S")
@@ -410,9 +417,11 @@ impl Workspace {
             content = content.child(
                 label(
                     if status.mode == "inApp" {
-                        "确认后下载更新包，通过签名校验后安装并重启应用。"
+                        crate::i18n::t("确认后下载更新包，通过签名校验后安装并重启应用。")
                     } else {
-                        "当前安装方式需前往发布页下载新版本。账户配置与传输断点会保留。"
+                        crate::i18n::t(
+                            "当前安装方式需前往发布页下载新版本。账户配置与传输断点会保留。",
+                        )
                     },
                     12.,
                     0x99a2b1,
@@ -425,9 +434,13 @@ impl Workspace {
             && self.transfers.iter().any(model::active)
         {
             content = content.child(
-                label("请先暂停或完成所有传输，再安装更新。", 11., 0xc8716c)
-                    .p(px(10.))
-                    .bg(rgb(0xfff2f1)),
+                label(
+                    crate::i18n::t("请先暂停或完成所有传输，再安装更新。"),
+                    11.,
+                    0xc8716c,
+                )
+                .p(px(10.))
+                .bg(rgb(0xfff2f1)),
             );
         }
         content.into_any_element()

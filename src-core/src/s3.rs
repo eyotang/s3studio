@@ -24,7 +24,7 @@ async fn client(store: &AccountStore, id: &str) -> Result<(Client, String), Stri
         .iter()
         .find(|a| a.id == id)
         .cloned()
-        .ok_or("账户不存在。")?;
+        .ok_or(crate::i18n::t("账户不存在。"))?;
     let secret = read_secret(id.to_owned()).await?;
     let credentials = Credentials::new(
         secret.access_key,
@@ -264,9 +264,10 @@ pub async fn create_bucket(
     name: String,
 ) -> Result<(), String> {
     if !valid_bucket(&name) {
-        return Err(
-            "存储桶名称需为 3–63 个小写字母、数字、点或连字符，且符合 S3 命名规则。".into(),
-        );
+        return Err(crate::i18n::t(
+            "存储桶名称需为 3–63 个小写字母、数字、点或连字符，且符合 S3 命名规则。",
+        )
+        .into());
     }
     let (client, region) = client(&store, &account_id).await?;
     let mut request = client.create_bucket().bucket(name);
@@ -288,7 +289,7 @@ pub async fn create_folder(
     key: String,
 ) -> Result<(), String> {
     if !key.ends_with('/') || key.len() < 2 || key.as_bytes().len() > 1024 {
-        return Err("文件夹路径无效。".into());
+        return Err(crate::i18n::t("文件夹路径无效。").into());
     }
     let client = bucket_client(&store, &account_id, &bucket).await?;
     client
@@ -327,7 +328,7 @@ async fn delete_selection(
             .iter()
             .any(|prefix| prefix.len() < 2 || !prefix.ends_with('/') || prefix.len() > 1024)
     {
-        return Err("请选择有效文件或目录，不能删除存储桶根目录。".into());
+        return Err(crate::i18n::t("请选择有效文件或目录，不能删除存储桶根目录。").into());
     }
     let mut roots = Vec::<String>::new();
     for folder in folders.into_iter().collect::<BTreeSet<_>>() {
@@ -352,9 +353,13 @@ async fn delete_selection(
                 .await
                 .map_err(failure)?;
             for object in page.contents() {
-                let key = object.key().ok_or("服务端列出的对象缺少键名。")?;
+                let key = object
+                    .key()
+                    .ok_or(crate::i18n::t("服务端列出的对象缺少键名。"))?;
                 if !key.starts_with(root) {
-                    return Err("服务端返回了所选目录以外的对象，已停止删除。".into());
+                    return Err(
+                        crate::i18n::t("服务端返回了所选目录以外的对象，已停止删除。").into(),
+                    );
                 }
                 selected.insert(key.to_owned());
             }
@@ -363,10 +368,10 @@ async fn delete_selection(
             }
             let next = page
                 .next_continuation_token()
-                .ok_or("服务端未返回目录分页标记，已停止删除。")?
+                .ok_or(crate::i18n::t("服务端未返回目录分页标记，已停止删除。"))?
                 .to_owned();
             if next.is_empty() || !seen.insert(next.clone()) {
-                return Err("服务端目录分页标记重复，已停止删除。".into());
+                return Err(crate::i18n::t("服务端目录分页标记重复，已停止删除。").into());
             }
             token = Some(next);
         }
@@ -397,14 +402,14 @@ async fn delete_selection(
             .send()
             .await
             .map_err(|error| {
-                format!(
+                crate::lf!(
                     "已完成 {} 个对象的删除，本批请求失败，请刷新列表确认：{}",
                     deleted,
                     failure(error)
                 )
             })?;
         if !result.errors().is_empty() {
-            return Err(format!(
+            return Err(crate::lf!(
                 "已删除至少 {} 个对象，部分对象删除失败，请刷新列表确认：{}",
                 deleted + chunk.len().saturating_sub(result.errors().len()),
                 result
@@ -414,7 +419,7 @@ async fn delete_selection(
                     .map(|e| format!(
                         "{}: {}",
                         e.key().unwrap_or(""),
-                        e.message().unwrap_or("未知错误")
+                        e.message().unwrap_or(crate::i18n::t("未知错误"))
                     ))
                     .collect::<Vec<_>>()
                     .join("；")
@@ -453,7 +458,7 @@ pub async fn copy_object(
         || destination == key
         || destination.ends_with('/')
     {
-        return Err("请输入不同且有效的目标对象键（最多 1024 字节）。".into());
+        return Err(crate::i18n::t("请输入不同且有效的目标对象键（最多 1024 字节）。").into());
     }
     let client = bucket_client(&store, &account_id, &bucket).await?;
     // Refuse to overwrite an existing destination, including permission errors.
@@ -464,7 +469,7 @@ pub async fn copy_object(
         .send()
         .await
     {
-        Ok(_) => return Err("目标对象已存在，请换一个对象键。".into()),
+        Ok(_) => return Err(crate::i18n::t("目标对象已存在，请换一个对象键。").into()),
         Err(e) if e.raw_response().is_some_and(|r| r.status().as_u16() == 404) => {}
         Err(e) => return Err(failure(e)),
     }
@@ -526,7 +531,7 @@ pub async fn presign_object(
     expires: u64,
 ) -> Result<String, String> {
     if !(60..=604800).contains(&expires) {
-        return Err("有效期需为 60 秒到 7 天。".into());
+        return Err(crate::i18n::t("有效期需为 60 秒到 7 天。").into());
     }
     let client = bucket_client(&store, &account_id, &bucket).await?;
     let request = client

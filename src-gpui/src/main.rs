@@ -4,6 +4,8 @@
 )]
 extern crate gpui_kit as gpui;
 mod backend;
+mod i18n;
+pub use s3_studio_core::lf;
 mod model;
 mod ui;
 mod updater;
@@ -12,7 +14,17 @@ use gpui::{prelude::*, *};
 use std::borrow::Cow;
 actions!(
     s3_studio,
-    [Quit, Hide, HideOthers, ShowAll, About, CheckForUpdates]
+    [
+        Quit,
+        Hide,
+        HideOthers,
+        ShowAll,
+        About,
+        CheckForUpdates,
+        LanguageSystem,
+        LanguageChinese,
+        LanguageEnglish
+    ]
 );
 struct Assets;
 impl AssetSource for Assets {
@@ -28,6 +40,7 @@ impl AssetSource for Assets {
     }
 }
 fn main() -> anyhow::Result<()> {
+    i18n::initialize();
     let _ = rustls::crypto::ring::default_provider().install_default();
     let app_icon = std::sync::Arc::new(
         image::load_from_memory(include_bytes!("../../src-tauri/icons/128x128.png"))?.into_rgba8(),
@@ -49,35 +62,12 @@ fn main() -> anyhow::Result<()> {
             cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
             cx.on_action(|_: &ShowAll, cx| cx.unhide_other_apps());
             if cfg!(target_os = "macos") {
-                use gpui::component::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
                 cx.bind_keys([
                     KeyBinding::new("cmd-q", Quit, None),
                     KeyBinding::new("cmd-h", Hide, None),
                     KeyBinding::new("cmd-alt-h", HideOthers, None),
                 ]);
-                cx.set_menus([
-                    Menu::new("S3 Studio").items([
-                        MenuItem::action("About S3 Studio", About),
-                        MenuItem::action("检查更新…", CheckForUpdates),
-                        MenuItem::separator(),
-                        MenuItem::os_submenu("Services", SystemMenuType::Services),
-                        MenuItem::separator(),
-                        MenuItem::action("Hide S3 Studio", Hide),
-                        MenuItem::action("Hide Others", HideOthers),
-                        MenuItem::action("Show All", ShowAll),
-                        MenuItem::separator(),
-                        MenuItem::action("Quit S3 Studio", Quit),
-                    ]),
-                    Menu::new("Edit").items([
-                        MenuItem::action("Undo", Undo),
-                        MenuItem::action("Redo", Redo),
-                        MenuItem::separator(),
-                        MenuItem::action("Cut", Cut),
-                        MenuItem::action("Copy", Copy),
-                        MenuItem::action("Paste", Paste),
-                        MenuItem::action("Select All", SelectAll),
-                    ]),
-                ]);
+                set_app_menus(cx);
             }
             ui::configure_theme(cx);
             let options = WindowOptions {
@@ -114,3 +104,43 @@ fn main() -> anyhow::Result<()> {
 }
 #[cfg(test)]
 mod tests;
+
+pub fn set_app_menus(cx: &App) {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    use gpui::component::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
+    cx.set_menus([
+        Menu::new("S3 Studio").items([
+            MenuItem::action(crate::i18n::t("关于 S3 Studio"), About),
+            MenuItem::action(crate::i18n::t("检查更新…"), CheckForUpdates),
+            MenuItem::submenu(
+                Menu::new(i18n::t("语言")).items([
+                    MenuItem::action(i18n::t("跟随系统"), LanguageSystem)
+                        .checked(i18n::preference() == i18n::Language::System),
+                    MenuItem::action("简体中文", LanguageChinese)
+                        .checked(i18n::preference() == i18n::Language::Chinese),
+                    MenuItem::action("English", LanguageEnglish)
+                        .checked(i18n::preference() == i18n::Language::English),
+                ]),
+            ),
+            MenuItem::separator(),
+            MenuItem::os_submenu(i18n::t("服务"), SystemMenuType::Services),
+            MenuItem::separator(),
+            MenuItem::action(i18n::t("隐藏 S3 Studio"), Hide),
+            MenuItem::action(i18n::t("隐藏其他应用"), HideOthers),
+            MenuItem::action(i18n::t("显示全部"), ShowAll),
+            MenuItem::separator(),
+            MenuItem::action(i18n::t("退出 S3 Studio"), Quit),
+        ]),
+        Menu::new(i18n::t("编辑")).items([
+            MenuItem::action(i18n::t("撤销"), Undo),
+            MenuItem::action(i18n::t("重做"), Redo),
+            MenuItem::separator(),
+            MenuItem::action(i18n::t("剪切"), Cut),
+            MenuItem::action(i18n::t("复制"), Copy),
+            MenuItem::action(i18n::t("粘贴"), Paste),
+            MenuItem::action(i18n::t("全选"), SelectAll),
+        ]),
+    ]);
+}

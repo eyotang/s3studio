@@ -148,6 +148,15 @@ impl Render for Workspace {
                 "Segoe UI"
             })
             .track_focus(&self.focus)
+            .on_action(cx.listener(|this, _: &crate::LanguageSystem, window, cx| {
+                this.change_language(crate::i18n::Language::System, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &crate::LanguageChinese, window, cx| {
+                this.change_language(crate::i18n::Language::Chinese, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &crate::LanguageEnglish, window, cx| {
+                this.change_language(crate::i18n::Language::English, window, cx)
+            }))
             .when(self.can_open_app_dialog(), |root| {
                 root.on_action(cx.listener(Self::show_about))
                     .on_action(cx.listener(Self::check_for_updates))
@@ -244,7 +253,10 @@ impl Workspace {
                                 label("S3 Studio", if narrow { 18. } else { 19. }, 0x252731)
                                     .font_weight(FontWeight::SEMIBOLD),
                             )
-                            .child(label("云端文件，井然有序。", 10., 0x9395a0).mt(px(5.))),
+                            .child(
+                                label(crate::i18n::t("云端文件，井然有序。"), 10., 0x9395a0)
+                                    .mt(px(5.)),
+                            ),
                     ),
             )
             .child(
@@ -252,9 +264,12 @@ impl Workspace {
                     .justify_between()
                     .px(px(11.))
                     .mb(px(10.))
-                    .child(label("工作空间", 11., 0x90939f).font_weight(FontWeight::SEMIBOLD))
                     .child(
-                        icon_button("add-account", "添加账户", "plus")
+                        label(crate::i18n::t("工作空间"), 11., 0x90939f)
+                            .font_weight(FontWeight::SEMIBOLD),
+                    )
+                    .child(
+                        icon_button("add-account", crate::i18n::t("添加账户"), "plus")
                             .size(px(23.))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_dialog(Dialog::Account(None), window, cx)
@@ -337,16 +352,16 @@ impl Workspace {
                     })),
             )
             .child(
-                button("add-account-bottom", "添加账户")
+                button("add-account-bottom", crate::i18n::t("添加账户"))
                     .w_full()
                     .justify_start()
                     .px(px(12.))
                     .py(px(10.))
                     .text_color(rgb(0x7c8390))
                     .child(icon("plus", 15.))
-                    .child("添加账户")
+                    .child(crate::i18n::t("添加账户"))
                     .child(
-                        label("无限数量", 9., 0x9ea3ad)
+                        label(crate::i18n::t("无限数量"), 9., 0x9ea3ad)
                             .ml_auto()
                             .border_1()
                             .border_color(rgb(0xdcdee5))
@@ -367,7 +382,7 @@ impl Workspace {
                     .child(
                         row()
                             .gap(px(6.))
-                            .child(label("存储桶", 11., 0x90939f))
+                            .child(label(crate::i18n::t("存储桶"), 11., 0x90939f))
                             .child(
                                 label(self.buckets.len().to_string(), 10., 0x90939f)
                                     .bg(rgb(0xe2e4eb))
@@ -376,7 +391,7 @@ impl Workspace {
                             ),
                     )
                     .child(
-                        icon_button("create-bucket", "创建存储桶", "plus")
+                        icon_button("create-bucket", crate::i18n::t("创建存储桶"), "plus")
                             .size(px(23.))
                             .disabled(self.account().is_none() || self.is_busy())
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -399,7 +414,7 @@ impl Workspace {
                     .child(
                         Input::new(&self.bucket_search)
                             .id("bucket-search")
-                            .aria_label("搜索存储桶")
+                            .aria_label(crate::i18n::t("搜索存储桶"))
                             .appearance(false)
                             .text_size(px(11.))
                             .h(px(29.)),
@@ -415,15 +430,15 @@ impl Workspace {
                     .min_h(px(40.))
                     .overflow_y_scroll()
                     .when(self.bucket_loading, |s| {
-                        s.child(label("正在连接…", 11., 0x9499a4).p(px(12.)))
+                        s.child(label(crate::i18n::t("正在连接…"), 11., 0x9499a4).p(px(12.)))
                     })
                     .when(!self.bucket_loading && self.buckets.is_empty(), |s| {
                         s.child(
                             label(
                                 if self.account().is_some() {
-                                    "暂无存储桶"
+                                    crate::i18n::t("暂无存储桶")
                                 } else {
-                                    "添加账户以开始"
+                                    crate::i18n::t("添加账户以开始")
                                 },
                                 11.,
                                 0x9499a4,
@@ -460,6 +475,34 @@ impl Workspace {
             .child(
                 col()
                     .px(px(9.))
+                    .when(!cfg!(target_os = "macos"), |s| {
+                        s.child(label(crate::i18n::t("语言"), 10., 0x777f8f)).child(
+                            row().gap(px(4.)).mt(px(7.)).children(
+                                [
+                                    (
+                                        "language-system",
+                                        crate::i18n::t("跟随系统"),
+                                        crate::i18n::Language::System,
+                                    ),
+                                    ("language-zh", "中文", crate::i18n::Language::Chinese),
+                                    ("language-en", "English", crate::i18n::Language::English),
+                                ]
+                                .into_iter()
+                                .map(|(id, text, language)| {
+                                    secondary(id, text)
+                                        .px(px(7.))
+                                        .py(px(6.))
+                                        .text_size(px(10.))
+                                        .when(crate::i18n::preference() == language, |s| {
+                                            s.text_color(rgb(BLUE)).border_color(rgb(BLUE))
+                                        })
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.change_language(language, window, cx)
+                                        }))
+                                }),
+                            ),
+                        )
+                    })
                     .child(
                         row()
                             .gap(px(10.))
@@ -470,8 +513,15 @@ impl Workspace {
                             .child(icon("shield-check", 17.))
                             .child(
                                 col()
-                                    .child(label("只属于你的工作空间", 10., 0x777f8f))
-                                    .child(label("凭据保存在系统密钥库", 9., 0x9ea4af).mt(px(4.))),
+                                    .child(label(
+                                        crate::i18n::t("只属于你的工作空间"),
+                                        10.,
+                                        0x777f8f,
+                                    ))
+                                    .child(
+                                        label(crate::i18n::t("凭据保存在系统密钥库"), 9., 0x9ea4af)
+                                            .mt(px(4.)),
+                                    ),
                             ),
                     )
                     .child(
@@ -482,10 +532,10 @@ impl Workspace {
                             .border_color(rgb(0xdfe2e9))
                             .text_color(rgb(0x818795))
                             .child(
-                                button("account-settings", "账户设置")
+                                button("account-settings", crate::i18n::t("账户设置"))
                                     .disabled(self.account().is_none() || self.is_busy())
                                     .child(icon("settings-2", 16.))
-                                    .child("账户设置")
+                                    .child(crate::i18n::t("账户设置"))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_dialog(
                                             Dialog::Account(Some(this.active_id.clone())),
@@ -494,11 +544,12 @@ impl Workspace {
                                         )
                                     })),
                             )
-                            .child(icon_button("help", "使用帮助", "circle-help").on_click(
-                                cx.listener(|this, _, window, cx| {
-                                    this.open_dialog(Dialog::Help, window, cx)
-                                }),
-                            )),
+                            .child(
+                                icon_button("help", crate::i18n::t("使用帮助"), "circle-help")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_dialog(Dialog::Help, window, cx)
+                                    })),
+                            ),
                     ),
             );
         side.into_any_element()
@@ -514,7 +565,7 @@ impl Workspace {
         let account = self.account();
         let name = account
             .map(|a| a.name.clone())
-            .unwrap_or_else(|| "你的工作空间".into());
+            .unwrap_or_else(|| crate::i18n::t("你的工作空间").into());
         let mut workspace = col().flex_1().min_w_0().h_full().bg(rgb(0xfafafb)).child(
             row()
                 .h(px(68.))
@@ -571,7 +622,9 @@ impl Workspace {
                     .text_color(rgb(0x6684ac))
                     .child(icon("info", 14.))
                     .child(label(
-                        "交互预览 · 当前展示示例数据，桌面应用支持连接真实 S3 账户。",
+                        crate::i18n::t(
+                            "交互预览 · 当前展示示例数据，桌面应用支持连接真实 S3 账户。",
+                        ),
                         10.,
                         0x6684ac,
                     ))
@@ -611,7 +664,7 @@ impl Workspace {
                                 row().child(
                                     label(
                                         if self.bucket.is_empty() {
-                                            "欢迎来到 S3 Studio".into()
+                                            crate::i18n::t("欢迎来到 S3 Studio").into()
                                         } else {
                                             self.bucket.clone()
                                         },
@@ -624,9 +677,9 @@ impl Workspace {
                             .child(
                                 label(
                                     if self.bucket.is_empty() {
-                                        "连接你的云存储，从一个清晰的工作空间开始。"
+                                        crate::i18n::t("连接你的云存储，从一个清晰的工作空间开始。")
                                     } else {
-                                        "让每一份文件，都有自己的位置。"
+                                        crate::i18n::t("让每一份文件，都有自己的位置。")
                                     },
                                     12.,
                                     0x9299a6,
@@ -635,7 +688,7 @@ impl Workspace {
                             ),
                     )
                     .child(
-                        button("upload", "上传文件")
+                        button("upload", crate::i18n::t("上传文件"))
                             .bg(rgb(BLUE))
                             .text_color(rgb(0xffffff))
                             .px(px(15.))
@@ -643,7 +696,7 @@ impl Workspace {
                             .rounded(px(8.))
                             .disabled(self.disabled())
                             .child(icon("arrow-up-from-line", 17.))
-                            .child("上传文件")
+                            .child(crate::i18n::t("上传文件"))
                             .child(label("+", 17., 0x80bdff).ml(px(13.)))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_dialog(Dialog::Upload, window, cx)
@@ -662,7 +715,7 @@ impl Workspace {
                             .text_color(rgb(0x778397))
                             .child(icon("database", 16.))
                             .child(if self.bucket.is_empty() {
-                                "尚未选择存储桶".into()
+                                crate::i18n::t("尚未选择存储桶").into()
                             } else {
                                 self.bucket.clone()
                             }),
@@ -672,23 +725,23 @@ impl Workspace {
                         row().gap(px(5.)).child(dot()).child(
                             account
                                 .map(|a| a.region.clone())
-                                .unwrap_or_else(|| "未连接".into()),
+                                .unwrap_or_else(|| crate::i18n::t("未连接").into()),
                         ),
                     )
                     .child(div().w(px(1.)).h(px(11.)).bg(rgb(0xdfe3eb)))
                     .child(if self.backend.preview {
-                        "示例工作空间"
+                        crate::i18n::t("示例工作空间")
                     } else {
-                        "安全直连"
+                        crate::i18n::t("安全直连")
                     })
                     .when(!narrow, |s| {
                         s.child(
                             label(
-                                format!(
+                                crate::lf!(
                                     "{} 个文件{}",
                                     self.objects.iter().filter(|o| !o.folder).count(),
                                     if self.next_token.is_some() {
-                                        "（已加载）"
+                                        crate::i18n::t("（已加载）")
                                     } else {
                                         ""
                                     }
@@ -713,10 +766,10 @@ impl Workspace {
                         row()
                             .gap(px(5.))
                             .child(icon("shield-check", 13.))
-                            .child("本地凭据 · 直接连接 · 不限账户"),
+                            .child(crate::i18n::t("本地凭据 · 直接连接 · 不限账户")),
                     )
                     .child(
-                        button("update", "检查应用更新")
+                        button("update", crate::i18n::t("检查应用更新"))
                             .text_size(px(10.))
                             .child("S3 Studio")
                             .child(label(
@@ -733,7 +786,7 @@ impl Workspace {
                                 12.,
                             ))
                             .when(self.update_status.version.is_some(), |s| {
-                                s.text_color(rgb(BLUE)).child("新版本")
+                                s.text_color(rgb(BLUE)).child(crate::i18n::t("新版本"))
                             })
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_dialog(Dialog::Update, window, cx)
@@ -747,12 +800,12 @@ impl Workspace {
         let query = self.search.read(cx).value();
         let first = self.first();
         let mut crumbs = row().gap(px(6.)).child(
-            button("root-directory", "根目录")
+            button("root-directory", crate::i18n::t("根目录"))
                 .text_color(rgb(0x7e8796))
                 .p(px(4.))
                 .disabled(self.bucket.is_empty())
                 .child(icon("hard-drive", 16.))
-                .child("根目录")
+                .child(crate::i18n::t("根目录"))
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.navigate(this.bucket.clone(), String::new(), window, cx)
                 })),
@@ -785,14 +838,14 @@ impl Workspace {
                 row()
                     .gap(px(7.))
                     .child(
-                        icon_button("new-folder", "新建文件夹", "folder-plus")
+                        icon_button("new-folder", crate::i18n::t("新建文件夹"), "folder-plus")
                             .disabled(self.disabled())
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_dialog(Dialog::Folder, window, cx)
                             })),
                     )
                     .child(
-                        icon_button("refresh", "刷新", "refresh-cw")
+                        icon_button("refresh", crate::i18n::t("刷新"), "refresh-cw")
                             .disabled(self.disabled())
                             .on_click(cx.listener(|this, _, _, cx| this.load_objects(false, cx))),
                     )
@@ -805,7 +858,7 @@ impl Workspace {
                             .border_1()
                             .border_color(rgb(0xeceef2))
                             .child(
-                                icon_button("list-view", "列表视图", "list")
+                                icon_button("list-view", crate::i18n::t("列表视图"), "list")
                                     .w(px(27.))
                                     .h(px(23.))
                                     .when(!self.grid, |s| {
@@ -817,7 +870,7 @@ impl Workspace {
                                     })),
                             )
                             .child(
-                                icon_button("grid-view", "网格视图", "layout-grid")
+                                icon_button("grid-view", crate::i18n::t("网格视图"), "layout-grid")
                                     .w(px(27.))
                                     .h(px(23.))
                                     .when(self.grid, |s| {
@@ -830,7 +883,7 @@ impl Workspace {
                             ),
                     )
                     .child(
-                        icon_button("toggle-info", "对象详情", "info")
+                        icon_button("toggle-info", crate::i18n::t("对象详情"), "info")
                             .when(self.show_info, |s| {
                                 s.text_color(rgb(BLUE)).bg(rgb(0xf0f6ff))
                             })
@@ -861,7 +914,7 @@ impl Workspace {
                     .child(
                         Input::new(&self.search)
                             .id("object-search")
-                            .aria_label("搜索当前目录")
+                            .aria_label(crate::i18n::t("搜索当前目录"))
                             .appearance(false)
                             .text_size(px(12.))
                             .h(px(36.)),
@@ -879,7 +932,7 @@ impl Workspace {
                     })
                     .when(!query.is_empty(), |s| {
                         s.child(
-                            icon_button("clear-search", "清除搜索", "x")
+                            icon_button("clear-search", crate::i18n::t("清除搜索"), "x")
                                 .size(px(14.))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.search.update(cx, |s, cx| s.set_value("", window, cx));
@@ -890,7 +943,7 @@ impl Workspace {
             );
         if self.selected.is_empty() {
             if !narrow {
-                search = search.child(label("双击文件夹进入", 10., 0xb2b7c2));
+                search = search.child(label(crate::i18n::t("双击文件夹进入"), 10., 0xb2b7c2));
             }
         } else {
             let disabled = self.is_busy() || first.as_ref().is_none_or(|o| o.folder);
@@ -898,32 +951,41 @@ impl Workspace {
                 row()
                     .gap(px(6.))
                     .child(
-                        label(format!("已选 {} 项", self.selected.len()), 10., 0x828e9f).mr(px(6.)),
+                        label(crate::lf!("已选 {} 项", self.selected.len()), 10., 0x828e9f)
+                            .mr(px(6.)),
                     )
                     .child(
-                        icon_button("download-selection", "下载所选文件", "arrow-down-to-line")
-                            .disabled(disabled)
-                            .on_click(cx.listener(|this, _, _, cx| this.download(cx))),
+                        icon_button(
+                            "download-selection",
+                            crate::i18n::t("下载所选文件"),
+                            "arrow-down-to-line",
+                        )
+                        .disabled(disabled)
+                        .on_click(cx.listener(|this, _, _, cx| this.download(cx))),
                     )
                     .child(
-                        icon_button("copy-selection", "复制所选对象", "copy")
+                        icon_button("copy-selection", crate::i18n::t("复制所选对象"), "copy")
                             .disabled(disabled)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_dialog(Dialog::Copy, window, cx)
                             })),
                     )
                     .child(
-                        icon_button("share-selection", "复制分享链接", "link")
+                        icon_button("share-selection", crate::i18n::t("复制分享链接"), "link")
                             .disabled(disabled)
                             .on_click(cx.listener(|this, _, _, cx| this.share(cx))),
                     )
                     .child(
-                        icon_button("delete-selection", "删除所选项目", "trash-2")
-                            .text_color(rgb(0xd87878))
-                            .disabled(self.is_busy())
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_dialog(Dialog::Delete, window, cx)
-                            })),
+                        icon_button(
+                            "delete-selection",
+                            crate::i18n::t("删除所选项目"),
+                            "trash-2",
+                        )
+                        .text_color(rgb(0xd87878))
+                        .disabled(self.is_busy())
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_dialog(Dialog::Delete, window, cx)
+                        })),
                     ),
             );
         }
@@ -948,12 +1010,12 @@ impl Workspace {
                     .child(icon("info", 17.))
                     .child(div().flex_1().child(self.error.clone()))
                     .child(
-                        icon_button("close-error", "关闭错误", "x").on_click(cx.listener(
-                            |this, _, _, cx| {
+                        icon_button("close-error", crate::i18n::t("关闭错误"), "x").on_click(
+                            cx.listener(|this, _, _, cx| {
                                 this.error.clear();
                                 cx.notify();
-                            },
-                        )),
+                            }),
+                        ),
                     ),
             );
         }
@@ -968,51 +1030,52 @@ impl Workspace {
         if visible.is_empty() {
             let loading = self.loading && self.objects.is_empty();
             let title = if loading {
-                "正在加载文件"
+                crate::i18n::t("正在加载文件")
             } else if !query.is_empty() {
-                "没有找到匹配的文件"
+                crate::i18n::t("没有找到匹配的文件")
             } else if self.account().is_none() {
-                "一切从连接开始"
+                crate::i18n::t("一切从连接开始")
             } else if self.bucket.is_empty() {
-                "创建你的第一个存储桶"
+                crate::i18n::t("创建你的第一个存储桶")
             } else {
-                "这里还没有文件"
+                crate::i18n::t("这里还没有文件")
             };
             let detail = if loading {
-                "正在安全连接你的存储空间…"
+                crate::i18n::t("正在安全连接你的存储空间…")
             } else if !query.is_empty() {
-                "试试其他关键词。"
+                crate::i18n::t("试试其他关键词。")
             } else if self.account().is_none() {
-                "支持 AWS、MinIO 和其他 S3 兼容服务，账户数量不限。"
+                crate::i18n::t("支持 AWS、MinIO 和其他 S3 兼容服务，账户数量不限。")
             } else {
-                "添加文件，为你的工作腾出更多空间。"
+                crate::i18n::t("添加文件，为你的工作腾出更多空间。")
             };
-            objects =
-                objects.child(
-                    col()
-                        .min_h(px(350.))
-                        .items_center()
-                        .justify_center()
-                        .p(px(30.))
-                        .child(
-                            row()
-                                .size(px(80.))
-                                .justify_center()
-                                .rounded(px(22.))
-                                .bg(rgb(0xeaf3ff))
-                                .text_color(rgb(0x83b8fc))
-                                .child(icon(if loading { "loader-circle" } else { "cloud" }, 36.)),
-                        )
-                        .child(label(title, 16., 0x66758a).mt(px(15.)))
-                        .child(label(detail, 11., 0xa3acba).mt(px(9.)).mb(px(20.)))
-                        .when(self.account().is_none() && !loading, |s| {
-                            s.child(primary("first-account", "连接第一个账户").on_click(
+            objects = objects.child(
+                col()
+                    .min_h(px(350.))
+                    .items_center()
+                    .justify_center()
+                    .p(px(30.))
+                    .child(
+                        row()
+                            .size(px(80.))
+                            .justify_center()
+                            .rounded(px(22.))
+                            .bg(rgb(0xeaf3ff))
+                            .text_color(rgb(0x83b8fc))
+                            .child(icon(if loading { "loader-circle" } else { "cloud" }, 36.)),
+                    )
+                    .child(label(title, 16., 0x66758a).mt(px(15.)))
+                    .child(label(detail, 11., 0xa3acba).mt(px(9.)).mb(px(20.)))
+                    .when(self.account().is_none() && !loading, |s| {
+                        s.child(
+                            primary("first-account", crate::i18n::t("连接第一个账户")).on_click(
                                 cx.listener(|this, _, window, cx| {
                                     this.open_dialog(Dialog::Account(None), window, cx)
                                 }),
-                            ))
-                        }),
-                );
+                            ),
+                        )
+                    }),
+            );
         } else if self.grid {
             objects = objects.child(self.render_grid(&visible, window, narrow, cx));
         } else {
@@ -1028,15 +1091,19 @@ impl Workspace {
                         secondary(
                             "load-more",
                             if self.loading {
-                                "加载中…"
+                                crate::i18n::t("加载中…")
                             } else {
-                                "加载更多对象"
+                                crate::i18n::t("加载更多对象")
                             },
                         )
                         .disabled(self.loading)
                         .on_click(cx.listener(|this, _, _, cx| this.load_objects(true, cx))),
                     )
-                    .child(label("搜索和排序适用于已加载的对象", 9., 0xaaaaaa)),
+                    .child(label(
+                        crate::i18n::t("搜索和排序适用于已加载的对象"),
+                        9.,
+                        0xaaaaaa,
+                    )),
             );
         }
         let mut content = row().items_stretch().child(objects);
@@ -1052,25 +1119,25 @@ impl Workspace {
                 .py(px(12.))
                 .bg(rgb(0xfdfdfe))
                 .child(label(
-                    format!(
+                    crate::lf!(
                         "{} 个项目{}{}",
                         visible.len(),
                         if query.is_empty() {
                             ""
                         } else {
-                            " · 搜索结果"
+                            crate::i18n::t(" · 搜索结果")
                         },
                         if self.selected.is_empty() {
                             String::new()
                         } else {
-                            format!(" · 已选择 {} 项", self.selected.len())
+                            crate::lf!(" · 已选择 {} 项", self.selected.len())
                         }
                     ),
                     10.,
                     0xadb3be,
                 ))
                 .child(label(
-                    format!(
+                    crate::lf!(
                         "{} · 当前已加载",
                         model::bytes(self.objects.iter().map(|o| o.size.max(0) as u64).sum())
                     ),
@@ -1096,7 +1163,7 @@ impl Workspace {
             .child(
                 div().w(px(46.)).pl(px(20.)).flex_shrink_0().child(
                     Checkbox::new("select-all")
-                        .accessibility_label("选择当前可见对象")
+                        .accessibility_label(crate::i18n::t("选择当前可见对象"))
                         .checked(all)
                         .xsmall()
                         .on_click(cx.listener(|this, checked, _, cx| {
@@ -1111,9 +1178,9 @@ impl Workspace {
             )
             .children(
                 [
-                    (Sort::Name, "名称", 0.43),
-                    (Sort::Size, "大小", 0.13),
-                    (Sort::Modified, "修改时间", 0.19),
+                    (Sort::Name, crate::i18n::t("名称"), 0.43),
+                    (Sort::Size, crate::i18n::t("大小"), 0.13),
+                    (Sort::Modified, crate::i18n::t("修改时间"), 0.19),
                 ]
                 .into_iter()
                 .map(|(sort, text, width)| {
@@ -1138,7 +1205,7 @@ impl Workspace {
                 }),
             )
             .when(!narrow, |s| {
-                s.child(label("存储类型", 10., 0x9ca4b2).flex_1())
+                s.child(label(crate::i18n::t("存储类型"), 10., 0x9ca4b2).flex_1())
             })
             .child(div().w(px(44.)));
         col()
@@ -1184,7 +1251,7 @@ impl Workspace {
                                     })
                                     .child(
                                         Checkbox::new(("object-check", i))
-                                            .accessibility_label(format!(
+                                            .accessibility_label(crate::lf!(
                                                 "选择 {}",
                                                 model::object_name(&o.key, &self.prefix)
                                             ))
@@ -1239,7 +1306,7 @@ impl Workspace {
                                     row().flex_1().child(
                                         label(
                                             if o.folder {
-                                                "文件夹".into()
+                                                crate::i18n::t("文件夹").into()
                                             } else if o.storage_class.is_empty() {
                                                 "STANDARD".into()
                                             } else {
@@ -1265,7 +1332,10 @@ impl Workspace {
                             .child(
                                 icon_button(
                                     ("more", i),
-                                    &format!("查看 {}", model::object_name(&o.key, &self.prefix)),
+                                    &crate::lf!(
+                                        "查看 {}",
+                                        model::object_name(&o.key, &self.prefix)
+                                    ),
                                     "ellipsis",
                                 )
                                 .mr(px(10.))
@@ -1334,7 +1404,7 @@ impl Workspace {
                     ))
                     .child(label(
                         if folder {
-                            "文件夹".into()
+                            crate::i18n::t("文件夹").into()
                         } else {
                             model::bytes(o.size.max(0) as u64)
                         },
@@ -1376,9 +1446,9 @@ impl Workspace {
             .child(
                 row()
                     .justify_between()
-                    .child(label("对象详情", 11., 0x758297))
+                    .child(label(crate::i18n::t("对象详情"), 11., 0x758297))
                     .child(
-                        icon_button("close-info", "关闭详情", "x")
+                        icon_button("close-info", crate::i18n::t("关闭详情"), "x")
                             .size(px(16.))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.show_info = false;
@@ -1401,11 +1471,11 @@ impl Workspace {
                     )),
             );
             let mut entries = vec![
-                ("对象键".into(), o.key.clone()),
+                (crate::i18n::t("对象键").into(), o.key.clone()),
                 (
-                    "大小".into(),
+                    crate::i18n::t("大小").into(),
                     if o.folder {
-                        "文件夹".into()
+                        crate::i18n::t("文件夹").into()
                     } else {
                         model::bytes(
                             self.info.as_ref().map(|i| i.size).unwrap_or(o.size).max(0) as u64
@@ -1413,7 +1483,7 @@ impl Workspace {
                     },
                 ),
                 (
-                    "最后修改".into(),
+                    crate::i18n::t("最后修改").into(),
                     model::date(
                         self.info
                             .as_ref()
@@ -1423,7 +1493,7 @@ impl Workspace {
                     ),
                 ),
                 (
-                    "存储类型".into(),
+                    crate::i18n::t("存储类型").into(),
                     if o.storage_class.is_empty() {
                         "—".into()
                     } else {
@@ -1453,14 +1523,15 @@ impl Workspace {
                 })
                 .when(!o.folder, |s| {
                     s.child(
-                        secondary("inspector-download", "下载文件")
+                        secondary("inspector-download", crate::i18n::t("下载文件"))
                             .w_full()
                             .disabled(self.is_busy())
                             .on_click(cx.listener(|this, _, _, cx| this.download(cx))),
                     )
                 });
         } else {
-            panel = panel.child(label("选择一个对象以查看详情。", 11., MUTED).mt(px(12.)));
+            panel = panel
+                .child(label(crate::i18n::t("选择一个对象以查看详情。"), 11., MUTED).mt(px(12.)));
         }
         panel.into_any_element()
     }
