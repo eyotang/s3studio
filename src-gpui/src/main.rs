@@ -6,6 +6,7 @@ extern crate gpui_kit as gpui;
 mod backend;
 mod i18n;
 pub use s3_studio_core::lf;
+mod appearance;
 mod model;
 mod ui;
 mod updater;
@@ -21,6 +22,7 @@ actions!(
         ShowAll,
         About,
         CheckForUpdates,
+        OpenSettings,
         LanguageSystem,
         LanguageChinese,
         LanguageEnglish
@@ -64,11 +66,13 @@ fn main() -> anyhow::Result<()> {
             if cfg!(target_os = "macos") {
                 cx.bind_keys([
                     KeyBinding::new("cmd-q", Quit, None),
+                    KeyBinding::new("cmd-,", OpenSettings, None),
                     KeyBinding::new("cmd-h", Hide, None),
                     KeyBinding::new("cmd-alt-h", HideOthers, None),
                 ]);
                 set_app_menus(cx);
             }
+            appearance::initialize();
             ui::configure_theme(cx);
             let options = WindowOptions {
                 icon: Some(app_icon),
@@ -114,6 +118,7 @@ pub fn set_app_menus(cx: &App) {
         Menu::new("S3 Studio").items([
             MenuItem::action(crate::i18n::t("关于 S3 Studio"), About),
             MenuItem::action(crate::i18n::t("检查更新…"), CheckForUpdates),
+            MenuItem::action(i18n::t("设置…"), OpenSettings),
             MenuItem::submenu(
                 Menu::new(i18n::t("语言")).items([
                     MenuItem::action(i18n::t("跟随系统"), LanguageSystem)

@@ -307,3 +307,34 @@ async fn active_transfers_block_update_install_and_pending_blocks_close(cx: &mut
     })
     .unwrap();
 }
+
+#[gpui::test]
+async fn settings_menu_and_sidebar_share_global_preferences(cx: &mut TestAppContext) {
+    let (window, view) = setup(cx).await;
+    cx.update_window(window, |_, window, cx| {
+        window.dispatch_action(Box::new(crate::OpenSettings), cx);
+    })
+    .unwrap();
+    cx.update_window(window, |_, window, cx| {
+        assert_eq!(view.read(cx).dialog, Some(Dialog::TransferSettings));
+        for id in [
+            "settings-language-system",
+            "settings-language-zh",
+            "settings-language-en",
+            "theme-system",
+            "theme-light",
+            "theme-dark",
+            "concurrency",
+        ] {
+            window.find(id);
+        }
+        window.click("close-dialog", cx);
+        window.click("app-settings", cx);
+    })
+    .unwrap();
+    cx.update_window(window, |_, _, cx| {
+        assert_eq!(view.read(cx).dialog, Some(Dialog::TransferSettings));
+        assert!(view.read(cx).form.inputs.contains_key("concurrency"));
+    })
+    .unwrap();
+}

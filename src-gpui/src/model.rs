@@ -36,7 +36,7 @@ impl Dialog {
             Self::RemoveAccount => crate::i18n::t("移除这个账户？"),
             Self::Help => crate::i18n::t("为云端工作而设计"),
             Self::About => crate::i18n::t("关于 S3 Studio"),
-            Self::TransferSettings => crate::i18n::t("传输设置"),
+            Self::TransferSettings => crate::i18n::t("设置"),
             Self::CancelTransfer(_) => crate::i18n::t("取消传输？"),
             Self::Update => crate::i18n::t("软件更新"),
         }

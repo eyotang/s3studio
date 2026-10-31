@@ -95,6 +95,9 @@ impl Workspace {
         let bucket_search =
             cx.new(|cx| InputState::new(window, cx).placeholder(crate::i18n::t("查找存储桶")));
         let subscriptions = vec![
+            window.observe_window_appearance(|window, cx| {
+                crate::appearance::sync(window, cx);
+            }),
             cx.subscribe(&search, |_, _, _: &InputEvent, cx| cx.notify()),
             cx.subscribe(&bucket_search, |_, _, _: &InputEvent, cx| cx.notify()),
         ];

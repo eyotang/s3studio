@@ -11,6 +11,12 @@ fn translate(text: &str, english: bool) -> &str {
         return text;
     }
     match text {
+        "设置…" => "Settings…",
+        "设置" => "Settings",
+        "主题" => "Theme",
+        "亮色" => "Light",
+        "暗色" => "Dark",
+        "语言和主题立即生效并自动保存。" => "Language and theme apply immediately and are saved automatically.",
         "更新版本号无效。" => "Invalid update version.",
         "仅接受正式版本更新。" => "Only stable releases are supported.",
         "更新清单过大。" => "Update manifest is too large.",
