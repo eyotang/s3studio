@@ -346,7 +346,7 @@ export default function App() {
       const name = String(form.get("name") || "").trim();
       if (dialog?.type === "transferSettings") {
         await transferManager.saveSettings(Number(form.get("concurrency")));
-        notify("传输并发设置已保存");
+        notify("设置保存成功");
       } else if (dialog?.type === "account") {
         const input: AccountInput = {
           id: dialog.account?.id || "",
