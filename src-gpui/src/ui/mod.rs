@@ -140,15 +140,6 @@ impl Render for Workspace {
                 "Segoe UI"
             })
             .track_focus(&self.focus)
-            .on_action(cx.listener(|this, _: &crate::LanguageSystem, window, cx| {
-                this.change_language(crate::i18n::Language::System, window, cx)
-            }))
-            .on_action(cx.listener(|this, _: &crate::LanguageChinese, window, cx| {
-                this.change_language(crate::i18n::Language::Chinese, window, cx)
-            }))
-            .on_action(cx.listener(|this, _: &crate::LanguageEnglish, window, cx| {
-                this.change_language(crate::i18n::Language::English, window, cx)
-            }))
             .when(self.can_open_app_dialog(), |root| {
                 root.on_action(cx.listener(|this, _: &crate::OpenSettings, window, cx| {
                     this.open_dialog(Dialog::TransferSettings, window, cx);
