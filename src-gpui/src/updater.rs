@@ -108,9 +108,9 @@ impl UpdaterState {
     }
 }
 fn stable_version(value: &str) -> Result<semver::Version, String> {
-    let version = semver::Version::parse(value).map_err(|_| "更新版本号无效。")?;
+    let version = semver::Version::parse(value).map_err(|_| crate::i18n::t("更新版本号无效。"))?;
     if !version.pre.is_empty() || !version.build.is_empty() {
-        return Err("仅接受正式版本更新。".into());
+        return Err(crate::i18n::t("仅接受正式版本更新。").into());
     }
     Ok(version)
 }
@@ -121,16 +121,17 @@ struct Manifest {
 }
 fn parse_manifest(bytes: &[u8], current: &str) -> Result<Option<Manifest>, String> {
     if bytes.len() > MAX_MANIFEST {
-        return Err("更新清单过大。".into());
+        return Err(crate::i18n::t("更新清单过大。").into());
     }
-    let manifest: Manifest = serde_json::from_slice(bytes).map_err(|_| "更新清单格式无效。")?;
+    let manifest: Manifest =
+        serde_json::from_slice(bytes).map_err(|_| crate::i18n::t("更新清单格式无效。"))?;
     let newer = stable_version(&manifest.version)? > stable_version(current)?;
     if manifest
         .notes
         .as_ref()
         .is_some_and(|notes| notes.len() > 32 * 1024)
     {
-        return Err("更新说明过长。".into());
+        return Err(crate::i18n::t("更新说明过长。").into());
     }
     Ok(newer.then_some(manifest))
 }
@@ -152,12 +153,12 @@ async fn manual_check(current: &str) -> Result<Option<Manifest>, String> {
         .content_length()
         .is_some_and(|size| size > MAX_MANIFEST as u64)
     {
-        return Err("更新清单过大。".into());
+        return Err(crate::i18n::t("更新清单过大。").into());
     }
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
         if bytes.len() + chunk.len() > MAX_MANIFEST {
-            return Err("更新清单过大。".into());
+            return Err(crate::i18n::t("更新清单过大。").into());
         }
         bytes.extend_from_slice(&chunk);
     }
@@ -167,7 +168,7 @@ pub async fn check(state: Arc<UpdaterState>, user_initiated: bool) -> Result<Sta
     let _operation = state
         .operation
         .try_lock()
-        .map_err(|_| "更新操作正在进行中。")?;
+        .map_err(|_| crate::i18n::t("更新操作正在进行中。"))?;
     let previous = state.snapshot();
     if previous.mode == "disabled" {
         return Ok(previous);
@@ -203,7 +204,7 @@ pub async fn check(state: Arc<UpdaterState>, user_initiated: bool) -> Result<Sta
                 stable_version(&update.version)?;
                 let allowed = format!("{RELEASES}/download/v{}/", update.version);
                 if !update.download_url.as_str().starts_with(&allowed) {
-                    return Err("更新包地址不属于官方发布仓库。".into());
+                    return Err(crate::i18n::t("更新包地址不属于官方发布仓库。").into());
                 }
                 update.timeout = Some(Duration::from_secs(5 * 60));
                 let manifest = Manifest {
@@ -242,13 +243,13 @@ pub async fn check(state: Arc<UpdaterState>, user_initiated: bool) -> Result<Sta
             state.edit(|status| {
                 status.phase = previous.phase;
                 status.error = if user_initiated {
-                    Some(format!("暂时无法检查更新：{error}"))
+                    Some(crate::lf!("暂时无法检查更新：{error}", error = error))
                 } else {
                     None
                 };
             });
             if user_initiated {
-                Err(format!("暂时无法检查更新：{error}"))
+                Err(crate::lf!("暂时无法检查更新：{error}", error = error))
             } else {
                 Ok(state.snapshot())
             }
@@ -269,9 +270,9 @@ pub async fn install_app_update(state: Arc<UpdaterState>, engine: &Engine) -> Re
     let _operation = state
         .operation
         .try_lock()
-        .map_err(|_| "更新操作正在进行中。")?;
+        .map_err(|_| crate::i18n::t("更新操作正在进行中。"))?;
     if state.snapshot().mode != "inApp" {
-        return Err("当前安装方式需从发布页下载更新。".into());
+        return Err(crate::i18n::t("当前安装方式需从发布页下载更新。").into());
     }
     let guard = engine.reserve_for_update().await?;
     let update = state
@@ -279,7 +280,7 @@ pub async fn install_app_update(state: Arc<UpdaterState>, engine: &Engine) -> Re
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone()
-        .ok_or("请先检查可用更新。")?;
+        .ok_or(crate::i18n::t("请先检查可用更新。"))?;
     state.edit(|status| {
         status.phase = "downloading";
         status.downloaded = 0;
@@ -311,7 +312,10 @@ pub async fn install_app_update(state: Arc<UpdaterState>, engine: &Engine) -> Re
     if let Err(error) = result {
         state.edit(|status| {
             status.phase = "available";
-            status.error = Some(format!("更新未完成，当前版本保持不变：{error}"));
+            status.error = Some(crate::lf!(
+                "更新未完成，当前版本保持不变：{error}",
+                error = error
+            ));
         });
         return Err(error);
     }

@@ -26,35 +26,35 @@ pub enum Dialog {
 impl Dialog {
     pub fn title(&self) -> &'static str {
         match self {
-            Self::Account(Some(_)) => "账户设置",
-            Self::Account(None) => "连接一个新账户",
-            Self::Folder => "新建文件夹",
-            Self::Bucket => "创建存储桶",
-            Self::Copy => "复制对象",
-            Self::Delete => "删除所选项目？",
-            Self::Upload => "上传文件",
-            Self::RemoveAccount => "移除这个账户？",
-            Self::Help => "为云端工作而设计",
-            Self::About => "关于 S3 Studio",
-            Self::TransferSettings => "传输设置",
-            Self::CancelTransfer(_) => "取消传输？",
-            Self::Update => "软件更新",
+            Self::Account(Some(_)) => crate::i18n::t("账户设置"),
+            Self::Account(None) => crate::i18n::t("连接一个新账户"),
+            Self::Folder => crate::i18n::t("新建文件夹"),
+            Self::Bucket => crate::i18n::t("创建存储桶"),
+            Self::Copy => crate::i18n::t("复制对象"),
+            Self::Delete => crate::i18n::t("删除所选项目？"),
+            Self::Upload => crate::i18n::t("上传文件"),
+            Self::RemoveAccount => crate::i18n::t("移除这个账户？"),
+            Self::Help => crate::i18n::t("为云端工作而设计"),
+            Self::About => crate::i18n::t("关于 S3 Studio"),
+            Self::TransferSettings => crate::i18n::t("传输设置"),
+            Self::CancelTransfer(_) => crate::i18n::t("取消传输？"),
+            Self::Update => crate::i18n::t("软件更新"),
         }
     }
     pub fn submit_label(&self) -> &'static str {
         match self {
-            Self::Account(_) => "保存账户",
-            Self::Folder => "创建文件夹",
-            Self::Bucket => "创建存储桶",
-            Self::Copy => "复制",
-            Self::Delete => "确认删除",
-            Self::Upload => "选择文件并上传",
-            Self::RemoveAccount => "移除账户",
-            Self::TransferSettings => "保存设置",
-            Self::Help => "开始使用",
-            Self::About => "关闭",
-            Self::CancelTransfer(_) => "取消并清理",
-            Self::Update => "检查更新",
+            Self::Account(_) => crate::i18n::t("保存账户"),
+            Self::Folder => crate::i18n::t("创建文件夹"),
+            Self::Bucket => crate::i18n::t("创建存储桶"),
+            Self::Copy => crate::i18n::t("复制"),
+            Self::Delete => crate::i18n::t("确认删除"),
+            Self::Upload => crate::i18n::t("选择文件并上传"),
+            Self::RemoveAccount => crate::i18n::t("移除账户"),
+            Self::TransferSettings => crate::i18n::t("保存设置"),
+            Self::Help => crate::i18n::t("开始使用"),
+            Self::About => crate::i18n::t("关闭"),
+            Self::CancelTransfer(_) => crate::i18n::t("取消并清理"),
+            Self::Update => crate::i18n::t("检查更新"),
         }
     }
     pub fn destructive(&self) -> bool {
@@ -72,15 +72,15 @@ pub fn active(t: &Transfer) -> bool {
 }
 pub fn status_label(status: &str) -> &'static str {
     match status {
-        "queued" => "排队中",
-        "preparing" => "校验文件与断点",
-        "running" => "传输中",
-        "pausing" => "正在停止",
-        "paused" => "已暂停",
-        "finalizing" => "正在提交",
-        "done" => "已完成",
-        "error" => "失败，可重试",
-        "cancelled" => "已取消",
+        "queued" => crate::i18n::t("排队中"),
+        "preparing" => crate::i18n::t("校验文件与断点"),
+        "running" => crate::i18n::t("传输中"),
+        "pausing" => crate::i18n::t("正在停止"),
+        "paused" => crate::i18n::t("已暂停"),
+        "finalizing" => crate::i18n::t("正在提交"),
+        "done" => crate::i18n::t("已完成"),
+        "error" => crate::i18n::t("失败，可重试"),
+        "cancelled" => crate::i18n::t("已取消"),
         _ => "",
     }
 }

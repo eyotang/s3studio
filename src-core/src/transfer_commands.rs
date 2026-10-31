@@ -50,7 +50,7 @@ pub async fn upload_files(
     prefix: String,
 ) -> Result<usize, String> {
     let Some(files) = rfd::AsyncFileDialog::new()
-        .set_title("选择上传到 S3 的文件")
+        .set_title(crate::i18n::t("选择上传到 S3 的文件"))
         .pick_files()
         .await
     else {
@@ -82,9 +82,10 @@ pub async fn upload_files(
     if errors.is_empty() {
         Ok(count)
     } else {
-        Err(format!(
+        Err(crate::lf!(
             "已添加 {count} 个上传任务，部分失败：{}",
-            errors.join("；")
+            errors.join("；"),
+            count = count
         ))
     }
 }
@@ -96,7 +97,7 @@ pub async fn download_object(
     key: String,
 ) -> Result<bool, String> {
     if key.is_empty() || key.ends_with('/') {
-        return Err("请选择文件下载。".into());
+        return Err(crate::i18n::t("请选择文件下载。").into());
     }
     let name = key
         .rsplit('/')
@@ -114,7 +115,7 @@ pub async fn download_object(
         })
         .collect();
     let Some(file) = rfd::AsyncFileDialog::new()
-        .set_title("保存 S3 对象")
+        .set_title(crate::i18n::t("保存 S3 对象"))
         .set_file_name(name)
         .save_file()
         .await

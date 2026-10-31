@@ -80,7 +80,10 @@ impl Backend {
                             .await
                             .map(|_| Value::Null)
                     }
-                    None => Err("开发模式与网页预览不检查更新。安装发布版后即可使用。".into()),
+                    None => Err(crate::i18n::t(
+                        "开发模式与网页预览不检查更新。安装发布版后即可使用。",
+                    )
+                    .into()),
                 },
                 "open_update_download_page" => crate::updater::download_page(&updater.snapshot())
                     .and_then(|url| {
@@ -100,7 +103,7 @@ impl Backend {
 fn data_directory() -> anyhow::Result<PathBuf> {
     // Matches Tauri app_data_dir and the existing keyring service identifier.
     Ok(dirs::data_dir()
-        .ok_or_else(|| anyhow::anyhow!("无法定位应用数据目录"))?
+        .ok_or_else(|| anyhow::anyhow!(crate::i18n::t("无法定位应用数据目录")))?
         .join("com.s3studio.desktop"))
 }
 fn value<T: Serialize>(result: Result<T, String>) -> Result<Value, String> {
@@ -175,7 +178,7 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             value(transfers::cancel_transfer(engine, store, text("transferId")).await)
         }
         "clear_finished_transfers" => value(transfers::clear_finished_transfers(engine).await),
-        _ => Err(format!("未知操作：{command}")),
+        _ => Err(crate::lf!("未知操作：{command}", command = command)),
     }
 }
 fn preview(command: &str, args: Value) -> Result<Value, String> {
@@ -215,6 +218,6 @@ fn preview(command: &str, args: Value) -> Result<Value, String> {
         "object_info" => Ok(
             json!({"size":2488000,"contentType":"application/octet-stream","etag":"preview-object","modified":"2026-10-09T08:30:00Z","metadata":{}}),
         ),
-        _ => Err("当前是界面预览。请在桌面应用中连接真实账户。".into()),
+        _ => Err(crate::i18n::t("当前是界面预览。请在桌面应用中连接真实账户。").into()),
     }
 }

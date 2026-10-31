@@ -61,15 +61,18 @@ impl AccountStore {
         let temporary = self.path.with_extension("json.tmp");
         tokio::fs::write(&temporary, data)
             .await
-            .map_err(|e| format!("无法保存账户配置：{e}"))?;
+            .map_err(|e| crate::lf!("无法保存账户配置：{e}", e = e))?;
         tokio::fs::rename(temporary, &self.path)
             .await
-            .map_err(|e| format!("无法替换账户配置：{e}"))
+            .map_err(|e| crate::lf!("无法替换账户配置：{e}", e = e))
     }
 }
 
 fn keyring_error(e: keyring::Error) -> String {
-    format!("系统密钥库操作失败：{e}。请确认密钥库已解锁；Ubuntu 需启用 Secret Service。")
+    crate::lf!(
+        "系统密钥库操作失败：{e}。请确认密钥库已解锁；Ubuntu 需启用 Secret Service。",
+        e = e
+    )
 }
 
 async fn read_optional_secret(id: String) -> Result<Option<Secret>, String> {
@@ -82,7 +85,7 @@ async fn read_optional_secret(id: String) -> Result<Option<Secret>, String> {
         };
         serde_json::from_str(&value)
             .map(Some)
-            .map_err(|_| "凭据数据损坏，请重新设置账户凭据。".to_owned())
+            .map_err(|_| crate::i18n::t("凭据数据损坏，请重新设置账户凭据。").to_owned())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -91,7 +94,7 @@ async fn read_optional_secret(id: String) -> Result<Option<Secret>, String> {
 pub async fn read_secret(id: String) -> Result<Secret, String> {
     read_optional_secret(id)
         .await?
-        .ok_or("凭据不存在，请在账户设置中重新填写访问密钥。".into())
+        .ok_or(crate::i18n::t("凭据不存在，请在账户设置中重新填写访问密钥。").into())
 }
 
 async fn write_secret(id: String, secret: Secret) -> Result<(), String> {
@@ -119,7 +122,7 @@ async fn delete_secret(id: String) -> Result<(), String> {
 
 fn validate(input: &AccountInput) -> Result<(), String> {
     if input.name.trim().is_empty() || input.name.chars().count() > 80 {
-        return Err("账户名称需为 1–80 个字符。".into());
+        return Err(crate::i18n::t("账户名称需为 1–80 个字符。").into());
     }
     if input.region.is_empty()
         || !input
@@ -127,11 +130,11 @@ fn validate(input: &AccountInput) -> Result<(), String> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-')
     {
-        return Err("请输入有效的 Region，例如 us-east-1。".into());
+        return Err(crate::i18n::t("请输入有效的 Region，例如 us-east-1。").into());
     }
     if !input.endpoint.is_empty() {
         let url = url::Url::parse(&input.endpoint)
-            .map_err(|_| "Endpoint 必须是完整的 HTTP / HTTPS URL。")?;
+            .map_err(|_| crate::i18n::t("Endpoint 必须是完整的 HTTP / HTTPS URL。"))?;
         if !matches!(url.scheme(), "https" | "http")
             || url.host_str().is_none()
             || !url.username().is_empty()
@@ -139,14 +142,19 @@ fn validate(input: &AccountInput) -> Result<(), String> {
             || url.query().is_some()
             || url.fragment().is_some()
         {
-            return Err("Endpoint 只能使用 HTTP / HTTPS，且不能包含凭据、查询参数或片段。".into());
+            return Err(crate::i18n::t(
+                "Endpoint 只能使用 HTTP / HTTPS，且不能包含凭据、查询参数或片段。",
+            )
+            .into());
         }
     }
     if input.access_key.is_empty() != input.secret_key.is_empty() {
-        return Err("更新凭据时必须同时填写 Access Key 和 Secret Key。".into());
+        return Err(crate::i18n::t("更新凭据时必须同时填写 Access Key 和 Secret Key。").into());
     }
     if input.access_key.is_empty() && !input.session_token.is_empty() {
-        return Err("更新 Session Token 时请同时填写 Access Key 和 Secret Key。".into());
+        return Err(
+            crate::i18n::t("更新 Session Token 时请同时填写 Access Key 和 Secret Key。").into(),
+        );
     }
     Ok(())
 }
@@ -165,11 +173,11 @@ pub async fn save_account(store: &AccountStore, input: AccountInput) -> Result<A
             accounts
                 .iter()
                 .position(|a| a.id == input.id)
-                .ok_or("账户不存在，请重新加载。")?,
+                .ok_or(crate::i18n::t("账户不存在，请重新加载。"))?,
         )
     };
     if existing.is_none() && input.access_key.is_empty() {
-        return Err("新账户必须提供访问凭据。".into());
+        return Err(crate::i18n::t("新账户必须提供访问凭据。").into());
     }
     let id = if existing.is_some() {
         input.id
@@ -214,7 +222,11 @@ pub async fn save_account(store: &AccountStore, input: AccountInput) -> Result<A
                 delete_secret(id.clone()).await
             };
             if let Err(rollback_error) = rollback {
-                return Err(format!("{error}；凭据回滚失败：{rollback_error}"));
+                return Err(crate::lf!(
+                    "{error}；凭据回滚失败：{rollback_error}",
+                    error = error,
+                    rollback_error = rollback_error
+                ));
             }
         }
         return Err(error);
@@ -235,12 +247,14 @@ pub async fn remove_account(
 ) -> Result<(), String> {
     let mut accounts = store.accounts.lock().await;
     if engine.has_unfinished_account(&account_id).await {
-        return Err("此账户仍有未结束的传输，请先完成或取消任务再移除账户。".into());
+        return Err(
+            crate::i18n::t("此账户仍有未结束的传输，请先完成或取消任务再移除账户。").into(),
+        );
     }
     let index = accounts
         .iter()
         .position(|a| a.id == account_id)
-        .ok_or("账户不存在。")?;
+        .ok_or(crate::i18n::t("账户不存在。"))?;
     let previous = read_optional_secret(account_id.clone()).await?;
     delete_secret(account_id.clone()).await?;
     let mut updated = accounts.clone();
@@ -249,7 +263,9 @@ pub async fn remove_account(
         if let Some(previous) = previous {
             write_secret(account_id.clone(), previous)
                 .await
-                .map_err(|rollback| format!("{e}；凭据回滚失败：{rollback}"))?;
+                .map_err(|rollback| {
+                    crate::lf!("{e}；凭据回滚失败：{rollback}", rollback = rollback, e = e)
+                })?;
         }
         return Err(e);
     }

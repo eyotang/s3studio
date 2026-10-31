@@ -31,6 +31,7 @@ pub enum Pending {
 pub struct Form {
     pub inputs: HashMap<&'static str, Entity<InputState>>,
     pub path_style: bool,
+    pub placeholders: HashMap<&'static str, String>,
     pub subscriptions: Vec<Subscription>,
 }
 pub struct Workspace {
@@ -88,8 +89,11 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("搜索当前目录中的文件…"));
-        let bucket_search = cx.new(|cx| InputState::new(window, cx).placeholder("查找存储桶"));
+        let search = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(crate::i18n::t("搜索当前目录中的文件…"))
+        });
+        let bucket_search =
+            cx.new(|cx| InputState::new(window, cx).placeholder(crate::i18n::t("查找存储桶")));
         let subscriptions = vec![
             cx.subscribe(&search, |_, _, _: &InputEvent, cx| cx.notify()),
             cx.subscribe(&bucket_search, |_, _, _: &InputEvent, cx| cx.notify()),
@@ -142,6 +146,7 @@ impl Workspace {
             form: Form {
                 inputs: HashMap::new(),
                 path_style: true,
+                placeholders: HashMap::new(),
                 subscriptions: vec![],
             },
             focus: cx.focus_handle(),
@@ -162,6 +167,31 @@ impl Workspace {
         this.request("get_transfer_settings", json!({}), Pending::Settings);
         window.focus(&this.focus, cx);
         this
+    }
+    pub fn change_language(
+        &mut self,
+        language: crate::i18n::Language,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Err(error) = crate::i18n::select(language) {
+            self.error = error.to_string();
+            cx.notify();
+            return;
+        }
+        crate::set_app_menus(cx);
+        self.search.update(cx, |s, cx| {
+            s.set_placeholder(crate::i18n::t("搜索当前目录中的文件…"), window, cx)
+        });
+        self.bucket_search.update(cx, |s, cx| {
+            s.set_placeholder(crate::i18n::t("查找存储桶"), window, cx)
+        });
+        // Update placeholders without touching unsaved account values.
+        for (key, input) in &self.form.inputs {
+            let placeholder = crate::i18n::translate_placeholder(&self.form.placeholders[key]);
+            input.update(cx, |s, cx| s.set_placeholder(placeholder, window, cx));
+        }
+        cx.notify();
     }
     pub fn is_busy(&self) -> bool {
         self.busy || self.update_status.installing()
@@ -388,7 +418,7 @@ impl Workspace {
                 self.add_input(
                     "name",
                     account.as_ref().map(|a| a.name.as_str()).unwrap_or(""),
-                    "例如：生产环境 / 个人存储",
+                    crate::i18n::t("例如：生产环境 / 个人存储"),
                     false,
                     window,
                     cx,
@@ -397,7 +427,7 @@ impl Workspace {
                     "accessKey",
                     "",
                     if account.is_some() {
-                        "留空保留现有凭据"
+                        crate::i18n::t("留空保留现有凭据")
                     } else {
                         "AKIA…"
                     },
@@ -421,9 +451,9 @@ impl Workspace {
                     "secretKey",
                     "",
                     if account.is_some() {
-                        "留空保留现有凭据"
+                        crate::i18n::t("留空保留现有凭据")
                     } else {
-                        "你的 Secret Access Key"
+                        crate::i18n::t("你的 Secret Access Key")
                     },
                     true,
                     window,
@@ -432,7 +462,7 @@ impl Workspace {
                 self.add_input(
                     "sessionToken",
                     "",
-                    "使用临时凭据时填写；更新凭据时留空可清除",
+                    crate::i18n::t("使用临时凭据时填写；更新凭据时留空可清除"),
                     true,
                     window,
                     cx,
@@ -446,7 +476,9 @@ impl Workspace {
                     cx,
                 );
             }
-            Dialog::Folder => self.add_input("name", "", "新文件夹", false, window, cx),
+            Dialog::Folder => {
+                self.add_input("name", "", crate::i18n::t("新文件夹"), false, window, cx)
+            }
             Dialog::Bucket => self.add_input("name", "", "my-new-bucket", false, window, cx),
             Dialog::Copy => {
                 let name = format!(
@@ -506,6 +538,7 @@ impl Workspace {
                 }
             },
         ));
+        self.form.placeholders.insert(key, placeholder.to_owned());
         self.form.inputs.insert(key, state);
     }
     fn input(&self, key: &str, cx: &App) -> String {
@@ -533,7 +566,7 @@ impl Workspace {
             Dialog::Account(_) | Dialog::Folder | Dialog::Bucket | Dialog::Copy
         ) && name.is_empty()
         {
-            self.dialog_error = "请填写此字段。".into();
+            self.dialog_error = crate::i18n::t("请填写此字段。").into();
             cx.notify();
             return;
         }
@@ -547,7 +580,8 @@ impl Workspace {
                     || (id.is_none() && (access.is_empty() || secret.is_empty()))
                 {
                     self.dialog_error =
-                        "请填写完整的账户名称、Access Key、Secret Key 和 Region。".into();
+                        crate::i18n::t("请填写完整的账户名称、Access Key、Secret Key 和 Region。")
+                            .into();
                     cx.notify();
                     return;
                 }
@@ -556,7 +590,7 @@ impl Workspace {
             }
             Dialog::Folder => {
                 if name.contains(['/', '\\']) {
-                    self.dialog_error = "文件夹名称不能包含 / 或 \\。".into();
+                    self.dialog_error = crate::i18n::t("文件夹名称不能包含 / 或 \\。").into();
                     cx.notify();
                     return;
                 }
@@ -602,7 +636,7 @@ impl Workspace {
             Dialog::TransferSettings => {
                 let n = self.input("concurrency", cx).parse::<usize>();
                 if !n.as_ref().is_ok_and(|n| (1..=32).contains(n)) {
-                    self.dialog_error = "并发数量需为 1–32 的整数。".into();
+                    self.dialog_error = crate::i18n::t("并发数量需为 1–32 的整数。").into();
                     cx.notify();
                     return;
                 }
@@ -814,42 +848,45 @@ impl Workspace {
                             let a: Account =
                                 serde_json::from_value(data).map_err(|e| e.to_string())?;
                             self.request("list_accounts", json!({}), Pending::Accounts(Some(a.id)));
-                            "账户已安全保存".into()
+                            crate::i18n::t("账户已安全保存").into()
                         }
                         Dialog::RemoveAccount => {
                             self.request("list_accounts", json!({}), Pending::Accounts(None));
-                            "账户已移除".into()
+                            crate::i18n::t("账户已移除").into()
                         }
                         Dialog::Bucket => {
                             let name = self.input("name", cx).trim().to_owned();
                             self.load_buckets(Some(name), window, cx);
-                            "存储桶已创建".into()
+                            crate::i18n::t("存储桶已创建").into()
                         }
                         Dialog::TransferSettings => {
                             self.settings =
                                 serde_json::from_value(data).map_err(|e| e.to_string())?;
-                            "传输并发设置已保存".into()
+                            crate::i18n::t("传输并发设置已保存").into()
                         }
                         Dialog::Delete => {
                             self.load_objects(false, cx);
-                            format!("已删除 {} 个对象", data.as_u64().unwrap_or_default())
+                            crate::lf!("已删除 {} 个对象", data.as_u64().unwrap_or_default())
                         }
                         Dialog::Upload => {
                             self.load_objects(false, cx);
                             let count = data.as_u64().unwrap_or_default();
                             if count > 0 {
-                                format!("已添加 {count} 个上传任务，可在传输活动中暂停或继续")
+                                crate::lf!(
+                                    "已添加 {count} 个上传任务，可在传输活动中暂停或继续",
+                                    count = count
+                                )
                             } else {
                                 String::new()
                             }
                         }
                         Dialog::Folder => {
                             self.load_objects(false, cx);
-                            "文件夹已创建".into()
+                            crate::i18n::t("文件夹已创建").into()
                         }
                         Dialog::Copy => {
                             self.load_objects(false, cx);
-                            "对象已复制".into()
+                            crate::i18n::t("对象已复制").into()
                         }
                         _ => String::new(),
                     };
@@ -861,7 +898,11 @@ impl Workspace {
                 Pending::Share => {
                     if let Some(url) = data.as_str() {
                         cx.write_to_clipboard(ClipboardItem::new_string(url.into()));
-                        self.notify("已复制分享链接，1 小时内有效".into(), window, cx);
+                        self.notify(
+                            crate::i18n::t("已复制分享链接，1 小时内有效").into(),
+                            window,
+                            cx,
+                        );
                     }
                 }
                 Pending::Clear => self

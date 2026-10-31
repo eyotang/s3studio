@@ -197,7 +197,7 @@ pub fn failure(e: impl std::error::Error) -> String {
 async fn stamp(path: &Path) -> Result<Stamp, String> {
     let info = tokio::fs::metadata(path).await.map_err(failure)?;
     if !info.is_file() {
-        return Err("请选择普通文件。".into());
+        return Err(crate::i18n::t("请选择普通文件。").into());
     }
     Ok(Stamp {
         size: info.len(),
@@ -228,7 +228,7 @@ async fn hash_range(path: &Path, offset: u64, length: u64) -> Result<String, Str
         let limit = left.min(buffer.len() as u64) as usize;
         let size = file.read(&mut buffer[..limit]).await.map_err(failure)?;
         if size == 0 {
-            return Err("文件长度变化或断点文件不完整。".into());
+            return Err(crate::i18n::t("文件长度变化或断点文件不完整。").into());
         }
         hash.update(&buffer[..size]);
         left -= size as u64;
@@ -253,7 +253,7 @@ impl Engine {
             Err(e) => return Err(e.into()),
         };
         if db.version != 1 || !(1..=32).contains(&db.settings.concurrency) {
-            return Err("传输记录版本或并发设置无效。".into());
+            return Err(crate::i18n::t("传输记录版本或并发设置无效。").into());
         }
         for job in &mut db.jobs {
             job.view.speed = 0;
@@ -307,13 +307,13 @@ impl Engine {
             .jobs
             .iter_mut()
             .find(|j| j.view.id == id)
-            .ok_or("传输任务不存在。")?;
+            .ok_or(crate::i18n::t("传输任务不存在。"))?;
         update(job);
         let snapshot = job.clone();
         if durable {
             if let Err(e) = self.persist(&db).await {
                 *db = backup;
-                return Err(format!("无法保存传输断点：{e}"));
+                return Err(crate::lf!("无法保存传输断点：{e}", e = e));
             }
         }
         drop(db);
@@ -329,7 +329,7 @@ impl Engine {
             .iter()
             .find(|j| j.view.id == id)
             .cloned()
-            .ok_or("传输任务不存在。".into())
+            .ok_or(crate::i18n::t("传输任务不存在。").into())
     }
     pub async fn list(&self) -> Vec<Transfer> {
         self.0
@@ -356,7 +356,7 @@ impl Engine {
     }
     pub async fn set_settings(&self, concurrency: usize) -> Result<Settings, String> {
         if !(1..=32).contains(&concurrency) {
-            return Err("并发数量需为 1–32 的整数。".into());
+            return Err(crate::i18n::t("并发数量需为 1–32 的整数。").into());
         }
         let settings = Settings { concurrency };
         let mut db = self.0.db.lock().await;
@@ -380,17 +380,23 @@ impl Engine {
         local_path: PathBuf,
     ) -> Result<String, String> {
         if key.is_empty() || key.len() > 1024 || key.ends_with('/') {
-            return Err("对象键无效。".into());
+            return Err(crate::i18n::t("对象键无效。").into());
         }
         let id = Uuid::new_v4().to_string();
         let local_path = if direction == Direction::Upload {
             tokio::fs::canonicalize(local_path).await.map_err(failure)?
         } else {
-            let parent = local_path.parent().ok_or("保存路径无效。")?;
+            let parent = local_path
+                .parent()
+                .ok_or(crate::i18n::t("保存路径无效。"))?;
             tokio::fs::canonicalize(parent)
                 .await
                 .map_err(failure)?
-                .join(local_path.file_name().ok_or("保存文件名无效。")?)
+                .join(
+                    local_path
+                        .file_name()
+                        .ok_or(crate::i18n::t("保存文件名无效。"))?,
+                )
         };
         let source_stamp = if direction == Direction::Upload {
             Some(stamp(&local_path).await?)
@@ -399,7 +405,7 @@ impl Engine {
         };
         let total = source_stamp.as_ref().map(|s| s.size).unwrap_or(0);
         if total > 5 * 1024_u64.pow(4) {
-            return Err("文件超过 5 TiB 上传上限。".into());
+            return Err(crate::i18n::t("文件超过 5 TiB 上传上限。").into());
         }
         let destination_stamp = if direction == Direction::Download {
             optional_stamp(&local_path).await?
@@ -414,7 +420,7 @@ impl Engine {
             .into_owned();
         let mut db = self.0.db.lock().await;
         if self.0.updating.load(std::sync::atomic::Ordering::Acquire) {
-            return Err("正在更新应用，请完成更新后再添加传输任务。".into());
+            return Err(crate::i18n::t("正在更新应用，请完成更新后再添加传输任务。").into());
         }
         if db.jobs.iter().any(|j| {
             !terminal(&j.view.status)
@@ -427,7 +433,7 @@ impl Engine {
                         && j.view.bucket == bucket
                         && j.view.key == key))
         }) {
-            return Err("此文件已有未结束的传输任务，请继续或取消原任务。".into());
+            return Err(crate::i18n::t("此文件已有未结束的传输任务，请继续或取消原任务。").into());
         }
         let job = Job {
             view: Transfer {
@@ -466,14 +472,14 @@ impl Engine {
     pub async fn start(&self, id: &str, client: Client) -> Result<(), String> {
         let mut active = self.0.active.lock().await;
         if self.0.updating.load(std::sync::atomic::Ordering::Acquire) {
-            return Err("正在更新应用，请完成更新后再继续传输。".into());
+            return Err(crate::i18n::t("正在更新应用，请完成更新后再继续传输。").into());
         }
         if active.contains_key(id) {
-            return Err("任务正在运行或停止中，请稍后重试。".into());
+            return Err(crate::i18n::t("任务正在运行或停止中，请稍后重试。").into());
         }
         let job = self.job(id).await?;
         if terminal(&job.view.status) {
-            return Err("任务已经结束。".into());
+            return Err(crate::i18n::t("任务已经结束。").into());
         }
         self.edit(id, true, |job| {
             job.view.status = "preparing".into();
@@ -502,14 +508,16 @@ impl Engine {
                 )
             })
         {
-            return Err("请先暂停或完成正在运行的传输任务，再安装应用更新。".into());
+            return Err(
+                crate::i18n::t("请先暂停或完成正在运行的传输任务，再安装应用更新。").into(),
+            );
         }
         if self
             .0
             .updating
             .swap(true, std::sync::atomic::Ordering::AcqRel)
         {
-            return Err("应用更新已经在进行中。".into());
+            return Err(crate::i18n::t("应用更新已经在进行中。").into());
         }
         Ok(UpdateGuard(self.clone()))
     }
@@ -517,9 +525,9 @@ impl Engine {
         let active = self.0.active.lock().await;
         let job = self.job(id).await?;
         if job.view.status == "finalizing" {
-            return Err("正在提交文件，完成后即可结束。".into());
+            return Err(crate::i18n::t("正在提交文件，完成后即可结束。").into());
         }
-        let sender = active.get(id).ok_or("任务当前没有运行。")?;
+        let sender = active.get(id).ok_or(crate::i18n::t("任务当前没有运行。"))?;
         sender.send(Stop::Pause).map_err(failure)?;
         self.edit(id, true, |j| {
             if matches!(j.view.status.as_str(), "running" | "preparing") {
@@ -536,7 +544,7 @@ impl Engine {
             return Ok(());
         }
         if job.view.status == "finalizing" {
-            return Err("正在提交文件，无法取消。".into());
+            return Err(crate::i18n::t("正在提交文件，无法取消。").into());
         }
         if let Some(sender) = active.get(id) {
             sender.send(Stop::Cancel).map_err(failure)?;
@@ -668,11 +676,11 @@ impl Engine {
     ) -> Result<bool, String> {
         let job = self.job(id).await?;
         if Some(stamp(&job.local_path).await?) != job.source_stamp {
-            return Err("本地源文件已变化，请取消任务后重新上传。".into());
+            return Err(crate::i18n::t("本地源文件已变化，请取消任务后重新上传。").into());
         }
         let digest = cancellable(hash_range(&job.local_path, 0, job.view.total), stop).await?;
         if job.source_hash.as_ref().is_some_and(|hash| hash != &digest) {
-            return Err("源文件内容已变化，不能继续原上传。".into());
+            return Err(crate::i18n::t("源文件内容已变化，不能继续原上传。").into());
         }
         self.edit(id, true, |j| {
             j.source_hash = Some(digest);
@@ -710,17 +718,21 @@ impl Engine {
                 for part in response.parts() {
                     let number = part.part_number().unwrap_or(0);
                     if number <= 0 || number as u32 > count(&job) {
-                        return Err("服务端分片编号无效。".into());
+                        return Err(crate::i18n::t("服务端分片编号无效。").into());
                     }
                     let (_, length) = range(&job, number as u32);
                     if part.size().unwrap_or(-1) != length as i64 {
-                        return Err("服务端分片长度与源文件不一致。".into());
+                        return Err(crate::i18n::t("服务端分片长度与源文件不一致。").into());
                     }
                     parts.insert(
                         number as u32,
                         Part {
                             length,
-                            etag: Some(part.e_tag().ok_or("服务端分片缺少 ETag。")?.into()),
+                            etag: Some(
+                                part.e_tag()
+                                    .ok_or(crate::i18n::t("服务端分片缺少 ETag。"))?
+                                    .into(),
+                            ),
                             hash: None,
                         },
                     );
@@ -730,7 +742,7 @@ impl Engine {
                     break;
                 }
                 if marker.is_none() {
-                    return Err("服务端未返回分片分页标记。".into());
+                    return Err(crate::i18n::t("服务端未返回分片分页标记。").into());
                 }
             }
             self.edit(id, true, |j| {
@@ -758,7 +770,7 @@ impl Engine {
                 .map_err(failure)?;
             let upload_id = created
                 .upload_id()
-                .ok_or("服务未返回 multipart UploadId。")?
+                .ok_or(crate::i18n::t("服务未返回 multipart UploadId。"))?
                 .to_owned();
             if let Err(error) = self
                 .edit(id, true, |j| {
@@ -775,7 +787,7 @@ impl Engine {
                     .await;
                 return Err(match cleanup {
                     Ok(_) => error,
-                    Err(e) => format!("{error}；分片清理失败：{}", failure(e)),
+                    Err(e) => crate::lf!("{error}；分片清理失败：{}", failure(e), error = error),
                 });
             }
         }
@@ -820,18 +832,22 @@ impl Engine {
             stop,
         )
         .await?;
-        let total = head.content_length().ok_or("服务未返回对象大小。")?;
+        let total = head
+            .content_length()
+            .ok_or(crate::i18n::t("服务未返回对象大小。"))?;
         if total < 0 {
-            return Err("对象大小无效。".into());
+            return Err(crate::i18n::t("对象大小无效。").into());
         }
         let etag = head
             .e_tag()
-            .ok_or("服务未返回对象 ETag，无法安全进行断点下载。")?
+            .ok_or(crate::i18n::t(
+                "服务未返回对象 ETag，无法安全进行断点下载。",
+            ))?
             .to_owned();
         if job.etag.as_ref().is_some_and(|e| e != &etag)
             || (job.etag.is_some() && job.view.total != total as u64)
         {
-            return Err("远端对象已变化，请取消任务后重新下载。".into());
+            return Err(crate::i18n::t("远端对象已变化，请取消任务后重新下载。").into());
         }
         job = self
             .edit(id, true, |j| {
@@ -844,7 +860,7 @@ impl Engine {
         let existing = optional_stamp(&job.temporary).await?;
         if let Some(stamp) = existing {
             if stamp.size != job.view.total {
-                return Err("下载临时文件大小变化，请取消后重新下载。".into());
+                return Err(crate::i18n::t("下载临时文件大小变化，请取消后重新下载。").into());
             }
         } else {
             // Recover a crash after rename but before the final "done" checkpoint.
@@ -871,7 +887,7 @@ impl Engine {
                 }
             }
             if !job.completed.is_empty() {
-                return Err("下载断点文件已丢失，请取消后重新下载。".into());
+                return Err(crate::i18n::t("下载断点文件已丢失，请取消后重新下载。").into());
             }
             let file = tokio::fs::OpenOptions::new()
                 .create_new(true)
@@ -885,7 +901,7 @@ impl Engine {
         let mut valid = BTreeMap::new();
         for (number, part) in &job.completed {
             if *number == 0 || *number > count(&job) {
-                return Err("下载断点分片编号无效。".into());
+                return Err(crate::i18n::t("下载断点分片编号无效。").into());
             }
             let (offset, length) = range(&job, *number);
             let digest = cancellable(hash_range(&job.temporary, offset, length), stop).await?;
@@ -957,7 +973,7 @@ impl Engine {
                 biased;
                 _ = stop.changed() => return Err(STOPPED.into()),
                 receipt = workers.join_next() => {
-                    let receipt = receipt.ok_or("分片任务意外结束。")?.map_err(failure)??;
+                    let receipt = receipt.ok_or(crate::i18n::t("分片任务意外结束。"))?.map_err(failure)??;
                     progress.remove(&receipt.number); self.checkpoint(id, receipt).await?;
                     if last_event.elapsed() >= Duration::from_millis(180) {
                         let base = self.job(id).await?;
@@ -985,15 +1001,15 @@ impl Engine {
         }
         let job = self.job(id).await?;
         if committed(&job) != job.view.total {
-            return Err("已完成分片长度不完整。".into());
+            return Err(crate::i18n::t("已完成分片长度不完整。").into());
         }
         if direction == Direction::Upload {
             if Some(stamp(&job.local_path).await?) != job.source_stamp {
-                return Err("上传期间源文件已变化，请取消任务后重新上传。".into());
+                return Err(crate::i18n::t("上传期间源文件已变化，请取消任务后重新上传。").into());
             }
             let digest = cancellable(hash_range(&job.local_path, 0, job.view.total), stop).await?;
             if job.source_hash.as_ref() != Some(&digest) {
-                return Err("上传期间源文件内容已变化，已阻止提交。".into());
+                return Err(crate::i18n::t("上传期间源文件内容已变化，已阻止提交。").into());
             }
         }
         self.edit(id, true, |j| {
@@ -1030,7 +1046,11 @@ impl Engine {
                     .complete_multipart_upload()
                     .bucket(&job.view.bucket)
                     .key(&job.view.key)
-                    .upload_id(job.upload_id.as_deref().ok_or("UploadId 丢失。")?)
+                    .upload_id(
+                        job.upload_id
+                            .as_deref()
+                            .ok_or(crate::i18n::t("UploadId 丢失。"))?,
+                    )
                     .multipart_upload(
                         CompletedMultipartUpload::builder()
                             .set_parts(Some(parts))
@@ -1046,7 +1066,7 @@ impl Engine {
             }
         } else {
             if optional_stamp(&job.local_path).await? != job.destination_stamp {
-                return Err("保存位置的文件已变化，为防止覆盖新文件，已保留下载断点。请取消后重新选择保存位置。".into());
+                return Err(crate::i18n::t("保存位置的文件已变化，为防止覆盖新文件，已保留下载断点。请取消后重新选择保存位置。").into());
             }
             tokio::fs::rename(&job.temporary, &job.local_path)
                 .await
