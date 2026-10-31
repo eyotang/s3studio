@@ -60,10 +60,7 @@ impl Workspace {
             }
             Dialog::Help => crate::i18n::t("一个基于 Tauri 的跨平台 S3 工作空间。").into(),
             Dialog::About => crate::i18n::t("云端文件，井然有序。").into(),
-            Dialog::TransferSettings => crate::i18n::t(
-                "设置整个应用的并发上限，所有上传和下载任务共同使用。建议从默认 8 路开始。",
-            )
-            .into(),
+            Dialog::TransferSettings => crate::i18n::t("管理应用语言、外观和传输并发。").into(),
             Dialog::CancelTransfer(id) => crate::lf!(
                 "{} 的断点将被清理；已经存在的源文件和目标文件不受影响。",
                 self.transfers
@@ -173,7 +170,7 @@ impl Workspace {
                     .when(id.is_some(),|s|s.child(button("remove-account",crate::i18n::t("移除账户")).text_size(px(10.)).text_color(rgb(0xd18282)).justify_start().child(icon("trash-2",14.)).child(crate::i18n::t("移除账户")).on_click(cx.listener(|this,_,window,cx|this.open_dialog(Dialog::RemoveAccount,window,cx)))));
             },
             Dialog::Folder=>modal=modal.child(self.field("name",crate::i18n::t("文件夹名称"))),Dialog::Bucket=>modal=modal.child(self.field("name",crate::i18n::t("存储桶名称"))),Dialog::Copy=>modal=modal.child(self.field("name",crate::i18n::t("目标对象键"))),
-            Dialog::TransferSettings=>modal=modal.child(self.preferences(cx)).child(self.field("concurrency",crate::i18n::t("并发数量"))).child(label(crate::i18n::t("支持 1–32 路。设置自动保存；降低上限时，已开始的分片会先完成，后续分片按新上限执行。"),12.,0x99a2b1).line_height(relative(1.8)).mb(px(23.))),
+            Dialog::TransferSettings=>modal=modal.child(self.preferences(cx)).child(self.field("concurrency",crate::i18n::t("并发数量"))).child(label(crate::i18n::t("支持 1–32 路。点击保存设置后生效；降低上限时，已开始的分片会先完成。"),12.,0x99a2b1).line_height(relative(1.8)).mb(px(23.))),
             Dialog::Delete=>modal=modal.child(col().id("delete-list").max_h(px(160.)).overflow_y_scroll().px(px(14.)).py(px(10.)).rounded(px(8.)).bg(rgb(0xfafbfd)).children(self.chosen().iter().map(|o|row().py(px(7.)).gap(px(7.)).child(file_icon(o,20.)).child(label(model::object_name(&o.key,&self.prefix).to_owned(),11.,0x808d9f))))),
             Dialog::Help=>modal=modal.children([
                 crate::i18n::t("① 添加账户：填写 Access Key、Secret Key 和 Region。MinIO 等服务可以配置 Endpoint 和路径风格。"),
@@ -324,23 +321,17 @@ impl Workspace {
             .into_any_element()
     }
     fn preferences(&self, cx: &mut Context<Self>) -> Div {
-        let languages = [
+        let languages = crate::i18n::Language::ALL.map(|language| {
+            let code = match language {
+                crate::i18n::Language::Chinese => "zh",
+                _ => language.code(),
+            };
             (
-                "settings-language-system",
-                crate::i18n::t("跟随系统"),
-                crate::i18n::Language::System,
-            ),
-            (
-                "settings-language-zh",
-                "简体中文",
-                crate::i18n::Language::Chinese,
-            ),
-            (
-                "settings-language-en",
-                "English",
-                crate::i18n::Language::English,
-            ),
-        ];
+                SharedString::from(format!("settings-language-{code}")),
+                language.name(),
+                language,
+            )
+        });
         let themes = [
             (
                 "theme-system",
@@ -365,6 +356,7 @@ impl Workspace {
             .child(
                 row()
                     .gap(px(6.))
+                    .flex_wrap()
                     .children(languages.into_iter().map(|(id, text, language)| {
                         secondary(id, text)
                             .when(crate::i18n::preference() == language, |s| {

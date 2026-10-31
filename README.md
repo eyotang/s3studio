@@ -1,5 +1,7 @@
 # S3 Studio
 
+[简体中文](README.md) · [English](README.en.md) · [한국어](README.ko.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md)
+
 S3 Studio 是一款跨平台桌面 S3 客户端，让云端文件管理更直观。连接 AWS S3、MinIO 或其他 S3 兼容服务，在一个工作空间中管理多个账户、浏览存储桶、上传下载文件。
 
 支持 **macOS、Windows、Ubuntu 和 Omarchy / Arch Linux**，账户数量不设上限，凭据保存在本机系统密钥库。
@@ -13,7 +15,7 @@ S3 Studio 是一款跨平台桌面 S3 客户端，让云端文件管理更直观
 - **文件操作**：上传、下载、新建文件夹和存储桶、同桶复制、批量删除及生成分享链接。
 - **传输管理**：查看进度和速度，暂停、继续、失败重试，应用重启后可从断点继续。
 - **共享并发**：所有账户的上传和下载共同使用并发上限，默认 8 路，可调整为 1–32 路。
-- **外观与语言**：亮色、暗色或跟随系统；简体中文、English 或跟随系统语言。
+- **外观与语言**：亮色、暗色或跟随系统；简体中文、English、한국어、日本語、Français、Deutsch、Русский 或跟随系统语言。
 - **本地凭据**：使用 macOS Keychain、Windows Credential Manager 或 Linux Secret Service 保存密钥。
 
 ## 下载与安装
@@ -68,11 +70,11 @@ MinIO 例子：Endpoint 为 `http://localhost:9000`，Region 为 `us-east-1`，�
 
 从侧栏底部打开「设置」，macOS 也可使用「S3 Studio → 设置…」或 ⌘,。
 
-- 语言：跟随系统、简体中文或 English。
+- 语言：跟随系统、简体中文、English、한국어、日本語、Français、Deutsch 或 Русский。
 - 主题：跟随系统、亮色或暗色，默认跟随系统并响应外观变化。
 - 并发：输入 1–32 的整数，点击「保存设置」生效。
 
-语言和主题立即生效并自动保存，重启后保留。中文系统默认使用简体中文，其他语言使用英文；账户名、对象键和服务端原始错误保留原文。
+语言和主题立即生效并自动保存，重启后保留。自动识别中文、英文、韩语、日语、法语、德语和俄语系统，其他语言使用英文；账户名、对象键和服务端原始错误保留原文。
 
 ### 传输与断点续传
 
@@ -177,6 +179,8 @@ Windows Release 构建后可运行 `powershell -NoProfile -File scripts/smoke-de
 测试不使用真实云账户；三平台构建分别验证安装包，macOS 原生界面另有自动交互测试。
 
 发布时遵循 [AGENTS.md](AGENTS.md)，并维护 `docs/releases/<版本>.md` 中的版本说明。每个版本的 GitHub Release 描述必须包含 macOS 的 `xattr` 处理命令。
+
+翻译文件位于 `src-core/locales/`，以中文原文为键。修改后运行 `node scripts/sync-i18n.mjs` 同步动态文案，再格式化 Rust 并运行测试。
 
 ### 参与贡献
 
