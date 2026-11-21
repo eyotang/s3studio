@@ -22,3 +22,16 @@ pub async fn remove_account(
 ) -> Result<(), String> {
     s3_studio_core::accounts::remove_account(&store, &engine, account_id).await
 }
+
+#[tauri::command]
+pub async fn get_s3_defaults(store: State<'_, AccountStore>) -> Result<S3Defaults, String> {
+    Ok(s3_studio_core::accounts::get_s3_defaults(&store).await)
+}
+
+#[tauri::command]
+pub async fn set_s3_defaults(
+    store: State<'_, AccountStore>,
+    input: S3Defaults,
+) -> Result<S3Defaults, String> {
+    s3_studio_core::accounts::set_s3_defaults(&store, input).await
+}

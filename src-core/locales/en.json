@@ -25,7 +25,7 @@
   "使用临时凭据时填写；更新凭据时留空可清除": "For temporary credentials; leave blank when updating to clear",
   "新文件夹": "New folder",
   "请填写此字段。": "This field is required.",
-  "请填写完整的账户名称、Access Key、Secret Key 和 Region。": "Enter an account name, Access Key, Secret Key, and Region.",
+  "请填写完整的账户名称、Access Key 和 Secret Key。": "Enter an account name, Access Key, and Secret Key.",
   "文件夹名称不能包含 / 或 \\。": "Folder names cannot contain / or \\\\.",
   "并发数量需为 1–32 的整数。": "Concurrency must be an integer from 1 to 32.",
   "账户已安全保存": "Account saved securely",
@@ -161,7 +161,7 @@
   "存储桶名称": "Bucket name",
   "目标对象键": "Destination object key",
   "并发数量": "Concurrency",
-  "① 添加账户：填写 Access Key、Secret Key 和 Region。MinIO 等服务可以配置 Endpoint 和路径风格。": "① Add an account: enter Access Key, Secret Key, and Region. Configure Endpoint and path-style addressing for services such as MinIO.",
+  "① 添加账户：填写 Access Key 和 Secret Key。MinIO 等服务可以配置 Endpoint 和路径风格。": "① Add an account: enter the Access Key and Secret Key. Configure Endpoint and path-style addressing for services such as MinIO.",
   "② 选择存储桶，双击文件夹浏览。选择文件后可下载、复制、分享或删除。": "② Select a bucket and double-click folders to browse. Select files to download, copy, share, or delete.",
   "③ 使用 ⌘ / Ctrl + F 搜索，Escape 关闭弹窗或取消选择。": "③ Press ⌘ / Ctrl + F to search. Press Escape to close dialogs or clear selection.",
   "删除目录会同时删除其中所有文件和子目录。分享链接有效期 1 小时。传输活动支持暂停、继续和失败重试；关闭应用后，再次打开可从断点继续。": "Deleting a folder deletes all its contents. Share links expire in 1 hour. Transfers support pause, resume, retry, and resuming after an app restart.",
@@ -295,5 +295,7 @@
   "版本 {}": "Version {}",
   "上次检查：{}": "Last checked: {}",
   "管理应用语言、外观和传输并发。": "Manage the app language, appearance, and transfer concurrency.",
-  "支持 1–32 路。点击保存设置后生效；降低上限时，已开始的分片会先完成。": "Supports 1–32 concurrent parts. Choose Save Settings to apply. Active parts finish before a lower limit takes effect."
+  "支持 1–32 路。点击保存设置后生效；降低上限时，已开始的分片会先完成。": "Supports 1–32 concurrent parts. Choose Save Settings to apply. Active parts finish before a lower limit takes effect.",
+  "S3 全局默认值": "Global S3 defaults",
+  "账户的 Endpoint 或 Region 留空时，其存储桶使用对应的全局默认值。": "When an account leaves Endpoint or Region blank, its buckets use the corresponding global default."
 }

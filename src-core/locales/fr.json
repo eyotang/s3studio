@@ -25,7 +25,7 @@
   "使用临时凭据时填写；更新凭据时留空可清除": "Pour les identifiants temporaires ; laissez vide lors de la modification pour effacer",
   "新文件夹": "Nouveau dossier",
   "请填写此字段。": "Ce champ est obligatoire.",
-  "请填写完整的账户名称、Access Key、Secret Key 和 Region。": "Saisissez le nom du compte, Access Key, Secret Key et Region.",
+  "请填写完整的账户名称、Access Key 和 Secret Key。": "Saisissez un nom de compte, une clé d’accès et une clé secrète.",
   "文件夹名称不能包含 / 或 \\。": "Les noms de dossier ne peuvent contenir ni / ni \\\\.",
   "并发数量需为 1–32 的整数。": "La concurrence doit être un entier de 1 à 32.",
   "账户已安全保存": "Compte enregistré en toute sécurité",
@@ -161,7 +161,7 @@
   "存储桶名称": "Nom du compartiment",
   "目标对象键": "Clé de l’objet de destination",
   "并发数量": "Concurrence",
-  "① 添加账户：填写 Access Key、Secret Key 和 Region。MinIO 等服务可以配置 Endpoint 和路径风格。": "① Ajoutez un compte : saisissez Access Key, Secret Key et Region. Configurez Endpoint et l’adressage par chemin pour MinIO.",
+  "① 添加账户：填写 Access Key 和 Secret Key。MinIO 等服务可以配置 Endpoint 和路径风格。": "① Ajoutez un compte en renseignant la clé d’accès et la clé secrète. Pour les services comme MinIO, vous pouvez configurer un endpoint et l’adressage par chemin.",
   "② 选择存储桶，双击文件夹浏览。选择文件后可下载、复制、分享或删除。": "② Choisissez un compartiment et ouvrez les dossiers par double-clic. Sélectionnez des fichiers pour télécharger, copier, partager ou supprimer.",
   "③ 使用 ⌘ / Ctrl + F 搜索，Escape 关闭弹窗或取消选择。": "③ ⌘ / Ctrl + F pour rechercher. Échap ferme les dialogues ou annule la sélection.",
   "删除目录会同时删除其中所有文件和子目录。分享链接有效期 1 小时。传输活动支持暂停、继续和失败重试；关闭应用后，再次打开可从断点继续。": "Supprimer un dossier supprime tout son contenu. Les liens expirent après 1 heure. Les transferts peuvent être mis en pause, repris ou réessayés, même après redémarrage.",
@@ -295,5 +295,7 @@
   "版本 {}": "Version {}",
   "上次检查：{}": "Dernière vérification : {}",
   "管理应用语言、外观和传输并发。": "Gérez la langue, l’apparence et les transferts simultanés.",
-  "支持 1–32 路。点击保存设置后生效；降低上限时，已开始的分片会先完成。": "De 1 à 32 parties simultanées. Enregistrez les réglages pour appliquer. Les parties actives se terminent avant une réduction."
+  "支持 1–32 路。点击保存设置后生效；降低上限时，已开始的分片会先完成。": "De 1 à 32 parties simultanées. Enregistrez les réglages pour appliquer. Les parties actives se terminent avant une réduction.",
+  "S3 全局默认值": "Valeurs S3 globales par défaut",
+  "账户的 Endpoint 或 Region 留空时，其存储桶使用对应的全局默认值。": "Si un compte laisse le champ Endpoint ou Region vide, ses buckets utilisent la valeur globale correspondante."
 }

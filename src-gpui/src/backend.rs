@@ -116,6 +116,14 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
     let account = text("accountId");
     let bucket = text("bucket");
     match command {
+        "get_s3_defaults" => value(Ok(accounts::get_s3_defaults(store).await)),
+        "set_s3_defaults" => value(
+            accounts::set_s3_defaults(
+                store,
+                serde_json::from_value(args["input"].clone()).map_err(|e| e.to_string())?,
+            )
+            .await,
+        ),
         "list_accounts" => value(accounts::list_accounts(store).await),
         "save_account" => value(
             accounts::save_account(
@@ -183,6 +191,7 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
 }
 fn preview(command: &str, args: Value) -> Result<Value, String> {
     match command {
+        "get_s3_defaults" => value(Ok(accounts::S3Defaults::default())),
         "list_accounts" => Ok(json!([
             {"id":"demo-aws","name":"Design workspace","region":"ap-southeast-1","endpoint":"","pathStyle":false},
             {"id":"demo-minio","name":"Local development","region":"us-east-1","endpoint":"http://localhost:9000","pathStyle":true}

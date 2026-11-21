@@ -271,6 +271,13 @@ impl Workspace {
                     .children(self.accounts.iter().map(|a| {
                         let id = a.id.clone();
                         let active = self.active_id == id;
+                        let defaults = s3_studio_core::accounts::S3Defaults::default();
+                        let uses_aws = self
+                            .s3_defaults
+                            .as_ref()
+                            .unwrap_or(&defaults)
+                            .endpoint_for(a)
+                            .is_empty();
                         button(SharedString::from(format!("account-{id}")), &a.name)
                             .w_full()
                             .justify_start()
@@ -289,24 +296,9 @@ impl Workspace {
                                     .flex_shrink_0()
                                     .justify_center()
                                     .rounded(px(8.))
-                                    .bg(rgb(if a.endpoint.is_empty() {
-                                        0xfff0dd
-                                    } else {
-                                        0xeeebff
-                                    }))
-                                    .text_color(rgb(if a.endpoint.is_empty() {
-                                        0xe99a2b
-                                    } else {
-                                        0x8c7acd
-                                    }))
-                                    .child(icon(
-                                        if a.endpoint.is_empty() {
-                                            "cloud"
-                                        } else {
-                                            "server"
-                                        },
-                                        18.,
-                                    )),
+                                    .bg(rgb(if uses_aws { 0xfff0dd } else { 0xeeebff }))
+                                    .text_color(rgb(if uses_aws { 0xe99a2b } else { 0x8c7acd }))
+                                    .child(icon(if uses_aws { "cloud" } else { "server" }, 18.)),
                             )
                             .child(
                                 col()
@@ -320,7 +312,7 @@ impl Workspace {
                                     )
                                     .child(
                                         label(
-                                            if a.endpoint.is_empty() {
+                                            if uses_aws {
                                                 "Amazon S3"
                                             } else {
                                                 "S3 Compatible"
@@ -690,7 +682,13 @@ impl Workspace {
                     .child(
                         row().gap(px(5.)).child(dot()).child(
                             account
-                                .map(|a| a.region.clone())
+                                .map(|a| {
+                                    self.s3_defaults
+                                        .as_ref()
+                                        .unwrap_or(&s3_studio_core::accounts::S3Defaults::default())
+                                        .region_for(a)
+                                        .to_owned()
+                                })
                                 .unwrap_or_else(|| crate::i18n::t("未连接").into()),
                         ),
                     )

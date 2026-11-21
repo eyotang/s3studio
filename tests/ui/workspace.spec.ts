@@ -7,7 +7,7 @@ test("browse, search, inspect and change views without browser errors", async ({
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "studio-assets." }),
+    page.getByRole("heading", { name: /^studio-assets\.?$/ }),
   ).toBeVisible();
   await expect(
     page.getByText("Brand guidelines.pdf", { exact: true }),
@@ -107,4 +107,32 @@ test("minimum desktop width fits the app and dialogs", async ({ page }) => {
   ).toBe(true);
   await page.getByLabel("添加账户", { exact: true }).click();
   await expect(page.getByRole("button", { name: "保存账户" })).toBeInViewport();
+});
+
+test("global S3 defaults appear in blank account fields and preserve input case", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("传输设置", { exact: true }).click();
+  const modal = page.getByRole("dialog");
+  await modal.getByRole("button", { name: "S3 全局默认值" }).click();
+  const endpoint = modal.getByLabel("Endpoint", { exact: true });
+  const region = modal.getByLabel("Region", { exact: true });
+  await expect(endpoint).toHaveAttribute("autocapitalize", "none");
+  await expect(region).toHaveAttribute("autocapitalize", "none");
+  await endpoint.fill("https://s3.example.com/CaseSensitive");
+  await region.fill("eu-west-2");
+  await modal.getByRole("button", { name: "保存设置" }).click();
+  await expect(modal).toBeHidden();
+
+  await page.getByLabel("添加账户", { exact: true }).click();
+  const accountEndpoint = modal.locator('[name="endpoint"]');
+  const accountRegion = modal.locator('[name="region"]');
+  await expect(accountEndpoint).toHaveValue("");
+  await expect(accountEndpoint).toHaveAttribute(
+    "placeholder",
+    "https://s3.example.com/CaseSensitive",
+  );
+  await expect(accountRegion).toHaveValue("");
+  await expect(accountRegion).toHaveAttribute("placeholder", "eu-west-2");
 });

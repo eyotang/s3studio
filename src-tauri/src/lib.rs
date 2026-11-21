@@ -30,6 +30,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             accounts::list_accounts,
+            accounts::get_s3_defaults,
+            accounts::set_s3_defaults,
             accounts::save_account,
             accounts::remove_account,
             s3::list_buckets,

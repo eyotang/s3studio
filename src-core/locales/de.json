@@ -25,7 +25,7 @@
   "使用临时凭据时填写；更新凭据时留空可清除": "Für temporäre Zugangsdaten; beim Aktualisieren zum Löschen leer lassen",
   "新文件夹": "Neuer Ordner",
   "请填写此字段。": "Dieses Feld ist erforderlich.",
-  "请填写完整的账户名称、Access Key、Secret Key 和 Region。": "Geben Sie Kontoname, Access Key, Secret Key und Region ein.",
+  "请填写完整的账户名称、Access Key 和 Secret Key。": "Gib einen Kontonamen, einen Access Key und einen Secret Key ein.",
   "文件夹名称不能包含 / 或 \\。": "Ordnernamen dürfen weder / noch \\\\ enthalten.",
   "并发数量需为 1–32 的整数。": "Die Parallelität muss eine ganze Zahl von 1 bis 32 sein.",
   "账户已安全保存": "Konto sicher gespeichert",
@@ -161,7 +161,7 @@
   "存储桶名称": "Bucket-Name",
   "目标对象键": "Zielobjektschlüssel",
   "并发数量": "Parallelität",
-  "① 添加账户：填写 Access Key、Secret Key 和 Region。MinIO 等服务可以配置 Endpoint 和路径风格。": "① Konto hinzufügen: Access Key, Secret Key und Region eingeben. Für MinIO Endpoint und pfadbasierte Adressierung konfigurieren.",
+  "① 添加账户：填写 Access Key 和 Secret Key。MinIO 等服务可以配置 Endpoint 和路径风格。": "① Konto hinzufügen: Gib Access Key und Secret Key ein. Für Dienste wie MinIO kannst du einen Endpoint und pfadbasierte Adressierung konfigurieren.",
   "② 选择存储桶，双击文件夹浏览。选择文件后可下载、复制、分享或删除。": "② Bucket auswählen und Ordner doppelklicken. Dateien zum Herunterladen, Kopieren, Teilen oder Löschen auswählen.",
   "③ 使用 ⌘ / Ctrl + F 搜索，Escape 关闭弹窗或取消选择。": "③ Mit ⌘ / Strg + F suchen. Escape schließt Dialoge oder hebt die Auswahl auf.",
   "删除目录会同时删除其中所有文件和子目录。分享链接有效期 1 小时。传输活动支持暂停、继续和失败重试；关闭应用后，再次打开可从断点继续。": "Beim Löschen eines Ordners wird sein gesamter Inhalt gelöscht. Freigabelinks gelten 1 Stunde. Übertragungen lassen sich pausieren, fortsetzen und auch nach App-Neustarts wiederholen.",
@@ -295,5 +295,7 @@
   "版本 {}": "Version {}",
   "上次检查：{}": "Zuletzt geprüft: {}",
   "管理应用语言、外观和传输并发。": "Verwalten Sie Sprache, Design und parallele Übertragungen.",
-  "支持 1–32 路。点击保存设置后生效；降低上限时，已开始的分片会先完成。": "Unterstützt 1–32 parallele Teile. Zum Anwenden Einstellungen speichern. Aktive Teile werden vor einer Reduzierung abgeschlossen."
+  "支持 1–32 路。点击保存设置后生效；降低上限时，已开始的分片会先完成。": "Unterstützt 1–32 parallele Teile. Zum Anwenden Einstellungen speichern. Aktive Teile werden vor einer Reduzierung abgeschlossen.",
+  "S3 全局默认值": "Globale S3-Standardwerte",
+  "账户的 Endpoint 或 Region 留空时，其存储桶使用对应的全局默认值。": "Wenn Endpoint oder Region eines Kontos leer bleiben, verwenden seine Buckets den jeweiligen globalen Standardwert."
 }

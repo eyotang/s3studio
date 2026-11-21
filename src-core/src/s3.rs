@@ -1,4 +1,4 @@
-use crate::accounts::{read_secret, AccountStore};
+use crate::accounts::{get_s3_defaults, read_secret, AccountStore};
 use aws_credential_types::Credentials;
 use aws_sdk_s3::{
     config::{
@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-async fn client(store: &AccountStore, id: &str) -> Result<(Client, String), String> {
+async fn client(store: &AccountStore, id: &str) -> Result<(Client, String, bool), String> {
     let account = store
         .accounts
         .lock()
@@ -25,6 +25,11 @@ async fn client(store: &AccountStore, id: &str) -> Result<(Client, String), Stri
         .find(|a| a.id == id)
         .cloned()
         .ok_or(crate::i18n::t("账户不存在。"))?;
+    let defaults = get_s3_defaults(store).await;
+    let region = defaults.region_for(&account).to_owned();
+    let endpoint = defaults.endpoint_for(&account);
+    let use_configured_connection =
+        !endpoint.is_empty() || (account.region.is_empty() && !defaults.region.is_empty());
     let secret = read_secret(id.to_owned()).await?;
     let credentials = Credentials::new(
         secret.access_key,
@@ -39,7 +44,7 @@ async fn client(store: &AccountStore, id: &str) -> Result<(Client, String), Stri
     );
     let mut config = aws_sdk_s3::Config::builder()
         .behavior_version(BehaviorVersion::latest())
-        .region(Region::new(account.region.clone()))
+        .region(Region::new(region.clone()))
         .credentials_provider(credentials)
         .force_path_style(account.path_style)
         .timeout_config(
@@ -50,21 +55,19 @@ async fn client(store: &AccountStore, id: &str) -> Result<(Client, String), Stri
         )
         .request_checksum_calculation(RequestChecksumCalculation::WhenRequired)
         .response_checksum_validation(ResponseChecksumValidation::WhenRequired);
-    if !account.endpoint.is_empty() {
-        config = config.endpoint_url(account.endpoint);
+    if !endpoint.is_empty() {
+        config = config.endpoint_url(endpoint);
     }
-    Ok((Client::from_conf(config.build()), account.region))
+    Ok((
+        Client::from_conf(config.build()),
+        region,
+        use_configured_connection,
+    ))
 }
 
 pub async fn bucket_client(store: &AccountStore, id: &str, bucket: &str) -> Result<Client, String> {
-    let (client, default_region) = client(store, id).await?;
-    if store
-        .accounts
-        .lock()
-        .await
-        .iter()
-        .any(|account| account.id == id && !account.endpoint.is_empty())
-    {
+    let (client, default_region, use_configured_connection) = client(store, id).await?;
+    if use_configured_connection {
         return Ok(client);
     }
     let cache_key = (id.to_owned(), bucket.to_owned());
@@ -139,7 +142,7 @@ pub struct ObjectPage {
 }
 
 pub async fn list_buckets(store: &AccountStore, account_id: String) -> Result<Vec<Bucket>, String> {
-    let (client, _) = client(&store, &account_id).await?;
+    let (client, _, _) = client(&store, &account_id).await?;
     let mut token = None;
     let mut buckets = Vec::new();
     loop {
@@ -269,7 +272,7 @@ pub async fn create_bucket(
         )
         .into());
     }
-    let (client, region) = client(&store, &account_id).await?;
+    let (client, region, _) = client(&store, &account_id).await?;
     let mut request = client.create_bucket().bucket(name);
     if region != "us-east-1" {
         request = request.create_bucket_configuration(

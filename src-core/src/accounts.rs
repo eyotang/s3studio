@@ -10,7 +10,9 @@ const SERVICE: &str = "com.s3studio.desktop";
 pub struct Account {
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub region: String,
+    #[serde(default)]
     pub endpoint: String,
     pub path_style: bool,
 }
@@ -20,12 +22,41 @@ pub struct Account {
 pub struct AccountInput {
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub region: String,
+    #[serde(default)]
     pub endpoint: String,
     pub path_style: bool,
     pub access_key: String,
     pub secret_key: String,
     pub session_token: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(default)]
+pub struct S3Defaults {
+    pub region: String,
+    pub endpoint: String,
+}
+
+impl S3Defaults {
+    pub fn endpoint_for<'a>(&'a self, account: &'a Account) -> &'a str {
+        if account.endpoint.is_empty() {
+            &self.endpoint
+        } else {
+            &account.endpoint
+        }
+    }
+
+    pub fn region_for<'a>(&'a self, account: &'a Account) -> &'a str {
+        if !account.region.is_empty() {
+            &account.region
+        } else if !self.region.is_empty() {
+            &self.region
+        } else {
+            "us-east-1"
+        }
+    }
 }
 
 // Never serialize this type into frontend responses or account configuration files.
@@ -40,6 +71,8 @@ pub struct AccountStore {
     pub accounts: Mutex<Vec<Account>>,
     pub bucket_regions: Mutex<HashMap<(String, String), String>>,
     path: PathBuf,
+    defaults: Mutex<S3Defaults>,
+    defaults_path: PathBuf,
 }
 
 impl AccountStore {
@@ -49,23 +82,59 @@ impl AccountStore {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(e.into()),
         };
+        let defaults_path = path.with_extension("s3-defaults.json");
+        let defaults = match std::fs::read(&defaults_path) {
+            Ok(data) => serde_json::from_slice(&data)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => S3Defaults::default(),
+            Err(e) => return Err(e.into()),
+        };
         Ok(Self {
             accounts: Mutex::new(accounts),
             bucket_regions: Mutex::new(HashMap::new()),
             path,
+            defaults: Mutex::new(defaults),
+            defaults_path,
         })
     }
 
     async fn persist(&self, accounts: &[Account]) -> Result<(), String> {
         let data = serde_json::to_vec_pretty(accounts).map_err(|e| e.to_string())?;
-        let temporary = self.path.with_extension("json.tmp");
-        tokio::fs::write(&temporary, data)
-            .await
-            .map_err(|e| crate::lf!("无法保存账户配置：{e}", e = e))?;
-        tokio::fs::rename(temporary, &self.path)
-            .await
-            .map_err(|e| crate::lf!("无法替换账户配置：{e}", e = e))
+        persist_config(&self.path, data).await
     }
+}
+
+async fn persist_config(path: &std::path::Path, data: Vec<u8>) -> Result<(), String> {
+    let temporary = path.with_extension("json.tmp");
+    tokio::fs::write(&temporary, data)
+        .await
+        .map_err(|e| crate::lf!("无法保存账户配置：{e}", e = e))?;
+    tokio::fs::rename(temporary, path)
+        .await
+        .map_err(|e| crate::lf!("无法替换账户配置：{e}", e = e))
+}
+
+pub async fn get_s3_defaults(store: &AccountStore) -> S3Defaults {
+    store.defaults.lock().await.clone()
+}
+
+pub async fn set_s3_defaults(
+    store: &AccountStore,
+    input: S3Defaults,
+) -> Result<S3Defaults, String> {
+    let input = S3Defaults {
+        region: input.region.trim().into(),
+        endpoint: input.endpoint.trim().into(),
+    };
+    validate_connection(&input.region, &input.endpoint)?;
+    let input = S3Defaults {
+        endpoint: input.endpoint.trim_end_matches('/').into(),
+        ..input
+    };
+    let mut defaults = store.defaults.lock().await;
+    let data = serde_json::to_vec_pretty(&input).map_err(|e| e.to_string())?;
+    persist_config(&store.defaults_path, data).await?;
+    *defaults = input.clone();
+    Ok(input)
 }
 
 fn keyring_error(e: keyring::Error) -> String {
@@ -120,20 +189,15 @@ async fn delete_secret(id: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
-fn validate(input: &AccountInput) -> Result<(), String> {
-    if input.name.trim().is_empty() || input.name.chars().count() > 80 {
-        return Err(crate::i18n::t("账户名称需为 1–80 个字符。").into());
-    }
-    if input.region.is_empty()
-        || !input
-            .region
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+fn validate_connection(region: &str, endpoint: &str) -> Result<(), String> {
+    if !region
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-')
     {
         return Err(crate::i18n::t("请输入有效的 Region，例如 us-east-1。").into());
     }
-    if !input.endpoint.is_empty() {
-        let url = url::Url::parse(&input.endpoint)
+    if !endpoint.is_empty() {
+        let url = url::Url::parse(endpoint)
             .map_err(|_| crate::i18n::t("Endpoint 必须是完整的 HTTP / HTTPS URL。"))?;
         if !matches!(url.scheme(), "https" | "http")
             || url.host_str().is_none()
@@ -148,6 +212,14 @@ fn validate(input: &AccountInput) -> Result<(), String> {
             .into());
         }
     }
+    Ok(())
+}
+
+fn validate(input: &AccountInput) -> Result<(), String> {
+    if input.name.trim().is_empty() || input.name.chars().count() > 80 {
+        return Err(crate::i18n::t("账户名称需为 1–80 个字符。").into());
+    }
+    validate_connection(&input.region, &input.endpoint)?;
     if input.access_key.is_empty() != input.secret_key.is_empty() {
         return Err(crate::i18n::t("更新凭据时必须同时填写 Access Key 和 Secret Key。").into());
     }
@@ -292,6 +364,49 @@ mod tests {
             secret_key: "secret".into(),
             session_token: "".into(),
         }
+    }
+    #[tokio::test]
+    async fn s3_defaults_persist_without_overwriting_account_fields() {
+        let dir = std::env::temp_dir().join(format!("s3-defaults-{}", Uuid::new_v4()));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("accounts.json");
+        let accounts = r#"[{"id":"legacy","name":"Legacy","region":"eu-west-1","pathStyle":false},
+            {"id":"inherited","name":"Inherited","endpoint":"https://custom.example","pathStyle":true}]"#;
+        std::fs::write(&path, accounts).unwrap();
+        let store = AccountStore::open(path.clone()).unwrap();
+        let defaults = set_s3_defaults(
+            &store,
+            S3Defaults {
+                endpoint: " https://global.example/ ".into(),
+                region: " ap-southeast-1 ".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let invalid = S3Defaults {
+            endpoint: "file:///invalid".into(),
+            ..defaults.clone()
+        };
+        assert!(set_s3_defaults(&store, invalid).await.is_err());
+        let reopened = AccountStore::open(path.clone()).unwrap();
+        assert_eq!(get_s3_defaults(&reopened).await, defaults);
+        assert_eq!(std::fs::read_to_string(path).unwrap(), accounts);
+
+        let mut accounts = list_accounts(&reopened).await.unwrap().into_iter();
+        let legacy = accounts.next().unwrap();
+        assert_eq!(defaults.region_for(&legacy), "eu-west-1");
+        assert_eq!(defaults.endpoint_for(&legacy), "https://global.example");
+
+        let inherited = accounts.next().unwrap();
+        assert_eq!(S3Defaults::default().region_for(&inherited), "us-east-1");
+        assert_eq!(defaults.region_for(&inherited), "ap-southeast-1");
+        assert_eq!(defaults.endpoint_for(&inherited), "https://custom.example");
+
+        set_s3_defaults(&reopened, S3Defaults::default())
+            .await
+            .unwrap();
+        assert_eq!(get_s3_defaults(&reopened).await, S3Defaults::default());
+        std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn rejects_invalid_endpoints_and_incomplete_credentials() {

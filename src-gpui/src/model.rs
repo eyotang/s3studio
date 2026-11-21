@@ -20,6 +20,7 @@ pub enum Dialog {
     Help,
     About,
     TransferSettings,
+    S3Defaults,
     CancelTransfer(String),
     Update,
 }
@@ -37,6 +38,7 @@ impl Dialog {
             Self::Help => crate::i18n::t("为云端工作而设计"),
             Self::About => crate::i18n::t("关于 S3 Studio"),
             Self::TransferSettings => crate::i18n::t("设置"),
+            Self::S3Defaults => crate::i18n::t("S3 全局默认值"),
             Self::CancelTransfer(_) => crate::i18n::t("取消传输？"),
             Self::Update => crate::i18n::t("软件更新"),
         }
@@ -50,7 +52,7 @@ impl Dialog {
             Self::Delete => crate::i18n::t("确认删除"),
             Self::Upload => crate::i18n::t("选择文件并上传"),
             Self::RemoveAccount => crate::i18n::t("移除账户"),
-            Self::TransferSettings => crate::i18n::t("保存设置"),
+            Self::TransferSettings | Self::S3Defaults => crate::i18n::t("保存设置"),
             Self::Help => crate::i18n::t("开始使用"),
             Self::About => crate::i18n::t("关闭"),
             Self::CancelTransfer(_) => crate::i18n::t("取消并清理"),

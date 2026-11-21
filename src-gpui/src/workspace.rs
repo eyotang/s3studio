@@ -6,7 +6,7 @@ use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::component::input::{InputEvent, InputState};
 use gpui::{prelude::*, *};
 use s3_studio_core::{
-    accounts::Account,
+    accounts::{Account, S3Defaults},
     s3::{Bucket, ObjectInfo, ObjectPage, S3Object},
     transfers::{Settings, Transfer},
 };
@@ -21,6 +21,7 @@ pub enum Pending {
     Info(u64),
     Transfers,
     Settings,
+    S3Defaults,
     Submit(Dialog),
     Download,
     Share,
@@ -54,6 +55,7 @@ pub struct Workspace {
     pub info_error: String,
     pub transfers: Vec<Transfer>,
     pub settings: Settings,
+    pub s3_defaults: Option<S3Defaults>,
     pub expanded: bool,
     pub transfer_error: String,
     pub pending_transfers: HashSet<String>,
@@ -132,6 +134,7 @@ impl Workspace {
             info_error: String::new(),
             transfers: vec![],
             settings: Settings::default(),
+            s3_defaults: None,
             expanded: true,
             transfer_error: String::new(),
             pending_transfers: HashSet::new(),
@@ -168,6 +171,7 @@ impl Workspace {
         this.request("list_accounts", json!({}), Pending::Accounts(None));
         this.request("list_transfers", json!({}), Pending::Transfers);
         this.request("get_transfer_settings", json!({}), Pending::Settings);
+        this.request("get_s3_defaults", json!({}), Pending::S3Defaults);
         window.focus(&this.focus, cx);
         this
     }
@@ -438,14 +442,15 @@ impl Workspace {
                     window,
                     cx,
                 );
+                let defaults = self.s3_defaults.clone().unwrap_or_default();
                 self.add_input(
                     "region",
-                    account
-                        .as_ref()
-                        .map(|a| a.region.as_str())
-                        .filter(|s| !s.is_empty())
-                        .unwrap_or("us-east-1"),
-                    "us-east-1",
+                    account.as_ref().map(|a| a.region.as_str()).unwrap_or(""),
+                    if defaults.region.is_empty() {
+                        "us-east-1"
+                    } else {
+                        &defaults.region
+                    },
                     false,
                     window,
                     cx,
@@ -473,7 +478,11 @@ impl Workspace {
                 self.add_input(
                     "endpoint",
                     account.as_ref().map(|a| a.endpoint.as_str()).unwrap_or(""),
-                    "https://s3.example.com",
+                    if defaults.endpoint.is_empty() {
+                        "https://s3.example.com"
+                    } else {
+                        &defaults.endpoint
+                    },
                     false,
                     window,
                     cx,
@@ -493,6 +502,18 @@ impl Workspace {
                 );
                 self.add_input("name", &name, &name, false, window, cx);
             }
+            Dialog::S3Defaults => {
+                let defaults = self.s3_defaults.clone().unwrap_or_default();
+                self.add_input(
+                    "endpoint",
+                    &defaults.endpoint,
+                    "https://s3.example.com",
+                    false,
+                    window,
+                    cx,
+                );
+                self.add_input("region", &defaults.region, "us-east-1", false, window, cx);
+            }
             Dialog::TransferSettings => self.add_input(
                 "concurrency",
                 &self.settings.concurrency.to_string(),
@@ -509,6 +530,7 @@ impl Workspace {
             .inputs
             .get("name")
             .or_else(|| self.form.inputs.get("concurrency"))
+            .or_else(|| self.form.inputs.get("endpoint"))
             .cloned();
         if let Some(input) = input {
             input.update(cx, |s, cx| s.focus(window, cx));
@@ -579,12 +601,10 @@ impl Workspace {
                 let secret = self.input("secretKey", cx);
                 let region = self.input("region", cx).trim().to_owned();
                 if name.chars().count() > 80
-                    || region.is_empty()
                     || (id.is_none() && (access.is_empty() || secret.is_empty()))
                 {
                     self.dialog_error =
-                        crate::i18n::t("请填写完整的账户名称、Access Key、Secret Key 和 Region。")
-                            .into();
+                        crate::i18n::t("请填写完整的账户名称、Access Key 和 Secret Key。").into();
                     cx.notify();
                     return;
                 }
@@ -636,6 +656,13 @@ impl Workspace {
                 "upload_files"
             }
             Dialog::RemoveAccount => "remove_account",
+            Dialog::S3Defaults => {
+                args["input"] = json!({
+                    "endpoint": self.input("endpoint", cx),
+                    "region": self.input("region", cx),
+                });
+                "set_s3_defaults"
+            }
             Dialog::TransferSettings => {
                 let n = self.input("concurrency", cx).parse::<usize>();
                 if !n.as_ref().is_ok_and(|n| (1..=32).contains(n)) {
@@ -842,6 +869,9 @@ impl Workspace {
                             .filter(|t| !self.transfer_changes.contains(&t.id)),
                     );
                 }
+                Pending::S3Defaults => {
+                    self.s3_defaults = serde_json::from_value(data).map_err(|e| e.to_string())?;
+                }
                 Pending::Settings => {
                     self.settings = serde_json::from_value(data).map_err(|e| e.to_string())?
                 }
@@ -861,6 +891,26 @@ impl Workspace {
                             let name = self.input("name", cx).trim().to_owned();
                             self.load_buckets(Some(name), window, cx);
                             crate::i18n::t("存储桶已创建").into()
+                        }
+                        Dialog::S3Defaults => {
+                            let defaults: S3Defaults =
+                                serde_json::from_value(data).map_err(|e| e.to_string())?;
+                            if let (Some(account), Some(old)) = (
+                                self.accounts
+                                    .iter()
+                                    .find(|account| account.id == self.active_id),
+                                self.s3_defaults.as_ref(),
+                            ) {
+                                if old.endpoint_for(account) != defaults.endpoint_for(account)
+                                    || old.region_for(account) != defaults.region_for(account)
+                                    || (account.region.is_empty()
+                                        && old.region.is_empty() != defaults.region.is_empty())
+                                {
+                                    self.load_buckets(None, window, cx);
+                                }
+                            }
+                            self.s3_defaults = Some(defaults);
+                            crate::i18n::t("设置保存成功").into()
                         }
                         Dialog::TransferSettings => {
                             self.settings =

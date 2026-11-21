@@ -26,7 +26,7 @@ test("transfer controls resume, pause and cancel with confirmation", async ({
 }) => {
   await page.goto("/?previewTransfers");
   await expect(
-    page.getByRole("heading", { name: "studio-assets." }),
+    page.getByRole("heading", { name: /^studio-assets\.?$/ }),
   ).toBeVisible();
   await expect(page.locator(".transfer-row")).toHaveCount(2);
   await page.screenshot({

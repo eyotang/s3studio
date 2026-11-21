@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { Account, Bucket, ObjectPage, Transfer } from "./types";
 export const native = isTauri();
 let demoConcurrency = 8;
+let demoS3Defaults = { endpoint: "", region: "" };
 let demoTransfers: Transfer[] =
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).has("previewTransfers")
@@ -71,6 +72,11 @@ export async function api<T>(
   if (native) return invoke<T>(command, args);
   await new Promise((resolve) => setTimeout(resolve, 180));
   if (command === "list_accounts") return demoAccounts as T;
+  if (command === "get_s3_defaults") return demoS3Defaults as T;
+  if (command === "set_s3_defaults") {
+    demoS3Defaults = args.input as typeof demoS3Defaults;
+    return demoS3Defaults as T;
+  }
   if (command === "list_transfers") return demoTransfers as T;
   if (command === "get_transfer_settings")
     return { concurrency: demoConcurrency } as T;

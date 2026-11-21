@@ -51,6 +51,8 @@ import type {
   S3Object,
 } from "./types";
 
+type S3Defaults = Pick<Account, "endpoint" | "region">;
+
 type Dialog =
   | { type: "account"; account?: Account }
   | {
@@ -62,7 +64,8 @@ type Dialog =
         | "upload"
         | "removeAccount"
         | "help"
-        | "transferSettings";
+        | "transferSettings"
+        | "s3Defaults";
     };
 function FileIcon({ object, size = 20 }: { object: S3Object; size?: number }) {
   if (object.folder)
@@ -118,6 +121,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [s3Defaults, setS3Defaults] = useState<S3Defaults | null>(null);
   const [dialogError, setDialogError] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
   const [showInfo, setShowInfo] = useState(false);
@@ -153,6 +157,9 @@ export default function App() {
   }, []);
   useEffect(() => {
     loadAccounts().catch((e) => setError(String(e)));
+    api<S3Defaults>("get_s3_defaults")
+      .then(setS3Defaults)
+      .catch((e) => setError(String(e)));
   }, [loadAccounts]);
   useEffect(() => {
     if (!toast) return;
@@ -347,6 +354,22 @@ export default function App() {
       if (dialog?.type === "transferSettings") {
         await transferManager.saveSettings(Number(form.get("concurrency")));
         notify("设置保存成功");
+      } else if (dialog?.type === "s3Defaults") {
+        const defaults = await api<S3Defaults>("set_s3_defaults", {
+          input: {
+            region: String(form.get("region") || "").trim(),
+            endpoint: String(form.get("endpoint") || "").trim(),
+          },
+        });
+        if (
+          account &&
+          s3Defaults &&
+          ((!account.endpoint && s3Defaults.endpoint !== defaults.endpoint) ||
+            (!account.region && s3Defaults.region !== defaults.region))
+        )
+          await loadBuckets();
+        setS3Defaults(defaults);
+        notify("设置保存成功");
       } else if (dialog?.type === "account") {
         const input: AccountInput = {
           id: dialog.account?.id || "",
@@ -475,12 +498,22 @@ export default function App() {
               }}
               disabled={busy}
             >
-              <div className={`provider-icon ${a.endpoint ? "purple" : ""}`}>
-                {a.endpoint ? <Server size={18} /> : <Cloud size={18} />}
+              <div
+                className={`provider-icon ${a.endpoint || s3Defaults?.endpoint ? "purple" : ""}`}
+              >
+                {a.endpoint || s3Defaults?.endpoint ? (
+                  <Server size={18} />
+                ) : (
+                  <Cloud size={18} />
+                )}
               </div>
               <div>
                 <strong>{a.name}</strong>
-                <span>{a.endpoint ? "S3 Compatible" : "Amazon S3"}</span>
+                <span>
+                  {a.endpoint || s3Defaults?.endpoint
+                    ? "S3 Compatible"
+                    : "Amazon S3"}
+                </span>
               </div>
               {activeId === a.id && <span className="connection-dot" />}
             </button>
@@ -510,6 +543,7 @@ export default function App() {
           <div className="bucket-search">
             <Search size={13} />
             <input
+              autoCapitalize="none"
               aria-label="搜索存储桶"
               placeholder="查找存储桶"
               value={bucketQuery}
@@ -622,7 +656,9 @@ export default function App() {
             <span className="summary-divider" />
             <span>
               <span className="live-dot" />
-              {account?.region || "未连接"}
+              {account
+                ? account.region || s3Defaults?.region || "us-east-1"
+                : "未连接"}
             </span>
             <span className="summary-divider" />
             <span>{native ? "安全直连" : "示例工作空间"}</span>
@@ -706,6 +742,7 @@ export default function App() {
               <div className="object-search">
                 <Search size={17} />
                 <input
+                  autoCapitalize="none"
                   ref={searchRef}
                   aria-label="搜索当前目录"
                   placeholder="搜索当前目录中的文件…"
@@ -1114,6 +1151,7 @@ export default function App() {
                   removeAccount: "移除这个账户？",
                   help: "为云端工作而设计",
                   transferSettings: "传输设置",
+                  s3Defaults: "S3 全局默认值",
                 }[dialog.type]
               }
             </h2>
@@ -1132,6 +1170,8 @@ export default function App() {
                   removeAccount:
                     "删除本机保存的账户配置和凭据，云端文件不受影响。",
                   help: "一个基于 Tauri 的跨平台 S3 工作空间。",
+                  s3Defaults:
+                    "账户的 Endpoint 或 Region 留空时，其存储桶使用对应的全局默认值。",
                   transferSettings:
                     "设置整个应用的并发上限，所有上传和下载任务共同使用。建议从默认 8 路开始。",
                 }[dialog.type]
@@ -1140,7 +1180,7 @@ export default function App() {
             {dialog.type === "help" ? (
               <div className="help-content">
                 <p>
-                  ① 添加账户：填写 Access Key、Secret Key 和 Region。MinIO
+                  ① 添加账户：填写 Access Key 和 Secret Key。MinIO
                   等服务可以配置 Endpoint 和路径风格。
                 </p>
                 <p>
@@ -1164,7 +1204,7 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <form onSubmit={submit}>
+              <form key={dialog.type} onSubmit={submit}>
                 {dialog.type === "transferSettings" && (
                   <>
                     <label>
@@ -1185,6 +1225,37 @@ export default function App() {
                       支持 1–32
                       路。设置自动保存；降低上限时，已开始的分片会先完成，后续分片按新上限执行。
                     </p>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={!s3Defaults || busy}
+                      onClick={() => openDialog({ type: "s3Defaults" })}
+                    >
+                      S3 全局默认值
+                    </button>
+                  </>
+                )}
+                {dialog.type === "s3Defaults" && (
+                  <>
+                    <label>
+                      Endpoint
+                      <input
+                        autoCapitalize="none"
+                        name="endpoint"
+                        defaultValue={s3Defaults?.endpoint}
+                        placeholder="https://s3.example.com"
+                        autoFocus
+                      />
+                    </label>
+                    <label>
+                      Region
+                      <input
+                        autoCapitalize="none"
+                        name="region"
+                        defaultValue={s3Defaults?.region}
+                        placeholder="us-east-1"
+                      />
+                    </label>
                   </>
                 )}
                 {dialog.type === "account" && (
@@ -1192,6 +1263,7 @@ export default function App() {
                     <label>
                       账户名称
                       <input
+                        autoCapitalize="none"
                         name="name"
                         defaultValue={dialog.account?.name}
                         placeholder="例如：生产环境 / 个人存储"
@@ -1204,6 +1276,7 @@ export default function App() {
                       <label>
                         Access Key ID
                         <input
+                          autoCapitalize="none"
                           name="accessKey"
                           autoComplete="off"
                           placeholder={
@@ -1215,16 +1288,17 @@ export default function App() {
                       <label>
                         Region
                         <input
+                          autoCapitalize="none"
                           name="region"
-                          defaultValue={dialog.account?.region || "us-east-1"}
-                          required
-                          placeholder="us-east-1"
+                          defaultValue={dialog.account?.region}
+                          placeholder={s3Defaults?.region || "us-east-1"}
                         />
                       </label>
                     </div>
                     <label>
                       Secret Access Key
                       <input
+                        autoCapitalize="none"
                         name="secretKey"
                         type="password"
                         autoComplete="new-password"
@@ -1239,6 +1313,7 @@ export default function App() {
                     <label>
                       Session Token <span>可选 · 临时凭据</span>
                       <input
+                        autoCapitalize="none"
                         name="sessionToken"
                         type="password"
                         autoComplete="new-password"
@@ -1248,10 +1323,13 @@ export default function App() {
                     <label>
                       Endpoint <span>可选 · S3 兼容服务</span>
                       <input
+                        autoCapitalize="none"
                         name="endpoint"
                         type="url"
                         defaultValue={dialog.account?.endpoint}
-                        placeholder="https://s3.example.com"
+                        placeholder={
+                          s3Defaults?.endpoint || "https://s3.example.com"
+                        }
                       />
                     </label>
                     <label className="checkbox-label">
@@ -1282,6 +1360,7 @@ export default function App() {
                         ? "存储桶名称"
                         : "文件夹名称"}
                     <input
+                      autoCapitalize="none"
                       name="name"
                       autoFocus
                       required
@@ -1356,6 +1435,7 @@ export default function App() {
                           upload: "选择文件并上传",
                           removeAccount: "移除账户",
                           transferSettings: "保存设置",
+                          s3Defaults: "保存设置",
                         }[dialog.type]}
                   </button>
                 </div>
