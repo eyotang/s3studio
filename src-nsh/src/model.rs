@@ -14,6 +14,7 @@ pub enum Dialog {
     Folder,
     Bucket,
     BucketSettings,
+    LocatePath,
     Copy,
     Delete,
     Upload,
@@ -33,6 +34,7 @@ impl Dialog {
             Self::Folder => crate::i18n::t("新建文件夹"),
             Self::Bucket => crate::i18n::t("创建存储桶"),
             Self::BucketSettings => crate::i18n::t("存储桶设置"),
+            Self::LocatePath => crate::i18n::t("定位路径"),
             Self::Copy => crate::i18n::t("复制对象"),
             Self::Delete => crate::i18n::t("删除所选项目？"),
             Self::Upload => crate::i18n::t("上传文件"),
@@ -47,6 +49,7 @@ impl Dialog {
     }
     pub fn submit_label(&self) -> &'static str {
         match self {
+            Self::LocatePath => crate::i18n::t("定位路径"),
             Self::Account(_) => crate::i18n::t("保存账户"),
             Self::Folder => crate::i18n::t("创建文件夹"),
             Self::Bucket => crate::i18n::t("创建存储桶"),
@@ -92,7 +95,12 @@ pub fn status_label(status: &str) -> &'static str {
 }
 pub fn object_name<'a>(key: &'a str, prefix: &str) -> &'a str {
     let name = key.strip_prefix(prefix).unwrap_or(key);
-    name.strip_suffix('/').unwrap_or(name)
+    let name = name.strip_suffix('/').unwrap_or(name);
+    if name.is_empty() && key.ends_with('/') {
+        "/"
+    } else {
+        name
+    }
 }
 pub fn bytes(value: u128) -> String {
     if value == 0 {

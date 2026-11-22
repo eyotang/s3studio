@@ -53,6 +53,69 @@ fn search_selection_grid_and_delete_confirmation() {
 }
 
 #[test]
+fn enter_locates_and_selects_an_object_outside_the_first_directory_page() {
+    let mut app = preview();
+    app.press("id:tree-view").unwrap();
+    app.wait_for("id:tree-totals").unwrap();
+    let key = "Brand assets/Guides/Usage.pdf";
+    app.type_text("id:object-search", key).unwrap();
+    app.press_key("enter").unwrap();
+    app.wait_for("id:breadcrumb-Brand assets/Guides/").unwrap();
+    app.wait_for("id:object-Brand assets/Guides/Typography.txt")
+        .unwrap();
+    let row = format!("id:object-{key}");
+    app.wait_for(&row).unwrap();
+    app.wait_for("id:object-inspector").unwrap();
+    assert!(app.screen().enabled("id:copy-selection").unwrap());
+    assert!(!app.screen().matches("id:tree-objects").unwrap());
+
+    app.press("id:load-more").unwrap();
+    app.wait_for_gone("id:load-more", WAIT).unwrap();
+    assert_eq!(app.screen().count(&row).unwrap(), 1);
+    assert!(app.screen().enabled("id:copy-selection").unwrap());
+}
+
+#[test]
+fn locator_opens_a_directory_in_another_bucket_and_keeps_location_on_a_miss() {
+    let mut app = preview();
+    app.press("id:locate-path").unwrap();
+    app.wait_for("id:path").unwrap();
+    app.type_text("id:path", "s3://application-backups/Brand assets/Guides/")
+        .unwrap();
+    app.press("id:submit-dialog").unwrap();
+    let directory = "id:breadcrumb-Brand assets/Guides/";
+    app.wait_for(directory).unwrap();
+    app.wait_for("id:object-Brand assets/Guides/Typography.txt")
+        .unwrap();
+    assert!(
+        app.screen()
+            .selected("id:bucket-application-backups")
+            .unwrap()
+    );
+
+    app.press("id:locate-path").unwrap();
+    app.wait_for("id:path").unwrap();
+    app.type_text("id:path", "brand assets/Guides/").unwrap();
+    app.press("id:submit-dialog").unwrap();
+    app.wait_for(i18n::t("找不到指定的目录或对象。")).unwrap();
+    app.press_key("escape").unwrap();
+    app.wait_for(directory).unwrap();
+}
+
+#[test]
+fn locator_can_select_a_slash_ending_key_as_an_object() {
+    let mut app = preview();
+    app.press("id:locate-path").unwrap();
+    app.wait_for("id:path").unwrap();
+    app.type_text("id:path", "Product design/Archive/").unwrap();
+    app.press("id:locate-object-only").unwrap();
+    app.press("id:submit-dialog").unwrap();
+    app.wait_for("id:object-Product design/Archive/").unwrap();
+    app.wait_for("id:object-inspector").unwrap();
+    assert!(app.screen().enabled("id:copy-selection").unwrap());
+}
+
+#[test]
 fn tree_view_expands_levels_and_displays_parent_size_shares() {
     let mut app = preview();
     app.press("id:tree-view").unwrap();

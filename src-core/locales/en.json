@@ -328,5 +328,11 @@
   "下一页": "Next page",
   "计算大小中…": "Calculating size…",
   "统计完成前，搜索范围为已加载的目录页。": "Search covers loaded directory pages until the scan finishes.",
-  "服务端未返回有效的分页标记。": "The server did not return a valid continuation token."
+  "服务端未返回有效的分页标记。": "The server did not return a valid continuation token.",
+  "定位路径": "Go to path",
+  "完整路径": "Full path",
+  "仅定位对象": "Exact object only",
+  "输入从桶根目录开始的路径，或用 s3:// 指定存储桶。目录路径可用 / 结尾。": "Enter a path from the bucket root, or use s3:// to specify the bucket. End a folder path with /.",
+  "路径中的存储桶不在当前账户的列表中。": "The bucket in this path is outside the active account’s bucket list.",
+  "找不到指定的目录或对象。": "The specified folder or object was not found."
 }

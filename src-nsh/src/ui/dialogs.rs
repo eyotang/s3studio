@@ -119,6 +119,9 @@ fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
         Dialog::BucketSettings => {
             t("修改此存储桶在本机的连接设置。留空时继承账户或全局默认值。").into()
         }
+        Dialog::LocatePath => {
+            t("输入从桶根目录开始的路径，或用 s3:// 指定存储桶。目录路径可用 / 结尾。").into()
+        }
         Dialog::Copy => t("输入目标对象的完整路径，复制到当前存储桶。").into(),
         Dialog::Delete => {
             let chosen = state.chosen();
@@ -187,6 +190,15 @@ fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> 
                     .disabled(state.is_busy()).on_press(store.open(Dialog::RemoveAccount)),
             )),
         Dialog::Folder => field(store, state, "name", t("文件夹名称"), true),
+        Dialog::LocatePath => column().gap(px(10.0))
+            .child(field(store, state, "path", t("完整路径"), true))
+            .child(checkbox("locate-object-only", t("仅定位对象"), state.form.locate_object_only, false)
+                .disabled(state.is_busy()).gap(px(7.0)).items_center()
+                .child(label(t("仅定位对象"), 11.0, TEXT))
+                .on_change(move |checked: &bool| store.change(|state| {
+                    state.form.locate_object_only = *checked;
+                    state.dialog_error.clear();
+                }))),
         Dialog::Copy => field(store, state, "name", t("目标对象键"), true),
         Dialog::Bucket | Dialog::BucketSettings | Dialog::S3Defaults => column().gap(px(11.0))
             .when(dialog == &Dialog::Bucket, |body| body.child(field(store, state, "name", t("存储桶名称"), true)))

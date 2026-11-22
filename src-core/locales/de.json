@@ -328,5 +328,11 @@
   "下一页": "Nächste Seite",
   "计算大小中…": "Größe wird berechnet…",
   "统计完成前，搜索范围为已加载的目录页。": "Bis zum Ende des Scans werden die geladenen Verzeichnisseiten durchsucht.",
-  "服务端未返回有效的分页标记。": "Der Server hat kein gültiges Fortsetzungstoken zurückgegeben."
+  "服务端未返回有效的分页标记。": "Der Server hat kein gültiges Fortsetzungstoken zurückgegeben.",
+  "定位路径": "Pfad öffnen",
+  "完整路径": "Vollständiger Pfad",
+  "仅定位对象": "Nur genaues Objekt",
+  "输入从桶根目录开始的路径，或用 s3:// 指定存储桶。目录路径可用 / 结尾。": "Geben Sie den Pfad ab der Bucket-Wurzel ein oder geben Sie den Bucket mit s3:// an. Ordnerpfade können auf / enden.",
+  "路径中的存储桶不在当前账户的列表中。": "Der Bucket in diesem Pfad steht nicht in der Bucket-Liste des aktiven Kontos.",
+  "找不到指定的目录或对象。": "Der angegebene Ordner oder das angegebene Objekt wurde nicht gefunden."
 }

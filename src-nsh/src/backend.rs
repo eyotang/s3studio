@@ -417,6 +417,16 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             )
             .await,
         ),
+        "locate_path" => value(
+            s3::locate_path(
+                store,
+                &account,
+                &bucket,
+                &text("key"),
+                args["objectOnly"].as_bool().unwrap_or_default(),
+            )
+            .await,
+        ),
         "create_bucket" => {
             let _changes = cache.mutations.lock().await;
             let name = text("name");
@@ -579,11 +589,27 @@ fn preview(
         ])),
         "list_objects" | "list_tree_level" => {
             let prefix = args["prefix"].as_str().unwrap_or_default();
+            let objects = preview_objects(prefix, false);
+            #[cfg(test)]
+            if command == "list_objects" && prefix == "Brand assets/Guides/" {
+                let second_page = args["token"].as_str() == Some("preview-guides-next");
+                return value(Ok(s3::ObjectPage {
+                    objects: objects
+                        .into_iter()
+                        .filter(|object| object.key.ends_with("Usage.pdf") == second_page)
+                        .collect(),
+                    next_token: (!second_page).then(|| "preview-guides-next".into()),
+                }));
+            }
             value(Ok(s3::ObjectPage {
-                objects: preview_objects(prefix, false),
+                objects,
                 next_token: None,
             }))
         }
+        "locate_path" => value(preview_location(
+            args["key"].as_str().unwrap_or_default(),
+            args["objectOnly"].as_bool().unwrap_or_default(),
+        )),
         "list_transfers" => Ok(json!([])),
         "get_transfer_settings" => Ok(json!({"concurrency":8})),
         "object_info" => Ok(
@@ -591,6 +617,39 @@ fn preview(
         ),
         _ => Err(crate::i18n::t("当前是界面预览。请在桌面应用中连接真实账户。").into()),
     }
+}
+
+fn preview_location(key: &str, object_only: bool) -> Result<s3::PathTarget, String> {
+    let objects = preview_objects("", true);
+    if !key.is_empty()
+        && (object_only || !key.ends_with('/'))
+        && let Some(object) = objects.iter().find(|object| object.key == key)
+    {
+        return Ok(s3::PathTarget::Object {
+            object: s3::S3Object {
+                folder: false,
+                ..object.clone()
+            },
+            info: Some(s3::ObjectInfo {
+                size: object.size,
+                content_type: "application/octet-stream".into(),
+                etag: "preview-object".into(),
+                modified: object.modified.clone(),
+                metadata: Default::default(),
+            }),
+        });
+    }
+    if !object_only {
+        let prefix = if key.is_empty() || key.ends_with('/') {
+            key.to_owned()
+        } else {
+            format!("{key}/")
+        };
+        if objects.iter().any(|object| object.key.starts_with(&prefix)) {
+            return Ok(s3::PathTarget::Directory { prefix });
+        }
+    }
+    Err(crate::i18n::t("找不到指定的目录或对象。").into())
 }
 
 fn preview_objects(prefix: &str, recursive: bool) -> Vec<s3::S3Object> {

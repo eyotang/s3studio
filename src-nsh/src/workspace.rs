@@ -10,7 +10,7 @@ use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use nsh_core::prelude::*;
 use s3_studio_core::{
     accounts::{Account, S3Connection, S3Defaults, S3Option},
-    s3::{Bucket, ObjectInfo, ObjectPage, S3Object},
+    s3::{Bucket, ObjectInfo, ObjectPage, PathTarget, S3Object},
     transfers::{Settings, Transfer},
 };
 use serde_json::{Value, json};
@@ -25,6 +25,7 @@ enum Pending {
     Accounts(Option<String>),
     Buckets(u64, Option<String>),
     Objects(u64, bool),
+    LocatePath(String),
     TreeLevel(u64, String),
     Info(u64),
     Transfers,
@@ -46,6 +47,7 @@ pub struct Field {
 pub struct Form {
     pub inputs: HashMap<&'static str, Field>,
     pub path_style: bool,
+    pub locate_object_only: bool,
     pub s3_options: S3Defaults,
 }
 
@@ -167,6 +169,8 @@ pub struct Workspace {
     pub bucket: String,
     pub prefix: String,
     pub objects: Vec<S3Object>,
+    // Exact key and listing revision for the pinned location result.
+    pub located: Option<(String, u64)>,
     pub next_token: Option<String>,
     pub search: String,
     pub bucket_search: String,
@@ -217,6 +221,7 @@ impl Workspace {
             bucket: String::new(),
             prefix: String::new(),
             objects: vec![],
+            located: None,
             next_token: None,
             search: String::new(),
             bucket_search: String::new(),
@@ -249,6 +254,7 @@ impl Workspace {
             form: Form {
                 inputs: HashMap::new(),
                 path_style: true,
+                locate_object_only: false,
                 s3_options: S3Defaults::default(),
             },
             dialog_revision: 0,
@@ -309,7 +315,13 @@ impl Workspace {
             .find(|bucket| bucket.name == self.bucket)
     }
     pub fn visible(&self) -> Vec<S3Object> {
-        model::visible(&self.objects, &self.search, self.sort, self.ascending)
+        let mut rows = model::visible(&self.objects, &self.search, self.sort, self.ascending);
+        if let Some((key, _)) = &self.located
+            && let Some(position) = rows.iter().position(|object| &object.key == key)
+        {
+            rows[..=position].rotate_right(1);
+        }
+        rows
     }
     pub fn chosen(&self) -> Vec<S3Object> {
         if self.object_view == ObjectView::Tree {
@@ -373,12 +385,10 @@ impl Workspace {
         self.info_revision += 1;
         self.buckets.clear();
         self.bucket.clear();
-        self.objects.clear();
-        self.list_loaded = false;
+        self.clear_list_page();
         self.selected.clear();
         self.tree.clear();
         self.prefix.clear();
-        self.next_token = None;
         self.error.clear();
         self.info = None;
         self.search.clear();
@@ -439,6 +449,7 @@ impl Workspace {
 
     fn clear_list_page(&mut self) {
         self.objects.clear();
+        self.located = None;
         self.list_loaded = false;
         self.next_token = None;
     }
@@ -842,6 +853,74 @@ impl Workspace {
         self.dialog = None;
         self.form.inputs.clear();
     }
+
+    pub fn locate_search(&mut self, path: &str) {
+        if self.dialog.is_some() || self.is_busy() || self.bucket.is_empty() || path.is_empty() {
+            return;
+        }
+        self.open_dialog(Dialog::LocatePath);
+        self.set_input("path", path);
+        self.submit();
+    }
+
+    fn locate_path(&mut self) {
+        let path = self.input("path");
+        if path.is_empty() {
+            self.dialog_error = crate::i18n::t("请填写此字段。").into();
+            return;
+        }
+        let (bucket, key) = match path.strip_prefix("s3://") {
+            Some(uri) => uri.split_once('/').unwrap_or((uri, "")),
+            None => (self.bucket.as_str(), path),
+        };
+        if !self
+            .buckets
+            .iter()
+            .any(|candidate| candidate.name == bucket)
+        {
+            self.dialog_error = crate::i18n::t("路径中的存储桶不在当前账户的列表中。").into();
+            return;
+        }
+        let object_only = self.form.locate_object_only;
+        if key.len() > 1024 || (object_only && key.is_empty()) {
+            self.dialog_error = crate::i18n::t("对象键无效。").into();
+            return;
+        }
+        let args = json!({
+            "accountId": self.active_id, "bucket": bucket, "key": key, "objectOnly": object_only,
+        });
+        let bucket = bucket.to_owned();
+        self.busy = true;
+        self.dialog_error.clear();
+        self.request("locate_path", args, Pending::LocatePath(bucket));
+    }
+
+    fn reveal_path(&mut self, bucket: String, target: PathTarget) {
+        let (prefix, located) = match target {
+            PathTarget::Directory { prefix } => (prefix, None),
+            PathTarget::Object { object, info } => {
+                let prefix = object
+                    .key
+                    .rfind('/')
+                    .map_or("", |slash| &object.key[..=slash]);
+                (prefix.to_owned(), Some((object, info)))
+            }
+        };
+        self.object_view = ObjectView::List;
+        self.tree.cancel_query();
+        self.bucket = bucket;
+        self.prefix = prefix;
+        self.search.clear();
+        self.load_objects(false);
+        if let Some((object, info)) = located {
+            self.selected.insert(object.key.clone());
+            self.located = Some((object.key.clone(), self.object_revision));
+            self.objects.push(object);
+            self.show_info = true;
+            self.info = info;
+        }
+    }
+
     pub fn open_dialog(&mut self, dialog: Dialog) {
         if self.is_busy() {
             return;
@@ -850,6 +929,7 @@ impl Workspace {
         self.dialog_error.clear();
         self.form.inputs.clear();
         self.form.path_style = true;
+        self.form.locate_object_only = false;
         self.form.s3_options = self.s3_defaults.clone().unwrap_or_default();
         match &dialog {
             Dialog::Account(id) => {
@@ -937,12 +1017,20 @@ impl Workspace {
                 self.add_input("endpoint", &connection.endpoint, &endpoint, false);
                 self.add_input("region", &connection.region, &region, false);
             }
+            Dialog::LocatePath => self.add_input(
+                "path",
+                &self.search.clone(),
+                "s3://my-bucket/photos/",
+                false,
+            ),
             Dialog::Copy => {
                 let name = format!(
                     "{}copy-{}",
                     self.prefix,
                     self.first()
-                        .map(|o| model::object_name(&o.key, &self.prefix).to_owned())
+                        .map(|o| model::object_name(&o.key, &self.prefix)
+                            .trim_end_matches('/')
+                            .to_owned())
                         .unwrap_or_default()
                 );
                 self.add_input("name", &name, &name, false);
@@ -1047,6 +1135,10 @@ impl Workspace {
             return;
         }
         let command = match &dialog {
+            Dialog::LocatePath => {
+                self.locate_path();
+                return;
+            }
             Dialog::Account(id) => {
                 let access = self.input("accessKey").trim().to_owned();
                 let secret = self.input("secretKey");
@@ -1232,9 +1324,11 @@ impl Workspace {
             Pending::Update => self.update_pending = false,
             Pending::Buckets(..) => self.bucket_loading = false,
             Pending::Objects(..) => self.loading = false,
-            Pending::Submit(_) | Pending::AddS3Option | Pending::Download | Pending::Share => {
-                self.busy = false
-            }
+            Pending::Submit(_)
+            | Pending::LocatePath(_)
+            | Pending::AddS3Option
+            | Pending::Download
+            | Pending::Share => self.busy = false,
             Pending::Control(id) => {
                 self.pending_transfers.remove(id);
             }
@@ -1253,7 +1347,9 @@ impl Workspace {
                         self.load_objects(false);
                         self.dialog_error = error;
                     }
-                    Pending::Submit(_) | Pending::AddS3Option => self.dialog_error = error,
+                    Pending::Submit(_) | Pending::LocatePath(_) | Pending::AddS3Option => {
+                        self.dialog_error = error
+                    }
                     Pending::Info(_) => self.info_error = error,
                     Pending::Control(_)
                     | Pending::Clear
@@ -1296,13 +1392,38 @@ impl Workspace {
                             }
                         }
                     } else {
+                        let pinned = self.located.as_ref().and_then(|(key, _)| {
+                            self.objects
+                                .iter()
+                                .find(|object| &object.key == key)
+                                .cloned()
+                        });
                         self.objects = page.objects;
+                        if let Some(pinned) = pinned {
+                            if let Some(entry) = self
+                                .objects
+                                .iter_mut()
+                                .find(|entry| entry.key == pinned.key)
+                            {
+                                if entry.folder {
+                                    *entry = pinned;
+                                }
+                            } else {
+                                self.objects.push(pinned);
+                            }
+                        }
                     }
                     self.next_token = page.next_token;
                     self.list_loaded = true;
                 }
                 Pending::Info(_) => {
                     self.info = Some(serde_json::from_value(data).map_err(|e| e.to_string())?)
+                }
+                Pending::LocatePath(bucket) => {
+                    let target: PathTarget =
+                        serde_json::from_value(data).map_err(|e| e.to_string())?;
+                    self.close_dialog();
+                    self.reveal_path(bucket, target);
                 }
                 Pending::Transfers => {
                     let list: Vec<Transfer> =

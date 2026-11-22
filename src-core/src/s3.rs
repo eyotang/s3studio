@@ -8,7 +8,9 @@ use aws_sdk_s3::{
         timeout::TimeoutConfig, BehaviorVersion, Region, RequestChecksumCalculation,
         ResponseChecksumValidation,
     },
-    operation::list_objects_v2::builders::ListObjectsV2FluentBuilder,
+    operation::{
+        head_object::HeadObjectOutput, list_objects_v2::builders::ListObjectsV2FluentBuilder,
+    },
     presigning::PresigningConfig,
     primitives::ByteStream,
     types::{
@@ -767,6 +769,125 @@ pub struct ObjectInfo {
     pub metadata: HashMap<String, String>,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum PathTarget {
+    Directory {
+        prefix: String,
+    },
+    Object {
+        object: S3Object,
+        info: Option<ObjectInfo>,
+    },
+}
+
+pub async fn locate_path(
+    store: &AccountStore,
+    account_id: &str,
+    bucket: &str,
+    key: &str,
+    object_only: bool,
+) -> Result<PathTarget, String> {
+    if key.is_empty() && !object_only {
+        return Ok(PathTarget::Directory {
+            prefix: String::new(),
+        });
+    }
+    if key.is_empty() || key.len() > 1024 {
+        return Err(crate::i18n::t("对象键无效。").into());
+    }
+    let client = bucket_client(store, account_id, bucket).await?;
+    locate_with_client(&client, bucket, key, object_only).await
+}
+
+async fn locate_with_client(
+    client: &Client,
+    bucket: &str,
+    key: &str,
+    object_only: bool,
+) -> Result<PathTarget, String> {
+    if object_only || !key.ends_with('/') {
+        let exact = match client.head_object().bucket(bucket).key(key).send().await {
+            Ok(head) => Some(PathTarget::Object {
+                object: S3Object {
+                    folder: false,
+                    ..head_listing(key.to_owned(), &head)?
+                },
+                info: Some(head_info(&head)),
+            }),
+            Err(error) => match error
+                .raw_response()
+                .map(|response| response.status().as_u16())
+            {
+                Some(404) => None,
+                Some(400 | 403) => {
+                    // General-purpose S3 listings are ordered by key: an exact
+                    // match is the first entry under its own prefix.
+                    first_path_entry(client, bucket, key)
+                        .await?
+                        .filter(|object| object.key == key)
+                        .map(|object| PathTarget::Object {
+                            object: S3Object {
+                                folder: false,
+                                ..object
+                            },
+                            info: None,
+                        })
+                }
+                _ => return Err(failure(error)),
+            },
+        };
+        if let Some(exact) = exact {
+            return Ok(exact);
+        }
+    }
+    if !object_only {
+        let prefix = if key.ends_with('/') {
+            key.to_owned()
+        } else {
+            format!("{key}/")
+        };
+        if prefix.len() <= 1024 && first_path_entry(client, bucket, &prefix).await?.is_some() {
+            return Ok(PathTarget::Directory { prefix });
+        }
+    }
+    Err(crate::i18n::t("找不到指定的目录或对象。").into())
+}
+
+async fn first_path_entry(
+    client: &Client,
+    bucket: &str,
+    prefix: &str,
+) -> Result<Option<S3Object>, String> {
+    let mut token = None;
+    let mut seen_tokens = BTreeSet::new();
+    loop {
+        let page = object_listing(client, bucket, prefix, token)
+            .max_keys(1)
+            .encoding_type(EncodingType::Url)
+            .send()
+            .await
+            .map_err(failure)?;
+        if let Some(item) = page.contents().first() {
+            return scanned_object(
+                item,
+                prefix,
+                page.encoding_type() == Some(&EncodingType::Url),
+            )
+            .map(Some);
+        }
+        let next = page.next_continuation_token();
+        if !page.is_truncated().unwrap_or(next.is_some()) {
+            return Ok(None);
+        }
+        token = Some(
+            next.filter(|next| !next.is_empty() && seen_tokens.insert((*next).to_owned()))
+                .ok_or_else(|| crate::i18n::t("服务端未返回有效的分页标记。"))?
+                .to_owned(),
+        );
+    }
+}
+
 pub async fn object_info(
     store: &AccountStore,
     account_id: String,
@@ -774,7 +895,11 @@ pub async fn object_info(
     key: String,
 ) -> Result<ObjectInfo, String> {
     let result = head_object(store, &account_id, &bucket, &key).await?;
-    Ok(ObjectInfo {
+    Ok(head_info(&result))
+}
+
+fn head_info(result: &HeadObjectOutput) -> ObjectInfo {
+    ObjectInfo {
         size: result.content_length().unwrap_or(0),
         content_type: result
             .content_type()
@@ -786,7 +911,7 @@ pub async fn object_info(
             .map(ToString::to_string)
             .unwrap_or_default(),
         metadata: result.metadata().cloned().unwrap_or_default(),
-    })
+    }
 }
 
 async fn head_object(
@@ -794,7 +919,7 @@ async fn head_object(
     account_id: &str,
     bucket: &str,
     key: &str,
-) -> Result<aws_sdk_s3::operation::head_object::HeadObjectOutput, String> {
+) -> Result<HeadObjectOutput, String> {
     bucket_client(store, account_id, bucket)
         .await?
         .head_object()
@@ -812,6 +937,10 @@ pub async fn object_listing_entry(
     key: String,
 ) -> Result<S3Object, String> {
     let result = head_object(store, account_id, bucket, &key).await?;
+    head_listing(key, &result)
+}
+
+fn head_listing(key: String, result: &HeadObjectOutput) -> Result<S3Object, String> {
     let size = result
         .content_length()
         .filter(|&size| size >= 0)
@@ -872,6 +1001,118 @@ mod tests {
                 .endpoint_url(endpoint)
                 .build(),
         )
+    }
+
+    #[tokio::test]
+    async fn locates_an_exact_object_with_its_original_key_and_metadata() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let client = test_client(format!("http://{}", server.server_addr()));
+        let thread = std::thread::spawn(move || {
+            let request = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            assert_eq!(request.method(), &tiny_http::Method::Head);
+            assert_eq!(request.url(), "/test-bucket/design//%E5%9B%BE%20%252F.csv");
+            request
+                .respond(tiny_http::Response::new(
+                    tiny_http::StatusCode(200),
+                    vec![tiny_http::Header::from_bytes("Content-Type", "text/csv").unwrap()],
+                    std::io::empty(),
+                    Some(42),
+                    None,
+                ))
+                .unwrap();
+        });
+        let key = "design//图 %2F.csv";
+        let target = locate_with_client(&client, "test-bucket", key, false)
+            .await
+            .unwrap();
+        thread.join().unwrap();
+        let PathTarget::Object {
+            object,
+            info: Some(info),
+        } = target
+        else {
+            panic!("expected the exact object and its metadata");
+        };
+        assert_eq!(object.key, key);
+        assert_eq!(object.size, 42);
+        assert!(!object.folder);
+        assert_eq!(info.content_type, "text/csv");
+    }
+
+    #[tokio::test]
+    async fn locates_a_directory_with_or_without_a_trailing_slash() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let client = test_client(format!("http://{}", server.server_addr()));
+        let thread = std::thread::spawn(move || {
+            let head = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            assert_eq!(head.method(), &tiny_http::Method::Head);
+            assert_eq!(head.url(), "/test-bucket/design/guides");
+            head.respond(tiny_http::Response::empty(404)).unwrap();
+            for _ in 0..2 {
+                let list = server
+                    .recv_timeout(Duration::from_secs(10))
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(list.method(), &tiny_http::Method::Get);
+                assert!(list.url().contains("prefix=design%2Fguides%2F"));
+                assert!(list.url().contains("max-keys=1"));
+                list.respond(tiny_http::Response::from_string(
+                    "<ListBucketResult><Contents><Key>design/guides/file.pdf</Key><Size>9</Size></Contents></ListBucketResult>",
+                )).unwrap();
+            }
+        });
+        for key in ["design/guides", "design/guides/"] {
+            let target = locate_with_client(&client, "test-bucket", key, false)
+                .await
+                .unwrap();
+            assert!(
+                matches!(target, PathTarget::Directory { prefix } if prefix == "design/guides/")
+            );
+        }
+        thread.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_only_lookup_requires_the_exact_key_and_supports_slash_ending_objects() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let client = test_client(format!("http://{}", server.server_addr()));
+        let thread = std::thread::spawn(move || {
+            for returned_key in ["design%2Fobject%2F", "design%2Fobject%2Fchild"] {
+                let head = server
+                    .recv_timeout(Duration::from_secs(10))
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(head.method(), &tiny_http::Method::Head);
+                assert_eq!(head.url(), "/test-bucket/design/object/");
+                head.respond(tiny_http::Response::empty(403)).unwrap();
+                let list = server
+                    .recv_timeout(Duration::from_secs(10))
+                    .unwrap()
+                    .unwrap();
+                assert!(list.url().contains("prefix=design%2Fobject%2F"));
+                assert!(list.url().contains("encoding-type=url"));
+                list.respond(tiny_http::Response::from_string(format!(
+                    "<ListBucketResult><EncodingType>url</EncodingType><Contents><Key>{returned_key}</Key><Size>24</Size></Contents></ListBucketResult>",
+                ))).unwrap();
+            }
+        });
+        let target = locate_with_client(&client, "test-bucket", "design/object/", true)
+            .await
+            .unwrap();
+        assert!(matches!(target, PathTarget::Object { object, info: None }
+            if !object.folder && object.key == "design/object/" && object.size == 24));
+        let missing = locate_with_client(&client, "test-bucket", "design/object/", true)
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(missing, crate::i18n::t("找不到指定的目录或对象。"));
+        thread.join().unwrap();
     }
 
     #[tokio::test]

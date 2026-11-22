@@ -25,7 +25,7 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                     row()
                         .flex_1()
                         .min_w_0()
-                        .max_w(px(365.0))
+                        .max_w(px(470.0))
                         .gap(px(5.0))
                         .child(
                             input_field(
@@ -57,6 +57,9 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                             .flex_1()
                             .on_change(move |value: &str| {
                                 store.change(|state| state.set_search(value))
+                            })
+                            .on_submit(move |value: &str| {
+                                store.change(|state| state.locate_search(value))
                             }),
                         )
                         .child(when(
@@ -65,7 +68,14 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                                 icon_button("clear-search", t("清除搜索"), "x")
                                     .on_press(store.action(|state| state.set_search("")))
                             },
-                        )),
+                        ))
+                        .child(dynamic(move || {
+                            store.read(|state| {
+                                secondary("locate-path", t("定位路径"))
+                                    .disabled(state.bucket.is_empty() || state.is_busy())
+                                    .on_press(store.open(Dialog::LocatePath))
+                            })
+                        })),
                 )
                 .child(dynamic(move || {
                     store.read(|state| selection_actions(store, state))
@@ -154,6 +164,7 @@ fn toolbar(store: Store, state: &Workspace) -> View {
         prefix.push_str(part);
         let target = prefix.clone();
         let title = part.trim_end_matches('/');
+        let title = if title.is_empty() { "/" } else { title };
         crumbs = crumbs.child(icon("chevron-right", 12.0, MUTED)).child(
             button(&format!("breadcrumb-{target}"), title.to_owned())
                 .h(px(30.0))
@@ -271,6 +282,7 @@ fn objects(
                 state.active_id.clone(),
                 state.bucket.clone(),
                 state.prefix.clone(),
+                state.located.as_ref().map(|(_, revision)| *revision),
             )
         })
     });
