@@ -22,8 +22,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install macOS signer
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          signer=apple-codesign-0.29.0-macos-universal
+          archive="$RUNNER_TEMP/$signer.tar.gz"
+          curl -fsSL --retry 3 --max-time 90 -o "$archive" "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign/0.29.0/$signer.tar.gz"
+          printf '%s  %s\n' d98372d5524226ccf9dc0eda03d4e4f5826182dabb2fc3f2bd303ed9113a748d "$archive" | shasum -a 256 -c
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          printf '%s\n' "$RUNNER_TEMP/$signer" >> "$GITHUB_PATH"
       - name: Verify macOS keychain identity across builds
         if: runner.os == 'macOS'
+        timeout-minutes: 3
         run: bash tests/macos-keychain.sh
       - uses: actions/setup-node@v4
         with:
