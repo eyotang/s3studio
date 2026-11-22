@@ -58,6 +58,8 @@ Omarchy 包尚未加入 AUR 或 Omarchy 软件仓库，目前支持 x86_64。升
 
 点击侧栏「添加账户」，输入名称、Access Key ID、Secret Access Key 和 Region。
 
+工作空间卡片右上角的竖向省略号菜单提供「更新」和「删除」。删除前，弹窗会显示选中的工作空间名称。确认后只移除该工作空间在本机保存的连接配置和凭据。
+
 AWS 一般不填 Endpoint；访问桶时自动探测实际区域。临时凭据需同时输入 Session Token；更新 Access Key / Secret Key 时可以留空 Token 来清除原有 Token。编辑账户时两个密钥同时留空，会保留完整原有凭据。
 
 MinIO 例子：Endpoint 为 `http://localhost:9000`，Region 为 `us-east-1`，勾选「使用路径风格访问」。正式环境建议使用 HTTPS。

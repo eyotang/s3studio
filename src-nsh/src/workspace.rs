@@ -312,7 +312,10 @@ impl Workspace {
         }
     }
     pub fn account(&self) -> Option<&Account> {
-        self.accounts.iter().find(|a| a.id == self.active_id)
+        self.account_by_id(&self.active_id)
+    }
+    pub fn account_by_id(&self, id: &str) -> Option<&Account> {
+        self.accounts.iter().find(|account| account.id == id)
     }
     pub fn current_bucket(&self) -> Option<&Bucket> {
         self.buckets
@@ -1017,6 +1020,11 @@ impl Workspace {
         if self.is_busy() {
             return;
         }
+        if let Dialog::Account(Some(id)) | Dialog::RemoveAccount(id) = &dialog
+            && self.account_by_id(id).is_none()
+        {
+            return;
+        }
         self.cancel_auto_location();
         self.dialog_revision += 1;
         self.dialog_error.clear();
@@ -1026,10 +1034,7 @@ impl Workspace {
         self.form.s3_options = self.s3_defaults.clone().unwrap_or_default();
         match &dialog {
             Dialog::Account(id) => {
-                let account = id
-                    .as_ref()
-                    .and_then(|id| self.accounts.iter().find(|a| &a.id == id))
-                    .cloned();
+                let account = id.as_ref().and_then(|id| self.account_by_id(id)).cloned();
                 self.form.path_style = account.as_ref().map(|a| a.path_style).unwrap_or(true);
                 self.add_input(
                     "name",
@@ -1303,7 +1308,10 @@ impl Workspace {
                 self.close_dialog();
                 "upload_files"
             }
-            Dialog::RemoveAccount => "remove_account",
+            Dialog::RemoveAccount(id) => {
+                args = json!({"accountId":id});
+                "remove_account"
+            }
             Dialog::S3Defaults => {
                 args["input"] = json!(S3Defaults {
                     endpoint: self.input("endpoint").to_owned(),
@@ -1556,15 +1564,35 @@ impl Workspace {
                 }
                 Pending::Submit(dialog) => {
                     let message = match dialog {
-                        Dialog::Account(_) => {
-                            let a: Account =
+                        Dialog::Account(id) => {
+                            let saved: Account =
                                 serde_json::from_value(data).map_err(|e| e.to_string())?;
-                            self.request("list_accounts", json!({}), Pending::Accounts(Some(a.id)));
+                            if id.is_some() && saved.id != self.active_id {
+                                if let Some(account) =
+                                    self.accounts.iter_mut().find(|a| a.id == saved.id)
+                                {
+                                    *account = saved;
+                                }
+                            } else {
+                                self.request(
+                                    "list_accounts",
+                                    json!({}),
+                                    Pending::Accounts(Some(saved.id)),
+                                );
+                            }
                             crate::i18n::t("账户已安全保存").into()
                         }
-                        Dialog::RemoveAccount => {
-                            self.request("list_accounts", json!({}), Pending::Accounts(None));
-                            crate::i18n::t("账户已移除").into()
+                        Dialog::RemoveAccount(id) => {
+                            self.accounts.retain(|account| account.id != id);
+                            if self.active_id == id {
+                                self.active_id = self
+                                    .accounts
+                                    .first()
+                                    .map(|a| a.id.clone())
+                                    .unwrap_or_default();
+                                self.load_buckets(None);
+                            }
+                            crate::i18n::t("工作空间配置已删除").into()
                         }
                         Dialog::Bucket => {
                             let name = self.input("name").trim().to_owned();
@@ -1816,6 +1844,37 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_removal_keeps_the_open_bucket_when_removing_another_account() {
+        let (backend, _receiver) = Backend::open(true).unwrap();
+        let mut workspace = Workspace::new(backend);
+        workspace.accounts = serde_json::from_value(json!([
+            {"id": "active", "name": "Open workspace", "pathStyle": false},
+            {"id": "other", "name": "Other workspace", "pathStyle": true}
+        ]))
+        .unwrap();
+        workspace.active_id = "active".into();
+        workspace.bucket = "current-bucket".into();
+        workspace.prefix = "current-folder/".into();
+
+        workspace.open_dialog(Dialog::RemoveAccount("other".into()));
+        workspace.submit();
+        workspace.receive_response(workspace.next_request, Err("Failed to remove".into()));
+        assert!(workspace.account_by_id("other").is_some());
+        assert_eq!(
+            workspace.dialog,
+            Some(Dialog::RemoveAccount("other".into()))
+        );
+
+        workspace.submit();
+        workspace.receive_response(workspace.next_request, Ok(Value::Null));
+        assert!(workspace.account_by_id("other").is_none());
+        assert_eq!(workspace.active_id, "active");
+        assert_eq!(workspace.bucket, "current-bucket");
+        assert_eq!(workspace.prefix, "current-folder/");
+        assert!(workspace.dialog.is_none());
+    }
 
     #[test]
     fn automatic_location_ignores_a_response_after_search_text_changes() {

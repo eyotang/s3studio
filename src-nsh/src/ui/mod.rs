@@ -10,6 +10,7 @@ use crate::{
     workspace::{Store, Workspace},
 };
 use controls::*;
+use nsh_base::{menu, menu_item};
 use nsh_core::prelude::*;
 use palette::*;
 
@@ -320,14 +321,15 @@ fn account_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {
             let aws = defaults
                 .map_or(account.endpoint.as_str(), |d| d.endpoint_for(account))
                 .is_empty();
-            button(&format!("account-{id}"), account.name.clone())
-                .key(id.clone())
+            let menu = account_menu(store, &id, &account.name, state.is_busy());
+            let select = button(&format!("account-{id}"), account.name.clone())
                 .selected(active)
                 .selected_style(|s| s.bg(SURFACE).border_color(LINE))
                 .border_1()
                 .border_color(AdaptiveColor::TRANSPARENT)
                 .justify_start()
-                .px(px(8.0))
+                .pl(px(8.0))
+                .pr(px(38.0))
                 .py(px(9.0))
                 .disabled(state.is_busy())
                 .child(
@@ -359,10 +361,71 @@ fn account_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {
                         )),
                 )
                 .when(active, |b| b.child(dot()))
-                .on_press(store.action(move |state| state.select_account(id.clone())))
+                .on_press(store.action(move |state| state.select_account(id.clone())));
+            column()
+                .key(account.id.clone())
+                .child(select)
+                .child(menu)
                 .into_element()
         })
         .collect()
+}
+
+fn account_menu(store: Store, id: &str, name: &str, disabled: bool) -> View {
+    let action = |key, title: &'static str, image, ink, dialog| {
+        menu_item()
+            .test_id(&format!("account-{key}-{id}"))
+            .accessibility_label(title)
+            .h(px(32.0))
+            .px(px(8.0))
+            .rounded(px(5.0))
+            .flex_row()
+            .items_center()
+            .gap(px(7.0))
+            .hover(|style| style.bg(SUBTLE))
+            .focus(|style| style.bg(SUBTLE))
+            .child(icon(image, 14.0, ink))
+            .child(label(title, 12.0, ink))
+            .on_select(store.open(dialog))
+    };
+    view().absolute().top(px(3.0)).right(px(4.0)).child(
+        menu()
+            .align(Align::End)
+            .offset(px(4.0))
+            .popup_style(|style| {
+                style
+                    .min_w(px(120.0))
+                    .p(px(4.0))
+                    .rounded(px(7.0))
+                    .border_1()
+                    .border_color(LINE)
+                    .bg(SURFACE)
+                    .shadow_md()
+            })
+            .trigger(
+                icon_button(
+                    &format!("account-menu-{id}"),
+                    format!("{name} · {}", t("工作空间操作")),
+                    "ellipsis-vertical",
+                )
+                .size(px(28.0))
+                .disabled(disabled),
+            )
+            .child(action(
+                "edit",
+                t("更新"),
+                "settings-2",
+                TEXT,
+                Dialog::Account(Some(id.to_owned())),
+            ))
+            .child(action(
+                "delete",
+                t("删除"),
+                "trash",
+                DANGER,
+                Dialog::RemoveAccount(id.to_owned()),
+            )),
+    )
 }
 
 fn bucket_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {

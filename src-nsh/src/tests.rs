@@ -314,8 +314,41 @@ fn account_form_preserves_drafts_and_requires_credentials() {
     );
     assert_eq!(app.screen().input_text("id:accessKey").unwrap(), Some(""));
     app.press("id:remove-account").unwrap();
-    app.wait_for(i18n::t("移除这个账户？")).unwrap();
+    app.wait_for(i18n::t("删除工作空间配置？")).unwrap();
     app.press("id:cancel-dialog").unwrap();
+}
+
+#[test]
+fn workspace_menu_opens_the_target_settings_and_confirms_local_removal() {
+    let mut app = preview();
+    app.press("id:bucket-team-documents").unwrap();
+    let menu = "id:account-menu-demo-minio";
+    let edit = "id:account-edit-demo-minio";
+    let delete = "id:account-delete-demo-minio";
+    app.press(menu).unwrap();
+    app.wait_for(edit).unwrap();
+    assert!(app.screen().selected("id:account-demo-aws").unwrap());
+    app.press(edit).unwrap();
+    app.wait_for("id:name").unwrap();
+    assert_eq!(
+        app.screen().input_text("id:name").unwrap(),
+        Some("Local development")
+    );
+    app.press("id:cancel-dialog").unwrap();
+
+    app.press(menu).unwrap();
+    app.wait_for(delete).unwrap();
+    app.press(delete).unwrap();
+    app.wait_for(i18n::t("删除工作空间配置？")).unwrap();
+    app.wait_for(&crate::lf!(
+        "仅删除「{name}」保存在本机的工作空间配置和凭据。",
+        name = "Local development"
+    ))
+    .unwrap();
+    app.press("id:cancel-dialog").unwrap();
+    app.wait_for_gone("id:modal", WAIT).unwrap();
+    assert!(app.screen().matches("id:account-demo-minio").unwrap());
+    assert!(app.screen().selected("id:bucket-team-documents").unwrap());
 }
 
 #[test]

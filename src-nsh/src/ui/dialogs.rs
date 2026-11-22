@@ -142,7 +142,12 @@ fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
         Dialog::Upload => {
             t("接下来选择本地文件。当前目录中同名的对象将被覆盖；大文件自动分片上传。").into()
         }
-        Dialog::RemoveAccount => t("删除本机保存的账户配置和凭据，云端文件不受影响。").into(),
+        Dialog::RemoveAccount(id) => crate::lf!(
+            "仅删除「{name}」保存在本机的工作空间配置和凭据。",
+            name = state
+                .account_by_id(id)
+                .map_or("", |account| account.name.as_str())
+        ),
         Dialog::S3Defaults => {
             t("设置全局默认值，并管理账户和存储桶可选择的 Endpoint 和 Region。").into()
         }
@@ -183,12 +188,12 @@ fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> 
                     .child(label(t("使用路径风格访问"), 11.0, TEXT))
                     .on_change(move |checked: &bool| store.change(|state| state.form.path_style = *checked)))
                 .child(label(t("MinIO 等服务推荐开启"), 10.0, MUTED)))
-            .when(id.is_some(), |body| body.child(
+            .child(id.as_ref().map(|id| {
                 button("remove-account", t("移除账户"))
                     .h(px(32.0)).justify_start().px(px(4.0))
                     .child(icon("trash", 15.0, DANGER)).child(label(t("移除账户"), 11.0, DANGER))
-                    .disabled(state.is_busy()).on_press(store.open(Dialog::RemoveAccount)),
-            )),
+                    .disabled(state.is_busy()).on_press(store.open(Dialog::RemoveAccount(id.clone())))
+            })),
         Dialog::Folder => field(store, state, "name", t("文件夹名称"), true),
         Dialog::LocatePath => column().gap(px(10.0))
             .child(field(store, state, "path", t("完整路径"), true))
@@ -225,7 +230,7 @@ fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> 
             .child(label(crate::lf!("版本 {}", env!("CARGO_PKG_VERSION")), 14.0, TEXT).test_id("about-version"))
             .child(label(t("跨平台 S3 文件工作空间"), 12.0, MUTED)),
         Dialog::Update => update_status(state),
-        Dialog::Upload | Dialog::RemoveAccount | Dialog::CancelTransfer(_) => return None,
+        Dialog::Upload | Dialog::RemoveAccount(_) | Dialog::CancelTransfer(_) => return None,
     };
     Some(body.into_element())
 }

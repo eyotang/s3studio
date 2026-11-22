@@ -178,6 +178,7 @@ pub fn icon(name: &'static str, size: f32, ink: AdaptiveColor) -> impl IntoEleme
         "copy",
         "database",
         "ellipsis",
+        "ellipsis-vertical",
         "file-archive",
         "file-code-corner",
         "file-image",

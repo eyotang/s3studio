@@ -37,6 +37,14 @@ include!(concat!(env!("OUT_DIR"), "/translations.rs"));
 
 #[macro_export]
 macro_rules! lf {
+("仅删除「{name}」保存在本机的工作空间配置和凭据。", $($args:tt)*) => { match $crate::i18n::current() {
+$crate::i18n::Language::English => format!("Only the locally saved workspace configuration and credentials for “{name}” will be deleted.", $($args)*),
+$crate::i18n::Language::Korean => format!("이 기기에 저장된 ‘{name}’ 작업 공간의 설정과 자격 증명만 삭제합니다.", $($args)*),
+$crate::i18n::Language::Japanese => format!("この端末に保存されている「{name}」のワークスペース設定と認証情報だけを削除します。", $($args)*),
+$crate::i18n::Language::French => format!("Seuls les paramètres et identifiants de « {name} » enregistrés sur cet appareil seront supprimés.", $($args)*),
+$crate::i18n::Language::German => format!("Nur die lokal gespeicherten Einstellungen und Zugangsdaten von „{name}“ werden gelöscht.", $($args)*),
+$crate::i18n::Language::Russian => format!("Будут удалены только локальные настройки и учётные данные рабочего пространства «{name}».", $($args)*),
+_ => format!("仅删除「{name}」保存在本机的工作空间配置和凭据。", $($args)*), } };
 ("目录缓存操作失败：{}", $($args:tt)*) => { match $crate::i18n::current() {
 $crate::i18n::Language::English => format!("Directory cache error. {}", $($args)*),
 $crate::i18n::Language::Korean => format!("폴더 캐시 처리에 실패했습니다. {}", $($args)*),
