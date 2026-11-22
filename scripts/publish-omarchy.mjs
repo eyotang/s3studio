@@ -1,10 +1,11 @@
-import { readFile, writeFile, stat } from "node:fs/promises";
+import { writeFile, stat } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { appConfig } from "./app-config.mjs";
 
 const directory = process.argv[2];
 if (!directory) throw new Error("Usage: publish-omarchy.mjs DIRECTORY");
-const { version } = JSON.parse(await readFile("package.json", "utf8"));
+const { version } = appConfig;
 const tag = `v${version}`;
 const name = `S3-Studio_${version}_omarchy_x86_64.pkg.tar.zst`;
 const names = [name, "SHA256SUMS-Omarchy.txt"];

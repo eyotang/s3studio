@@ -60,26 +60,23 @@ sudo xattr -d com.apple.quarantine "/Applications/S3 Studio.app"
 
 ## Разработка и участие
 
-Приложение использует Native Shell, Rust и AWS SDK for Rust. `src-nsh` содержит системный интерфейс, `src-core` — общий backend, а `src`/`src-tauri` — исходный справочный вариант React/Tauri. Установите Node.js 22.12+ и стабильный Rust. Для macOS нужны Xcode Command Line Tools, для Windows — MSVC C++ Build Tools. WebView2 нужен для запуска исходной реализации на Tauri. Библиотеки Linux перечислены в [справочнике разработчика](README.md#开发与贡献).
+Приложение использует Native Shell, Rust и AWS SDK for Rust. В `src-nsh` находятся нативный интерфейс и настройки упаковки. `src-core` содержит общий код для работы с S3, учётными записями и передачей файлов. Установите стабильный Rust, Xcode Command Line Tools на macOS или MSVC C++ Build Tools на Windows. Библиотеки Linux перечислены в [справочнике разработчика](README.md#开发与贡献).
 
 ```bash
-npm ci
-npm run dev:native
+cargo run --locked --manifest-path src-nsh/Cargo.toml
 ```
 
-`npm run preview:native` запускает настольный предпросмотр с примером данных. `npm run dev` запускает браузерный вариант по адресу `http://127.0.0.1:1420`; он не подключается к облаку и не сохраняет учётные данные.
+Добавьте `-- --preview`, чтобы запустить приложение с демонстрационными данными.
 
 Запустите проверки, соответствующие вашим изменениям:
 
 ```bash
-npm test
-npm run test:ui
-npm run build
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
+node --test tests/update-signature.test.mjs
 ```
 
-Соберите исполняемый файл через `npm run build:native`, а пакеты — через `npm run tauri bundle -- --ci` на целевой ОС. Зависимости Linux, Universal-сборки, пути данных и подписи описаны в [справочнике разработчика](README.md#开发与贡献). Измените переводы в `src-core/locales`, выполните `node scripts/sync-i18n.mjs`, отформатируйте Rust и запустите тесты.
+Установите самостоятельную Tauri CLI командой `cargo install --locked tauri-cli --version 2.12.1`. Запустите `node scripts/build-native.mjs` и `node scripts/bundle-native.mjs` на целевой ОС. Скрипты упаковки и публикации используют стандартную библиотеку Node.js 22.12+. Universal-сборки, пути данных и подписи описаны в [справочнике разработчика](README.md#开发与贡献). Измените переводы в `src-core/locales`, выполните `node scripts/sync-i18n.mjs`, отформатируйте Rust и запустите тесты.
 
 В Issue укажите версию приложения, ОС, шаги воспроизведения и ошибки. Удалите учётные и личные данные из журналов и снимков экрана. В Pull Request опишите проблему, новое поведение и проверки; для изменений интерфейса приложите снимки. Тесты используют локальный симулятор S3. При публикации следуйте [AGENTS.md](AGENTS.md): сначала английский текст, затем китайский, с инструкцией macOS xattr в обеих частях.
 

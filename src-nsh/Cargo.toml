@@ -1,8 +1,11 @@
 [package]
 name = "s3-studio-nsh"
 version = "0.4.8"
+description = "A beautiful cross-platform S3 workspace"
+authors = ["S3 Studio"]
 edition = "2024"
 rust-version = "1.97"
+default-run = "s3-studio"
 
 [[bin]]
 name = "s3-studio"
@@ -24,7 +27,7 @@ icu_locale = "2.4"
 env_logger = { version = "0.11", default-features = false }
 semver = "1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream"] }
-tauri = { version = "2", default-features = false }
+tauri = { version = "2", default-features = false, features = [] }
 tauri-plugin-updater = "=2.13.2"
 open = "5"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

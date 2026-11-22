@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     backend::{Backend, Message},
-    model::{Sort, bytes, visible},
+    model::{Sort, bytes, object_name, visible},
     updater::Status,
     workspace::Store,
 };
@@ -216,18 +216,34 @@ fn update_dialog_tracks_progress_and_blocks_install_during_transfers() {
 #[test]
 fn formatting_and_directory_priority_match_existing_behavior() {
     assert_eq!(bytes(0), "0 B");
-    assert_eq!(bytes(2488000), "2.4 MB");
     assert_eq!(bytes(1024), "1 KB");
+    assert_eq!(bytes(1280), "1.3 KB");
+    assert_eq!(bytes(2488000), "2.4 MB");
+    assert_eq!(bytes(1024_u64.pow(4)), "1 TB");
+    assert_eq!(object_name("design/Archive/", "design/"), "Archive");
+    assert_eq!(object_name("design/Archive//", "design/"), "Archive/");
     let objects: Vec<s3_studio_core::s3::S3Object> = serde_json::from_value(serde_json::json!([
-        {"key":"file10","size":1,"modified":"","storageClass":"STANDARD","folder":false},
-        {"key":"dir/","size":0,"modified":"","storageClass":"STANDARD","folder":true},
-        {"key":"file2","size":2,"modified":"","storageClass":"STANDARD","folder":false}
+        {"key":"file10","size":1,"modified":"2026-10-03T08:00:00Z","storageClass":"STANDARD","folder":false},
+        {"key":"Archive/","size":0,"modified":"","storageClass":"STANDARD","folder":true},
+        {"key":"file2","size":2,"modified":"2026-10-01T08:00:00Z","storageClass":"STANDARD","folder":false}
     ]))
     .unwrap();
     let result = visible(&objects, "", Sort::Name, true);
     assert_eq!(
         result.iter().map(|o| o.key.as_str()).collect::<Vec<_>>(),
-        vec!["dir/", "file2", "file10"]
+        vec!["Archive/", "file2", "file10"]
     );
-    assert!(visible(&objects, "", Sort::Size, false)[0].folder);
+    let descending = visible(&objects, "", Sort::Size, false);
+    assert_eq!(
+        descending.iter().map(|o| o.size).collect::<Vec<_>>(),
+        vec![0, 2, 1]
+    );
+    assert_eq!(
+        visible(&objects, "", Sort::Modified, false)[1].key,
+        "file10"
+    );
+    assert_eq!(visible(&objects, "FILE", Sort::Size, true)[0].key, "file10");
+    assert_eq!(visible(&objects, "ARCHIVE", Sort::Name, true).len(), 1);
+    assert!(visible(&objects, "missing", Sort::Name, true).is_empty());
+    assert_eq!(objects[0].key, "file10");
 }

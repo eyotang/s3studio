@@ -60,26 +60,23 @@ Uploads sind auf 5 TiB je Datei begrenzt; serverseitiges Kopieren eines Objekts 
 
 ## Entwicklung und Beiträge
 
-Die App nutzt Native Shell, Rust und AWS SDK for Rust. `src-nsh` enthält die native Oberfläche, `src-core` das gemeinsame Backend und `src`/`src-tauri` die ursprüngliche React/Tauri-Referenz. Installieren Sie Node.js 22.12+ und stabiles Rust. macOS benötigt Xcode Command Line Tools; Windows benötigt MSVC C++ Build Tools. WebView2 wird für die ursprüngliche Tauri-Referenz benötigt. Linux-Bibliotheken stehen in der [Entwicklungsreferenz](README.md#开发与贡献).
+Die App nutzt Native Shell, Rust und AWS SDK for Rust. `src-nsh` enthält die native Oberfläche und die Paketkonfiguration. `src-core` enthält das Backend. Installieren Sie stabiles Rust, unter macOS die Xcode Command Line Tools und unter Windows die MSVC C++ Build Tools. Linux-Bibliotheken stehen in der [Entwicklungsreferenz](README.md#开发与贡献).
 
 ```bash
-npm ci
-npm run dev:native
+cargo run --locked --manifest-path src-nsh/Cargo.toml
 ```
 
-`npm run preview:native` startet eine Desktop-Vorschau mit Beispieldaten. `npm run dev` startet die Browser-Referenz unter `http://127.0.0.1:1420`; sie verbindet keinen Cloud-Speicher und speichert keine Zugangsdaten.
+Hängen Sie `-- --preview` an, um die App mit Beispieldaten zu öffnen.
 
 Führen Sie die für Ihre Änderungen relevanten Prüfungen aus:
 
 ```bash
-npm test
-npm run test:ui
-npm run build
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
+node --test tests/update-signature.test.mjs
 ```
 
-Erstellen Sie die ausführbare Datei mit `npm run build:native` und Pakete mit `npm run tauri bundle -- --ci`, jeweils auf dem Zielbetriebssystem. Die [Entwicklungsreferenz](README.md#开发与贡献) beschreibt Linux-Abhängigkeiten, Universal-Builds, Datenpfade und Signaturen. Ändern Sie Übersetzungen in `src-core/locales`, führen Sie `node scripts/sync-i18n.mjs` aus, formatieren Sie Rust und testen Sie anschließend.
+Installieren Sie die eigenständige Tauri CLI mit `cargo install --locked tauri-cli --version 2.12.1`. Führen Sie `node scripts/build-native.mjs` und `node scripts/bundle-native.mjs` auf dem Zielbetriebssystem aus. Die Paket- und Veröffentlichungsskripte verwenden Node.js 22.12+ und dessen Standardbibliothek. Die [Entwicklungsreferenz](README.md#开发与贡献) beschreibt Universal-Builds, Datenpfade und Signaturen. Ändern Sie Übersetzungen in `src-core/locales`, führen Sie `node scripts/sync-i18n.mjs` aus, formatieren Sie Rust und testen Sie anschließend.
 
 Geben Sie in Issues App-Version, Betriebssystem, Schritte zur Reproduktion und Fehler an. Entfernen Sie Zugangsdaten und private Informationen aus Logs und Screenshots. Pull Requests sollen Problem, resultierendes Verhalten und Validierung beschreiben; fügen Sie bei UI-Änderungen Screenshots hinzu. Tests verwenden einen lokalen S3-Simulator. Beachten Sie bei Veröffentlichungen [AGENTS.md](AGENTS.md): erst englische, dann chinesische Versionshinweise, beide mit der macOS-xattr-Anleitung.
 

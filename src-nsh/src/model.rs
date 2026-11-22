@@ -91,9 +91,8 @@ pub fn status_label(status: &str) -> &'static str {
     }
 }
 pub fn object_name<'a>(key: &'a str, prefix: &str) -> &'a str {
-    key.strip_prefix(prefix)
-        .unwrap_or(key)
-        .trim_end_matches('/')
+    let name = key.strip_prefix(prefix).unwrap_or(key);
+    name.strip_suffix('/').unwrap_or(name)
 }
 pub fn bytes(value: u64) -> String {
     if value == 0 {
@@ -103,7 +102,8 @@ pub fn bytes(value: u64) -> String {
     let number = if unit == 0 {
         value.to_string()
     } else {
-        format!("{:.1}", value as f64 / 1024_f64.powi(unit as i32))
+        let scaled = value as f64 / 1024_f64.powi(unit as i32);
+        format!("{:.1}", (scaled * 10.0).round() / 10.0)
             .trim_end_matches('0')
             .trim_end_matches('.')
             .to_owned()

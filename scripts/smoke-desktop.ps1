@@ -1,4 +1,4 @@
-param([string]$Executable = 'src-tauri/target/release/s3-studio.exe')
+param([string]$Executable = 'src-nsh/target/installer/release/s3-studio.exe')
 $ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path -Parent $PSScriptRoot
 $executablePath = (Resolve-Path -LiteralPath (Join-Path $projectDirectory $Executable)).Path

@@ -60,26 +60,23 @@ macOS 앱 메뉴나 버전 표시를 눌러 업데이트를 확인하세요. 정
 
 ## 개발 및 기여
 
-Native Shell, Rust 및 AWS SDK for Rust를 사용합니다. `src-nsh`는 기본 UI, `src-core`는 공유 백엔드이며 `src`/`src-tauri`에는 원래 React/Tauri 참조 구현이 있습니다. Node.js 22.12+와 안정 버전 Rust가 필요합니다. macOS는 Xcode Command Line Tools, Windows에는 MSVC C++ Build Tools가 필요합니다. 기존 Tauri 참조 구현을 실행하려면 WebView2가 필요합니다. Linux 기본 라이브러리는 [개발 참조](README.md#开发与贡献)를 확인하세요.
+Native Shell, Rust 및 AWS SDK for Rust를 사용합니다. `src-nsh`에는 네이티브 UI와 패키지 설정이, `src-core`에는 백엔드가 있습니다. 안정 버전 Rust와 macOS의 Xcode Command Line Tools 또는 Windows의 MSVC C++ Build Tools가 필요합니다. Linux 라이브러리는 [개발 참조](README.md#开发与贡献)를 확인하세요.
 
 ```bash
-npm ci
-npm run dev:native
+cargo run --locked --manifest-path src-nsh/Cargo.toml
 ```
 
-예시 데이터로 데스크톱 UI를 보려면 `npm run preview:native`를 실행하세요. `npm run dev`는 `http://127.0.0.1:1420`에서 브라우저 참조 화면을 실행하며 클라우드 연결이나 자격 증명 저장을 하지 않습니다.
+`-- --preview`를 붙이면 예시 데이터로 데스크톱 앱을 실행할 수 있습니다.
 
 변경 사항과 관련된 검사를 실행하세요:
 
 ```bash
-npm test
-npm run test:ui
-npm run build
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
+node --test tests/update-signature.test.mjs
 ```
 
-`npm run build:native`로 실행 파일을 빌드하고 `npm run tauri bundle -- --ci`로 패키징합니다. 각 플랫폼의 패키지는 해당 운영체제에서 빌드합니다. Linux 의존성, Universal 빌드, 저장 경로 및 릴리스 서명은 [개발 참조](README.md#开发与贡献)를 확인하세요. `src-core/locales`의 번역을 수정한 뒤 `node scripts/sync-i18n.mjs`를 실행하고 Rust 형식을 정리한 다음 테스트하세요.
+`cargo install --locked tauri-cli --version 2.12.1`로 독립 실행형 Tauri CLI를 설치하고 대상 운영체제에서 `node scripts/build-native.mjs`와 `node scripts/bundle-native.mjs`를 실행합니다. 패키징 및 릴리스 스크립트는 Node.js 22.12+ 표준 라이브러리를 사용합니다. Universal 빌드, 저장 경로 및 릴리스 서명은 [개발 참조](README.md#开发与贡献)를 확인하세요. `src-core/locales`의 번역을 수정한 뒤 `node scripts/sync-i18n.mjs`를 실행하고 Rust 형식을 정리한 다음 테스트하세요.
 
 Issue에는 앱 버전, 운영체제, 재현 단계와 오류를 포함하세요. 로그와 스크린샷에서 자격 증명과 개인정보를 제거하세요. Pull Request에는 문제, 변경 후 동작과 검증 결과를 설명하고 UI 변경 시 스크린샷을 첨부하세요. 테스트는 실제 클라우드 계정 대신 로컬 S3 시뮬레이터를 사용합니다. 릴리스 시 [AGENTS.md](AGENTS.md)를 따라 영어 설명을 먼저, 중국어를 다음에 작성하고 양쪽에 macOS xattr 안내를 포함하세요.
 

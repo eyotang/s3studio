@@ -16,7 +16,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
+          version=$(node -p 'require("./src-nsh/tauri.conf.json").version')
           echo "VERSION=$version" >> "$GITHUB_ENV"
           mkdir -p artifacts/omarchy-input
           gh release download "v$version" --pattern '*.deb' --pattern SHA256SUMS.txt --dir artifacts/omarchy-input

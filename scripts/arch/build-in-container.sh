@@ -2,14 +2,14 @@
 set -euo pipefail
 deb=$(realpath "$1")
 output=$(realpath "$2")
-version=$(sed -n 's/^  "version": "\([0-9][0-9.]*\)",/\1/p' package.json)
+version=$(sed -n 's/^  "version": "\([0-9][0-9.]*\)",/\1/p' src-nsh/tauri.conf.json)
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 work=$(mktemp -d)
 hash=$(sha256sum "$deb" | cut -d ' ' -f1)
 sed -e "s/@VERSION@/$version/g" -e "s/@SHA256@/$hash/g" packaging/arch/PKGBUILD.in > "$work/PKGBUILD"
 cp "$deb" "$work/s3-studio.deb"
 cp packaging/arch/s3-studio.desktop "$work/"
-cp src-tauri/icons/128x128.png "$work/icon.png"
+cp src-nsh/icons/128x128.png "$work/icon.png"
 source "$work/PKGBUILD"
 pacman -Syu --noconfirm --needed "${depends[@]}"
 useradd --create-home builder

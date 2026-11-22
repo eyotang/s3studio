@@ -149,7 +149,7 @@ pub fn progress(fraction: f32, fill: AdaptiveColor) -> View {
 
 pub fn brand(size: f32) -> impl IntoElement {
     svg(ImageSrc::svg_markup(include_str!(
-        "../../../public/brand/s3-studio-logo.svg"
+        "../../../assets/brand/s3-studio-logo.svg"
     )))
     .size(px(size))
     .flex_shrink_0()

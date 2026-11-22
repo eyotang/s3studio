@@ -60,26 +60,23 @@ Uploads are limited to 5 TiB per file; server-side single-object copying uses S3
 
 ## Development and contribution
 
-Built with Native Shell, Rust, and AWS SDK for Rust. `src-nsh` is the native UI, `src-core` the shared backend, and `src`/`src-tauri` retain the original React/Tauri reference. Install Node.js 22.12+ and stable Rust. macOS needs Xcode Command Line Tools; Windows needs MSVC C++ Build Tools. WebView2 is needed to run the original Tauri reference. Linux needs the native libraries listed in the [development reference](README.md#开发与贡献).
+Built with Native Shell, Rust, and AWS SDK for Rust. `src-nsh` contains the native UI and packaging configuration. `src-core` contains the backend. Install stable Rust. macOS needs Xcode Command Line Tools, and Windows needs MSVC C++ Build Tools. See the [development reference](README.md#开发与贡献) for Linux libraries.
 
 ```bash
-npm ci
-npm run dev:native
+cargo run --locked --manifest-path src-nsh/Cargo.toml
 ```
 
-For a desktop preview using sample data, run `npm run preview:native`. `npm run dev` starts the browser reference at `http://127.0.0.1:1420`; it does not connect to cloud storage or save credentials.
+Append `-- --preview` to open the desktop app with sample data.
 
 Run the checks relevant to your changes:
 
 ```bash
-npm test
-npm run test:ui
-npm run build
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
+node --test tests/update-signature.test.mjs
 ```
 
-Build the native executable with `npm run build:native` and package it with `npm run tauri bundle -- --ci`. Platform packages are built on their target operating systems. See the [development reference](README.md#开发与贡献) for Linux dependencies, Universal builds, storage paths, and release signing. Update language catalogs in `src-core/locales`, then run `node scripts/sync-i18n.mjs` and format Rust before testing.
+Install the standalone bundler with `cargo install --locked tauri-cli --version 2.12.1`. Run `node scripts/build-native.mjs` and `node scripts/bundle-native.mjs` on the target operating system. Packaging and release scripts use Node.js 22.12+ and its standard library. See the [development reference](README.md#开发与贡献) for Universal builds, storage paths, and release signing. Update language catalogs in `src-core/locales`, then run `node scripts/sync-i18n.mjs` and format Rust before testing.
 
 Issues should include the app version, operating system, reproduction steps, and errors. Remove credentials and private data from logs and screenshots. Pull requests should explain the problem, resulting behavior, and validation; include screenshots for UI changes. Tests use a local S3 simulator rather than real cloud accounts. Follow [AGENTS.md](AGENTS.md) when publishing: English release notes first, Chinese second, with the macOS xattr instructions in both.
 

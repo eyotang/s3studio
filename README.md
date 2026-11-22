@@ -102,13 +102,12 @@ macOS、Ubuntu deb 和直接运行的可执行文件会打开对应发布页，�
 
 ## 开发与贡献
 
-本项目使用 **Native Shell + Rust + AWS SDK for Rust**。`src-nsh` 提供原生桌面界面，`src-core` 提供共享后端，原版 React/Tauri 入口保留作迁移对照。
+本项目使用 **Native Shell + Rust + AWS SDK for Rust**。`src-nsh` 提供原生桌面界面和打包配置，`src-core` 提供账户、S3 和传输后端。
 
 ### 开发环境与启动
 
-- Node.js 22.12+（本机验证：22.23.1）。
 - 最新稳定版 Rust（最低 1.97；原生依赖固定在 `src-nsh/Cargo.lock`，共享后端测试依赖固定在 `src-core/Cargo.lock`）。
-- Windows：MSVC C++ Build Tools。运行原版 Tauri 对照应用需要 WebView2。
+- Windows：MSVC C++ Build Tools。
 - macOS 14+：Xcode Command Line Tools。
 - Ubuntu：以下原生开发依赖；桌面会话中需要运行且解锁支持 Secret Service 的密钥库，如 GNOME Keyring。
 
@@ -117,38 +116,39 @@ sudo apt-get update
 sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev gnome-keyring libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libfontconfig1-dev libasound2-dev libx11-xcb-dev libxi-dev libxrandr-dev libxinerama-dev libxcursor-dev libclang-dev
 ```
 
-安装与启动：
+使用 Cargo 启动桌面应用。
 
 ```bash
-npm ci
-npm run dev:native
+cargo run --locked --manifest-path src-nsh/Cargo.toml
 ```
 
-只查看界面：
+也可以使用示例数据预览原生界面。
 
 ```bash
-npm run dev
+cargo run --locked --manifest-path src-nsh/Cargo.toml -- --preview
 ```
-
-打开 `http://127.0.0.1:1420`。浏览器模式展示明确标注的示例账户和文件，**不会连接云存储，也不会保存凭据或执行真实操作**。桌面模式不注入示例账户。
 
 ### 检查与构建
 
+原生交互使用 Native Shell 的无头测试驱动验证。签名测试、打包和发布脚本使用 Node.js 22.12+ 的标准库。
+
 ```bash
-npm test
-npm run test:ui
-npm run build
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
-npm run build:native
-npm run tauri bundle -- --ci
+node --test tests/update-signature.test.mjs
 ```
 
-原版网页对照测试默认使用 Chromium；首次运行前执行 `npx playwright install chromium`，也可以设置 `PLAYWRIGHT_CHANNEL` 使用已有浏览器。原生界面使用 Native Shell 的无头测试驱动验证交互；`npm run preview:native` 启动示例数据预览，`npm run dev:native` 启动真实账户模式。
+在目标操作系统上安装独立 Tauri CLI，构建 NSH 可执行文件并生成安装包。
 
-`src-core` 复用原有账户、S3 和传输引擎，`src-nsh` 在 macOS 使用 AppKit、Windows 使用 Win32、Linux 使用 Native Shell 的 GPUI 渲染后端。安装包仍由 Tauri bundler 生成，以保留应用 ID、包类型标记、更新签名和现有发布流程。macOS Universal 构建使用 `npm run build:native -- --universal`，再执行 `npm run tauri bundle -- --ci --target universal-apple-darwin --bundles app,dmg`。原版 React/Tauri 入口保留作迁移对照。
+```bash
+cargo install --locked tauri-cli --version 2.12.1
+node scripts/build-native.mjs
+node scripts/bundle-native.mjs
+```
 
-安装包输出到 `src-tauri/target/release/bundle/`：Windows 为 NSIS/MSI，Ubuntu 为 deb/AppImage，macOS 为 app/DMG。应分别在对应操作系统构建；`.github/workflows/build.yml` 已配置三平台构建和产物上传，其中 macOS 生成同时支持 Apple Silicon 和 Intel 的 Universal 包，位于 `src-tauri/target/universal-apple-darwin/release/bundle/`。
+macOS 使用 AppKit，Windows 使用 Win32，Linux 使用 Native Shell 的 GPUI 渲染后端。Tauri 打包沿用原有应用 ID 和更新签名格式。安装包输出到 `src-nsh/target/installer/release/bundle/`，包括 Windows NSIS/MSI、Linux deb/AppImage 和 macOS app/DMG。
+
+macOS Universal 构建使用 `node scripts/build-native.mjs --universal`，再执行 `node scripts/bundle-native.mjs --target universal-apple-darwin --bundles app,dmg`。Universal 包位于 `src-nsh/target/installer/universal-apple-darwin/release/bundle/`。
 
 推送与应用版本一致的 `v<版本号>` 标签后，工作流等待三平台测试与构建全部通过，汇总六个安装包（含 Omarchy）、三份更新签名和 `latest.json`，生成 SHA-256 校验清单，先上传到草稿 Release，核对远端文件数量和大小后再正式发布。Windows / AppImage 更新包使用专用密钥签名；安装包尚未配置系统代码签名，macOS 尚未进行 Apple 公证。
 
@@ -170,7 +170,7 @@ Omarchy 包复用同版本 deb 中的原生可执行文件，通过 Arch 的 `ma
 
 ### 发布与验证
 
-GitHub Actions 使用仓库 Secret `TAURI_SIGNING_PRIVATE_KEY`，有密码时另设 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。与其匹配的公钥固定在 `src-tauri/tauri.conf.json`；私钥应离线备份，不能提交到仓库或放入安装包。发布脚本会验证三份实际更新包签名与版本绑定，错误密钥或缺少签名会阻止发布。更新清单由本仓库 Release 的 `latest.json` 提供。
+GitHub Actions 使用仓库 Secret `TAURI_SIGNING_PRIVATE_KEY`，有密码时另设 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。与其匹配的公钥固定在 `src-nsh/tauri.conf.json`；私钥应离线备份，不能提交到仓库或放入安装包。发布脚本会验证三份实际更新包签名与版本绑定，错误密钥或缺少签名会阻止发布。更新清单由本仓库 Release 的 `latest.json` 提供。
 
 Windows Release 构建后可运行 `powershell -NoProfile -File scripts/smoke-desktop.ps1` 检查原生程序启动；测试会结束自己启动的进程，报告保存到 `artifacts/native-startup.json`。
 
@@ -192,4 +192,4 @@ Windows Release 构建后可运行 `powershell -NoProfile -File scripts/smoke-de
 
 参考 [S3 Browser 的公开功能](https://s3browser.com/)，本项目采用独立实现，并非 AWS 官方产品。桌面界面使用 [Native Shell](https://nsh.dev/docs/rust/)，打包配置依据 [Tauri 官方文档](https://v2.tauri.app/)，S3 请求由 [AWS 官方 Rust SDK](https://docs.aws.amazon.com/sdk-for-rust/latest/dg/welcome.html) 完成。
 
-Logo 以 Apple Design 的克制、留白和几何层级为参考：保留浅蓝色圆角底，采用三层等距几何线条表达对象存储。侧栏、桌面与安装包使用同一标志。最终 SVG 源文件和设计说明位于 `assets/brand/`，应用内图标与 favicon 位于 `public/`，桌面 PNG / ICO / ICNS 位于 `src-tauri/icons/`。重新导出使用 `npm run tauri -- icon assets/brand/s3-studio-logo.svg`。
+Logo 以 Apple Design 的留白和几何层级为参考，保留浅蓝色圆角底，采用三层等距几何线条表达对象存储。侧栏、桌面与安装包使用同一标志。SVG 源文件和设计说明位于 `assets/brand/`，桌面 PNG / ICO / ICNS 位于 `src-nsh/icons/`。使用 `cargo tauri icon --output <临时目录> assets/brand/s3-studio-logo.svg` 导出，再更新打包配置中列出的桌面图标。

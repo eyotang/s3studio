@@ -9,23 +9,15 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { appConfig, checkApplicationVersions } from "./app-config.mjs";
 import { verifyUpdateSignature } from "./update-signature.mjs";
 
 const [input, output] = process.argv.slice(2);
 if (!input || !output)
   throw new Error("Usage: prepare-release.mjs INPUT OUTPUT");
-const pkg = JSON.parse(await readFile("package.json", "utf8"));
-const lock = JSON.parse(await readFile("package-lock.json", "utf8"));
-const tauri = JSON.parse(await readFile("src-tauri/tauri.conf.json", "utf8"));
-const cargo = await readFile("src-tauri/Cargo.toml", "utf8");
-const cargoVersion = cargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
-const version = pkg.version;
-if (
-  [lock.version, lock.packages[""].version, tauri.version, cargoVersion].some(
-    (value) => value !== version,
-  ) ||
-  process.env.GITHUB_REF_NAME !== `v${version}`
-)
+await checkApplicationVersions();
+const { version } = appConfig;
+if (process.env.GITHUB_REF_NAME !== `v${version}`)
   throw new Error("Release tag and all application versions must match");
 
 async function walk(directory) {
@@ -82,7 +74,7 @@ for (const [extension, suffix] of packages) {
     await verifyUpdateSignature(
       target,
       signature,
-      tauri.plugins.updater.pubkey,
+      appConfig.plugins.updater.pubkey,
       version,
     );
     const signatureName = `${name}.sig`;

@@ -1,4 +1,3 @@
-// Host adaptation of src-tauri/src/updater.rs; update policy and installer engine are unchanged.
 use crate::backend::Message;
 use futures::channel::mpsc::UnboundedSender;
 use s3_studio_core::transfers::Engine;
@@ -180,7 +179,7 @@ pub async fn check(state: Arc<UpdaterState>, user_initiated: bool) -> Result<Sta
     let result: Result<Option<Manifest>, String> = async {
         if previous.mode == "inApp" {
             let config: serde_json::Value =
-                serde_json::from_str(include_str!("../../src-tauri/tauri.conf.json"))
+                serde_json::from_str(include_str!("../tauri.conf.json"))
                     .map_err(|e| e.to_string())?;
             let config = serde_json::from_value(config["plugins"]["updater"].clone())
                 .map_err(|e| e.to_string())?;

@@ -31,7 +31,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - name: macOS architectures
         if: runner.os == 'macOS'
@@ -41,13 +40,16 @@ jobs:
           workspaces: |
             src-nsh
             src-core
-            src-tauri
           cache-on-failure: true
       - name: Linux native dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libfontconfig1-dev libasound2-dev libx11-xcb-dev libxi-dev libxrandr-dev libxinerama-dev libxcursor-dev libclang-dev mesa-vulkan-drivers xvfb x11-utils
-      - run: npm ci
-      - run: npm test
+      - name: Install standalone Tauri bundler
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/install-bundler.mjs
+      - name: Test release signatures
+        run: node --test tests/update-signature.test.mjs
       - name: Rust tests
         shell: bash
         run: |
@@ -91,14 +93,14 @@ jobs:
           update_args=()
           if [ "$RUNNER_OS" != "macOS" ]; then
             if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-              update_args=(--config src-tauri/tauri.release.conf.json)
+              update_args=(--config tauri.release.conf.json)
             elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
               echo 'Missing TAURI_SIGNING_PRIVATE_KEY for release signing' >&2
               exit 1
             fi
           fi
           set +e
-          npm run tauri bundle -- --ci ${{ matrix.args }} "${update_args[@]}" 2>&1 | tee desktop-build.log
+          node scripts/bundle-native.mjs ${{ matrix.args }} "${update_args[@]}" 2>&1 | tee desktop-build.log
           result=${PIPESTATUS[0]}
           printf '### Desktop installers\n```text\n' >> "$GITHUB_STEP_SUMMARY"
           tail -n 100 desktop-build.log >> "$GITHUB_STEP_SUMMARY"
@@ -107,17 +109,17 @@ jobs:
           exit "$result"
       - name: Build and test Omarchy package
         if: runner.os == 'Linux'
-        run: bash scripts/build-omarchy.sh src-tauri/target/release/bundle/deb/*.deb artifacts/omarchy
+        run: bash scripts/build-omarchy.sh src-nsh/target/installer/release/bundle/deb/*.deb artifacts/omarchy
       - uses: actions/upload-artifact@v4
         with:
           name: s3-studio-${{ matrix.os }}
           path: |
-            src-tauri/target/release/bundle/**/*.msi
-            src-tauri/target/release/bundle/**/*.exe
-            src-tauri/target/release/bundle/**/*.deb
-            src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/**/bundle/**/*.dmg
-            src-tauri/target/release/bundle/**/*.sig
+            src-nsh/target/installer/release/bundle/**/*.msi
+            src-nsh/target/installer/release/bundle/**/*.exe
+            src-nsh/target/installer/release/bundle/**/*.deb
+            src-nsh/target/installer/release/bundle/**/*.AppImage
+            src-nsh/target/installer/universal-apple-darwin/release/bundle/**/*.dmg
+            src-nsh/target/installer/release/bundle/**/*.sig
             artifacts/omarchy/*.pkg.tar.zst
           if-no-files-found: error
   release:

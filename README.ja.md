@@ -60,26 +60,23 @@ macOSのアプリメニューまたはバージョン表示から更新を確認
 
 ## 開発とコントリビュート
 
-Native Shell、Rust、AWS SDK for Rustを使用しています。`src-nsh` はネイティブUI、`src-core` は共有バックエンド、`src`/`src-tauri` は従来のReact/Tauri参照実装です。Node.js 22.12以降と安定版Rustが必要です。macOSはXcode Command Line Tools、WindowsにはMSVC C++ Build Toolsが必要です。WebView2は従来のTauri参照実装を起動する場合に必要です。Linuxのネイティブ依存関係は[開発リファレンス](README.md#开发与贡献)を参照してください。
+Native Shell、Rust、AWS SDK for Rustを使用しています。`src-nsh` にはネイティブUIとパッケージ設定、`src-core` にはバックエンドがあります。安定版Rustと、macOSではXcode Command Line Tools、WindowsではMSVC C++ Build Toolsが必要です。Linuxの依存関係は[開発リファレンス](README.md#开发与贡献)を参照してください。
 
 ```bash
-npm ci
-npm run dev:native
+cargo run --locked --manifest-path src-nsh/Cargo.toml
 ```
 
-サンプルデータのデスクトッププレビューは `npm run preview:native` で起動します。`npm run dev` は `http://127.0.0.1:1420` でブラウザー参照画面を起動します。クラウド接続や認証情報の保存は行いません。
+`-- --preview` を追加すると、サンプルデータでデスクトップアプリを起動できます。
 
 変更内容に応じて、次の検証を実行してください：
 
 ```bash
-npm test
-npm run test:ui
-npm run build
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
+node --test tests/update-signature.test.mjs
 ```
 
-`npm run build:native` で実行ファイルをビルドし、`npm run tauri bundle -- --ci` でパッケージ化します。各OS用パッケージは対象OSでビルドします。Linux依存関係、Universalビルド、保存先、更新署名は[開発リファレンス](README.md#开发与贡献)を参照してください。翻訳は `src-core/locales` を編集し、`node scripts/sync-i18n.mjs` を実行してRustを整形後、テストしてください。
+`cargo install --locked tauri-cli --version 2.12.1` でスタンドアロンのTauri CLIをインストールし、対象OSで `node scripts/build-native.mjs` と `node scripts/bundle-native.mjs` を実行します。パッケージ化とリリースにはNode.js 22.12以降の標準ライブラリを使用します。Universalビルド、保存先、更新署名は[開発リファレンス](README.md#开发与贡献)を参照してください。翻訳は `src-core/locales` を編集し、`node scripts/sync-i18n.mjs` を実行してRustを整形後、テストしてください。
 
 Issueにはアプリのバージョン、OS、再現手順、エラーを記載してください。ログやスクリーンショットから認証情報や個人情報を取り除いてください。Pull Requestには問題、変更後の動作、検証結果を記載し、UI変更にはスクリーンショットを添付してください。テストは実際のクラウドアカウントではなくローカルS3シミュレーターを使用します。公開時は[AGENTS.md](AGENTS.md)に従い、説明を英語、次に中国語の順に記載し、両方にmacOSのxattr手順を含めます。
 
