@@ -14,6 +14,7 @@ const env = {
   S3_STUDIO_NAME: appConfig.productName,
   S3_STUDIO_ID: appConfig.identifier,
   S3_STUDIO_MACOS_MINIMUM: appConfig.minimumMacOS,
+  S3_STUDIO_MACOS_CERTIFICATE_SHA256: appConfig.macOSSigningCertificateSha256,
 };
 const platforms = {
   linux: [

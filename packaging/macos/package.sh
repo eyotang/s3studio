@@ -30,8 +30,12 @@ cat > "$app/Contents/Info.plist" <<EOF
 </plist>
 EOF
 plutil -lint "$app/Contents/Info.plist"
-codesign --force --sign - "$app"
-codesign --verify --strict "$app"
+if [[ ${S3_STUDIO_REQUIRE_MACOS_SIGNATURE:-false} == true || -n ${S3_STUDIO_MACOS_SIGNING_P12:-} ]]; then
+    bash packaging/macos/sign.sh "$app" "$S3_STUDIO_ID" "${S3_STUDIO_MACOS_CERTIFICATE_SHA256:?}"
+else
+    codesign --force --sign - "$app"
+    codesign --verify --strict --all-architectures "$app"
+fi
 ln -s /Applications "$work/Applications"
 hdiutil create -ov -format UDZO -volname "$name" -srcfolder "$work" \
     "$output/S3-Studio_${version}_macOS_universal.dmg"
