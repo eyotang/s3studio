@@ -681,17 +681,38 @@ impl Workspace {
                     .child(div().w(px(1.)).h(px(11.)).bg(rgb(0xdfe3eb)))
                     .child(
                         row().gap(px(5.)).child(dot()).child(
-                            account
-                                .map(|a| {
-                                    self.s3_defaults
-                                        .as_ref()
-                                        .unwrap_or(&s3_studio_core::accounts::S3Defaults::default())
-                                        .region_for(a)
-                                        .to_owned()
+                            self.current_bucket()
+                                .filter(|bucket| !bucket.connection.region.is_empty())
+                                .map(|bucket| bucket.connection.region.clone())
+                                .or_else(|| {
+                                    account.map(|a| {
+                                        self.s3_defaults
+                                            .as_ref()
+                                            .unwrap_or(
+                                                &s3_studio_core::accounts::S3Defaults::default(),
+                                            )
+                                            .region_for(a)
+                                            .to_owned()
+                                    })
                                 })
                                 .unwrap_or_else(|| crate::i18n::t("未连接").into()),
                         ),
                     )
+                    .when(self.current_bucket().is_some(), |row| {
+                        row.child(
+                            icon_button(
+                                "bucket-settings",
+                                crate::i18n::t("存储桶设置"),
+                                "settings-2",
+                            )
+                            .disabled(self.is_busy())
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    this.open_dialog(Dialog::BucketSettings, window, cx)
+                                },
+                            )),
+                        )
+                    })
                     .child(div().w(px(1.)).h(px(11.)).bg(rgb(0xdfe3eb)))
                     .child(if self.backend.preview {
                         crate::i18n::t("示例工作空间")

@@ -144,7 +144,6 @@
   "选择一个对象以查看详情。": "Select an object to view its details.",
   "所有凭据仅保存于本机系统密钥库，账户数量没有限制。": "Credentials stay in your system keychain. There is no account limit.",
   "在当前目录中创建一个新的文件夹。": "Create a new folder in the current directory.",
-  "在当前账户和区域中创建新的 S3 存储桶。": "Create an S3 bucket in the current account and region.",
   "输入目标对象的完整路径，复制到当前存储桶。": "Enter the full destination key to copy within this bucket.",
   "接下来选择本地文件。当前目录中同名的对象将被覆盖；大文件自动分片上传。": "Select local files next. Objects with matching names will be overwritten; large files use multipart uploads.",
   "删除本机保存的账户配置和凭据，云端文件不受影响。": "Remove locally saved account settings and credentials. Cloud files are unaffected.",
@@ -154,7 +153,6 @@
   "关闭弹窗": "Close dialog",
   "账户名称": "Account name",
   "Session Token  可选 · 临时凭据": "Session Token  Optional · Temporary credentials",
-  "Endpoint  可选 · S3 兼容服务": "Endpoint  Optional · S3-compatible services",
   "使用路径风格访问": "Use path-style addressing",
   "MinIO 等服务推荐开启": "Recommended for MinIO and similar services",
   "文件夹名称": "Folder name",
@@ -297,5 +295,15 @@
   "管理应用语言、外观和传输并发。": "Manage the app language, appearance, and transfer concurrency.",
   "支持 1–32 路。点击保存设置后生效；降低上限时，已开始的分片会先完成。": "Supports 1–32 concurrent parts. Choose Save Settings to apply. Active parts finish before a lower limit takes effect.",
   "S3 全局默认值": "Global S3 defaults",
-  "账户的 Endpoint 或 Region 留空时，其存储桶使用对应的全局默认值。": "When an account leaves Endpoint or Region blank, its buckets use the corresponding global default."
+  "存储桶设置": "Bucket Settings",
+  "新增": "Add",
+  "删除选项": "Delete option",
+  "选择已保存的值": "Choose a saved value",
+  "使用默认值": "Use default",
+  "在所选 Endpoint 和 Region 创建存储桶。留空时使用账户或全局默认值。": "Create a bucket at the selected Endpoint and Region. Leave either field blank to use the account or global default.",
+  "修改此存储桶在本机的连接设置。留空时继承账户或全局默认值。": "Edit this bucket’s local connection settings. Leave either field blank to inherit the account or global default.",
+  "设置全局默认值，并管理账户和存储桶可选择的 Endpoint 和 Region。": "Set global defaults and manage the Endpoint and Region options available to accounts and buckets.",
+  "此账户已有同名存储桶，请编辑现有存储桶的连接设置。": "This account already has a bucket with that name. Edit the existing bucket’s connection settings.",
+  "请先完成或取消此存储桶的传输，再修改连接设置。": "Finish or cancel this bucket’s transfers before editing its connection settings.",
+  "存储桶已创建，但连接设置保存失败：{e}": "The bucket was created, but its connection settings could not be saved: {e}"
 }

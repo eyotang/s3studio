@@ -144,7 +144,6 @@
   "选择一个对象以查看详情。": "Wählen Sie ein Objekt aus, um Details anzuzeigen.",
   "所有凭据仅保存于本机系统密钥库，账户数量没有限制。": "Zugangsdaten bleiben im Systemschlüsselbund. Es gibt keine Kontenbegrenzung.",
   "在当前目录中创建一个新的文件夹。": "Erstellen Sie einen Ordner im aktuellen Verzeichnis.",
-  "在当前账户和区域中创建新的 S3 存储桶。": "Erstellen Sie einen S3-Bucket im aktuellen Konto und in der aktuellen Region.",
   "输入目标对象的完整路径，复制到当前存储桶。": "Geben Sie den vollständigen Zielschlüssel zum Kopieren innerhalb dieses Buckets ein.",
   "接下来选择本地文件。当前目录中同名的对象将被覆盖；大文件自动分片上传。": "Wählen Sie lokale Dateien. Gleichnamige Objekte werden überschrieben; große Dateien werden mehrteilig hochgeladen.",
   "删除本机保存的账户配置和凭据，云端文件不受影响。": "Entfernt lokale Kontoeinstellungen und Zugangsdaten. Cloud-Dateien bleiben unverändert.",
@@ -154,7 +153,6 @@
   "关闭弹窗": "Dialog schließen",
   "账户名称": "Kontoname",
   "Session Token  可选 · 临时凭据": "Session Token  Optional · Temporäre Zugangsdaten",
-  "Endpoint  可选 · S3 兼容服务": "Endpoint  Optional · S3-kompatible Dienste",
   "使用路径风格访问": "Pfadbasierte Adressierung verwenden",
   "MinIO 等服务推荐开启": "Für MinIO und ähnliche Dienste empfohlen",
   "文件夹名称": "Ordnername",
@@ -297,5 +295,15 @@
   "管理应用语言、外观和传输并发。": "Verwalten Sie Sprache, Design und parallele Übertragungen.",
   "支持 1–32 路。点击保存设置后生效；降低上限时，已开始的分片会先完成。": "Unterstützt 1–32 parallele Teile. Zum Anwenden Einstellungen speichern. Aktive Teile werden vor einer Reduzierung abgeschlossen.",
   "S3 全局默认值": "Globale S3-Standardwerte",
-  "账户的 Endpoint 或 Region 留空时，其存储桶使用对应的全局默认值。": "Wenn Endpoint oder Region eines Kontos leer bleiben, verwenden seine Buckets den jeweiligen globalen Standardwert."
+  "存储桶设置": "Bucket-Einstellungen",
+  "新增": "Hinzufügen",
+  "删除选项": "Option löschen",
+  "选择已保存的值": "Gespeicherten Wert auswählen",
+  "使用默认值": "Standardwert verwenden",
+  "在所选 Endpoint 和 Region 创建存储桶。留空时使用账户或全局默认值。": "Erstellen Sie einen Bucket mit dem ausgewählten Endpoint und der ausgewählten Region. Leere Felder übernehmen den Standardwert des Kontos oder den globalen Standardwert.",
+  "修改此存储桶在本机的连接设置。留空时继承账户或全局默认值。": "Bearbeiten Sie die lokalen Verbindungseinstellungen für diesen Bucket. Leere Felder übernehmen den Standardwert des Kontos oder den globalen Standardwert.",
+  "设置全局默认值，并管理账户和存储桶可选择的 Endpoint 和 Region。": "Legen Sie globale Standardwerte fest und verwalten Sie die Endpoint- und Region-Optionen für Konten und Buckets.",
+  "此账户已有同名存储桶，请编辑现有存储桶的连接设置。": "In diesem Konto gibt es bereits einen Bucket mit diesem Namen. Bearbeiten Sie die Verbindungseinstellungen des vorhandenen Buckets.",
+  "请先完成或取消此存储桶的传输，再修改连接设置。": "Schließen Sie die Übertragungen dieses Buckets ab oder brechen Sie sie ab, bevor Sie die Verbindungseinstellungen ändern.",
+  "存储桶已创建，但连接设置保存失败：{e}": "Der Bucket wurde erstellt, aber seine Verbindungseinstellungen konnten nicht gespeichert werden: {e}"
 }

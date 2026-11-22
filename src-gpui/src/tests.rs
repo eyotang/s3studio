@@ -355,3 +355,63 @@ async fn settings_menu_and_sidebar_share_global_preferences(cx: &mut TestAppCont
     })
     .unwrap();
 }
+
+#[gpui::test]
+async fn bucket_connections_share_the_saved_options_list(cx: &mut TestAppContext) {
+    let (window, view) = setup(cx).await;
+    let workspace = view.clone();
+    cx.wait_for(window, Duration::from_secs(10), move |_, cx| {
+        workspace.read(cx).s3_defaults.is_some()
+    })
+    .await;
+    cx.update_window(window, |_, window, cx| {
+        window.click("create-bucket", cx);
+        assert_eq!(view.read(cx).dialog, Some(Dialog::Bucket));
+        window.find("s3-options-region");
+        assert!(window.try_find("add-s3-option-region").is_none());
+        window.click("region", cx);
+        window.input("eu-west-2", cx);
+        window.click("add-s3-option-region", cx);
+    })
+    .unwrap();
+    let workspace = view.clone();
+    cx.wait_for(window, Duration::from_secs(10), move |_, cx| {
+        workspace.read(cx).s3_defaults.as_ref().unwrap().regions == ["eu-west-2"]
+    })
+    .await;
+    cx.update_window(window, |_, window, cx| {
+        assert!(window.try_find("add-s3-option-region").is_none());
+        window.click("cancel-dialog", cx);
+        window.click("bucket-settings", cx);
+        assert_eq!(view.read(cx).dialog, Some(Dialog::BucketSettings));
+        window.find("s3-options-endpoint");
+        window.click("s3-options-region", cx);
+        window.press("up", cx);
+        window.press("enter", cx);
+        assert_eq!(
+            view.read(cx).form.inputs["region"]
+                .read(cx)
+                .value()
+                .as_str(),
+            "eu-west-2"
+        );
+        window.click("cancel-dialog", cx);
+        window.click("app-settings", cx);
+        window.click("s3-defaults", cx);
+        window.click("delete-s3-option-region-eu-west-2", cx);
+        assert!(view.read(cx).form.s3_options.regions.is_empty());
+        window.click("submit-dialog", cx);
+    })
+    .unwrap();
+    cx.wait_for(window, Duration::from_secs(10), move |_, cx| {
+        view.read(cx).dialog.is_none()
+            && view
+                .read(cx)
+                .s3_defaults
+                .as_ref()
+                .unwrap()
+                .regions
+                .is_empty()
+    })
+    .await;
+}

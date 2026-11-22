@@ -6,7 +6,7 @@ use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::component::input::{InputEvent, InputState};
 use gpui::{prelude::*, *};
 use s3_studio_core::{
-    accounts::{Account, S3Defaults},
+    accounts::{Account, S3Connection, S3Defaults, S3Option},
     s3::{Bucket, ObjectInfo, ObjectPage, S3Object},
     transfers::{Settings, Transfer},
 };
@@ -22,6 +22,7 @@ pub enum Pending {
     Transfers,
     Settings,
     S3Defaults,
+    AddS3Option,
     Submit(Dialog),
     Download,
     Share,
@@ -32,6 +33,7 @@ pub enum Pending {
 pub struct Form {
     pub inputs: HashMap<&'static str, Entity<InputState>>,
     pub path_style: bool,
+    pub s3_options: S3Defaults,
     pub placeholders: HashMap<&'static str, String>,
     pub subscriptions: Vec<Subscription>,
 }
@@ -152,6 +154,7 @@ impl Workspace {
             form: Form {
                 inputs: HashMap::new(),
                 path_style: true,
+                s3_options: S3Defaults::default(),
                 placeholders: HashMap::new(),
                 subscriptions: vec![],
             },
@@ -246,6 +249,11 @@ impl Workspace {
     }
     pub fn account(&self) -> Option<&Account> {
         self.accounts.iter().find(|a| a.id == self.active_id)
+    }
+    pub fn current_bucket(&self) -> Option<&Bucket> {
+        self.buckets
+            .iter()
+            .find(|bucket| bucket.name == self.bucket)
     }
     pub fn visible(&self, cx: &App) -> Vec<S3Object> {
         model::visible(
@@ -415,6 +423,7 @@ impl Workspace {
         self.form.inputs.clear();
         self.form.subscriptions.clear();
         self.form.path_style = true;
+        self.form.s3_options = self.s3_defaults.clone().unwrap_or_default();
         match &dialog {
             Dialog::Account(id) => {
                 let account = id
@@ -491,7 +500,37 @@ impl Workspace {
             Dialog::Folder => {
                 self.add_input("name", "", crate::i18n::t("新文件夹"), false, window, cx)
             }
-            Dialog::Bucket => self.add_input("name", "", "my-new-bucket", false, window, cx),
+            Dialog::Bucket | Dialog::BucketSettings => {
+                if dialog == Dialog::Bucket {
+                    self.add_input("name", "", "my-new-bucket", false, window, cx);
+                }
+                let connection = self
+                    .current_bucket()
+                    .filter(|_| dialog == Dialog::BucketSettings)
+                    .map(|bucket| bucket.connection.clone())
+                    .unwrap_or_default();
+                let defaults = &self.form.s3_options;
+                let endpoint = self
+                    .account()
+                    .map(|account| defaults.endpoint_for(account))
+                    .filter(|endpoint| !endpoint.is_empty())
+                    .unwrap_or("https://s3.example.com")
+                    .to_owned();
+                let region = self
+                    .account()
+                    .map(|account| defaults.region_for(account))
+                    .unwrap_or("us-east-1")
+                    .to_owned();
+                self.add_input(
+                    "endpoint",
+                    &connection.endpoint,
+                    &endpoint,
+                    false,
+                    window,
+                    cx,
+                );
+                self.add_input("region", &connection.region, &region, false, window, cx);
+            }
             Dialog::Copy => {
                 let name = format!(
                     "{}copy-{}",
@@ -557,21 +596,76 @@ impl Workspace {
         self.form.subscriptions.push(cx.subscribe_in(
             &state,
             window,
-            |this, _, event, window, cx| {
+            move |this, _, event, window, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) {
                     this.submit(window, cx);
+                }
+                if matches!(key, "endpoint" | "region") {
+                    cx.notify();
                 }
             },
         ));
         self.form.placeholders.insert(key, placeholder.to_owned());
         self.form.inputs.insert(key, state);
     }
-    fn input(&self, key: &str, cx: &App) -> String {
+    pub fn input(&self, key: &str, cx: &App) -> String {
         self.form
             .inputs
             .get(key)
             .map(|s| s.read(cx).value().to_string())
             .unwrap_or_default()
+    }
+    pub fn set_connection_value(
+        &mut self,
+        field: S3Option,
+        value: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(input) = self.form.inputs.get(field.key()) {
+            input.update(cx, |input, cx| {
+                input.set_value(value.to_owned(), window, cx)
+            });
+        }
+        self.dialog_error.clear();
+        cx.notify();
+    }
+
+    pub fn add_s3_option(&mut self, field: S3Option, window: &mut Window, cx: &mut Context<Self>) {
+        if self.is_busy() {
+            return;
+        }
+        match field.normalize(self.input(field.key(), cx)) {
+            Ok(value) => {
+                self.set_connection_value(field, &value, window, cx);
+                if self.dialog == Some(Dialog::S3Defaults) {
+                    self.form.s3_options.add_option(field, value);
+                } else {
+                    self.busy = true;
+                    self.request(
+                        "add_s3_option",
+                        json!({"field":field,"value":value}),
+                        Pending::AddS3Option,
+                    );
+                }
+            }
+            Err(error) => self.dialog_error = error,
+        }
+        cx.notify();
+    }
+
+    pub fn remove_s3_option(
+        &mut self,
+        field: S3Option,
+        value: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.form.s3_options.remove_option(field, value);
+        if field.normalize(self.input(field.key(), cx)).as_deref() == Ok(value) {
+            self.set_connection_value(field, "", window, cx);
+        }
+        cx.notify();
     }
     pub fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.is_busy() {
@@ -620,9 +714,24 @@ impl Workspace {
                 args["key"] = json!(format!("{}{name}/", self.prefix));
                 "create_folder"
             }
-            Dialog::Bucket => {
+            Dialog::Bucket | Dialog::BucketSettings => {
+                if dialog == Dialog::Bucket && self.buckets.iter().any(|bucket| bucket.name == name)
+                {
+                    self.dialog_error =
+                        crate::i18n::t("此账户已有同名存储桶，请编辑现有存储桶的连接设置。").into();
+                    cx.notify();
+                    return;
+                }
                 args["name"] = json!(name);
-                "create_bucket"
+                args["connection"] = json!(S3Connection {
+                    endpoint: self.input("endpoint", cx),
+                    region: self.input("region", cx),
+                });
+                if dialog == Dialog::Bucket {
+                    "create_bucket"
+                } else {
+                    "set_bucket_connection"
+                }
             }
             Dialog::Copy => {
                 let Some(first) = self.first() else {
@@ -657,9 +766,10 @@ impl Workspace {
             }
             Dialog::RemoveAccount => "remove_account",
             Dialog::S3Defaults => {
-                args["input"] = json!({
-                    "endpoint": self.input("endpoint", cx),
-                    "region": self.input("region", cx),
+                args["input"] = json!(S3Defaults {
+                    endpoint: self.input("endpoint", cx),
+                    region: self.input("region", cx),
+                    ..self.form.s3_options.clone()
                 });
                 "set_s3_defaults"
             }
@@ -789,7 +899,9 @@ impl Workspace {
             Pending::Update => self.update_pending = false,
             Pending::Buckets(..) => self.bucket_loading = false,
             Pending::Objects(..) => self.loading = false,
-            Pending::Submit(_) | Pending::Download | Pending::Share => self.busy = false,
+            Pending::Submit(_) | Pending::AddS3Option | Pending::Download | Pending::Share => {
+                self.busy = false
+            }
             Pending::Control(id) => {
                 self.pending_transfers.remove(id);
             }
@@ -808,7 +920,7 @@ impl Workspace {
                         self.load_objects(false, cx);
                         self.dialog_error = error;
                     }
-                    Pending::Submit(_) => self.dialog_error = error,
+                    Pending::Submit(_) | Pending::AddS3Option => self.dialog_error = error,
                     Pending::Info(_) => self.info_error = error,
                     Pending::Control(_)
                     | Pending::Clear
@@ -870,7 +982,18 @@ impl Workspace {
                     );
                 }
                 Pending::S3Defaults => {
-                    self.s3_defaults = serde_json::from_value(data).map_err(|e| e.to_string())?;
+                    let defaults: S3Defaults =
+                        serde_json::from_value(data).map_err(|e| e.to_string())?;
+                    if self.dialog != Some(Dialog::S3Defaults) {
+                        self.form.s3_options = defaults.clone();
+                    }
+                    self.s3_defaults = Some(defaults);
+                }
+                Pending::AddS3Option => {
+                    let defaults: S3Defaults =
+                        serde_json::from_value(data).map_err(|e| e.to_string())?;
+                    self.form.s3_options = defaults.clone();
+                    self.s3_defaults = Some(defaults);
                 }
                 Pending::Settings => {
                     self.settings = serde_json::from_value(data).map_err(|e| e.to_string())?
@@ -891,6 +1014,22 @@ impl Workspace {
                             let name = self.input("name", cx).trim().to_owned();
                             self.load_buckets(Some(name), window, cx);
                             crate::i18n::t("存储桶已创建").into()
+                        }
+                        Dialog::BucketSettings => {
+                            let connection: S3Connection =
+                                serde_json::from_value(data).map_err(|e| e.to_string())?;
+                            if let Some(bucket) = self
+                                .buckets
+                                .iter_mut()
+                                .find(|bucket| bucket.name == self.bucket)
+                            {
+                                bucket.connection = connection;
+                            }
+                            self.prefix.clear();
+                            self.search
+                                .update(cx, |search, cx| search.set_value("", window, cx));
+                            self.load_objects(false, cx);
+                            crate::i18n::t("设置保存成功").into()
                         }
                         Dialog::S3Defaults => {
                             let defaults: S3Defaults =

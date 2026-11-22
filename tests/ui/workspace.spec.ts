@@ -135,7 +135,11 @@ test("global S3 defaults appear in blank account fields and preserve input case"
   await page.keyboard.press("Tab");
   await expect(accountEndpoint).toBeFocused();
   await page.keyboard.press("Tab");
+  await expect(modal.getByLabel("选择已保存的 Endpoint")).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(accountRegion).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(modal.getByLabel("选择已保存的 Region")).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
     modal.getByLabel("Access Key ID", { exact: true }),
@@ -147,4 +151,61 @@ test("global S3 defaults appear in blank account fields and preserve input case"
   );
   await expect(accountRegion).toHaveValue("");
   await expect(accountRegion).toHaveAttribute("placeholder", "eu-west-2");
+});
+
+test("bucket connection choices can be added, reused, and deleted globally", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const modal = page.getByRole("dialog");
+  const endpoint = modal.getByLabel("Endpoint", { exact: true });
+  const region = modal.getByLabel("Region", { exact: true });
+  const endpointPicker = modal.getByLabel("选择已保存的 Endpoint");
+  const regionPicker = modal.getByLabel("选择已保存的 Region");
+  const url = "https://s3.example.com/CaseSensitive";
+  const location = "eu-west-2";
+
+  await page.getByLabel("创建存储桶", { exact: true }).click();
+  await expect(region).toHaveAttribute("placeholder", "ap-southeast-1");
+  await expect(
+    modal.getByRole("button", { name: "新增 Endpoint" }),
+  ).toHaveCount(0);
+  await endpoint.fill(`${url}/`);
+  await modal.getByRole("button", { name: "新增 Endpoint" }).click();
+  await expect(endpoint).toHaveValue(url);
+  await expect(
+    modal.getByRole("button", { name: "新增 Endpoint" }),
+  ).toHaveCount(0);
+  await region.fill(location);
+  await modal.getByRole("button", { name: "新增 Region" }).click();
+  await expect(regionPicker).toHaveValue(location);
+  await modal.getByLabel("存储桶名称").fill("test-bucket");
+  await modal.getByRole("button", { name: "创建存储桶" }).click();
+  await expect(modal.getByRole("alert")).toContainText("当前是界面预览");
+  await modal.getByRole("button", { name: "取消", exact: true }).click();
+
+  await page.getByLabel("存储桶设置", { exact: true }).click();
+  await endpointPicker.selectOption(url);
+  await regionPicker.selectOption(location);
+  await expect(endpoint).toHaveValue(url);
+  await expect(region).toHaveValue(location);
+  await modal.getByRole("button", { name: "保存设置" }).click();
+  await expect(modal).toBeHidden();
+  await expect(page.locator(".bucket-summary")).toContainText(location);
+
+  await page.getByLabel("传输设置", { exact: true }).click();
+  await modal.getByRole("button", { name: "S3 全局默认值" }).click();
+  await modal.getByRole("button", { name: `删除选项 · ${url}` }).click();
+  await modal.getByRole("button", { name: `删除选项 · ${location}` }).click();
+  await modal.getByRole("button", { name: "保存设置" }).click();
+  await expect(modal).toBeHidden();
+
+  await page.getByLabel("存储桶设置", { exact: true }).click();
+  await expect(endpoint).toHaveValue(url);
+  await expect(region).toHaveValue(location);
+  await expect(endpointPicker.locator("option")).toHaveCount(2);
+  await expect(regionPicker.locator("option")).toHaveCount(2);
+  await expect(
+    modal.getByRole("button", { name: "新增 Endpoint" }),
+  ).toBeVisible();
 });

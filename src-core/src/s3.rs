@@ -1,4 +1,7 @@
-use crate::accounts::{get_s3_defaults, read_secret, AccountStore};
+use crate::{
+    accounts::{get_s3_defaults, read_secret, Account, AccountStore, S3Connection, S3Defaults},
+    transfers::Engine,
+};
 use aws_credential_types::Credentials;
 use aws_sdk_s3::{
     config::{
@@ -16,21 +19,35 @@ use std::{
     time::Duration,
 };
 
-async fn client(store: &AccountStore, id: &str) -> Result<(Client, String, bool), String> {
-    let account = store
-        .accounts
-        .lock()
-        .await
-        .iter()
-        .find(|a| a.id == id)
-        .cloned()
-        .ok_or(crate::i18n::t("账户不存在。"))?;
-    let defaults = get_s3_defaults(store).await;
-    let region = defaults.region_for(&account).to_owned();
-    let endpoint = defaults.endpoint_for(&account);
-    let use_configured_connection =
-        !endpoint.is_empty() || (account.region.is_empty() && !defaults.region.is_empty());
-    let secret = read_secret(id.to_owned()).await?;
+fn resolve_connection(
+    account: &Account,
+    defaults: &S3Defaults,
+    bucket: &S3Connection,
+) -> (S3Connection, bool) {
+    let endpoint = if bucket.endpoint.is_empty() {
+        defaults.endpoint_for(account)
+    } else {
+        &bucket.endpoint
+    };
+    let region = if bucket.region.is_empty() {
+        defaults.region_for(account)
+    } else {
+        &bucket.region
+    };
+    let pinned = !endpoint.is_empty()
+        || !bucket.region.is_empty()
+        || (account.region.is_empty() && !defaults.region.is_empty());
+    (
+        S3Connection {
+            endpoint: endpoint.into(),
+            region: region.into(),
+        },
+        pinned,
+    )
+}
+
+async fn client(account: &Account, connection: &S3Connection) -> Result<Client, String> {
+    let secret = read_secret(account.id.clone()).await?;
     let credentials = Credentials::new(
         secret.access_key,
         secret.secret_key,
@@ -44,7 +61,7 @@ async fn client(store: &AccountStore, id: &str) -> Result<(Client, String, bool)
     );
     let mut config = aws_sdk_s3::Config::builder()
         .behavior_version(BehaviorVersion::latest())
-        .region(Region::new(region.clone()))
+        .region(Region::new(connection.region.clone()))
         .credentials_provider(credentials)
         .force_path_style(account.path_style)
         .timeout_config(
@@ -55,21 +72,26 @@ async fn client(store: &AccountStore, id: &str) -> Result<(Client, String, bool)
         )
         .request_checksum_calculation(RequestChecksumCalculation::WhenRequired)
         .response_checksum_validation(ResponseChecksumValidation::WhenRequired);
-    if !endpoint.is_empty() {
-        config = config.endpoint_url(endpoint);
+    if !connection.endpoint.is_empty() {
+        config = config.endpoint_url(&connection.endpoint);
     }
-    Ok((
-        Client::from_conf(config.build()),
-        region,
-        use_configured_connection,
-    ))
+    Ok(Client::from_conf(config.build()))
 }
 
 pub async fn bucket_client(store: &AccountStore, id: &str, bucket: &str) -> Result<Client, String> {
-    let (client, default_region, use_configured_connection) = client(store, id).await?;
+    let account = store.account(id).await?;
+    let defaults = get_s3_defaults(store).await;
+    let empty = S3Connection::default();
+    let (connection, use_configured_connection) = resolve_connection(
+        &account,
+        &defaults,
+        account.bucket_connections.get(bucket).unwrap_or(&empty),
+    );
+    let client = client(&account, &connection).await?;
     if use_configured_connection {
         return Ok(client);
     }
+    let default_region = connection.region;
     let cache_key = (id.to_owned(), bucket.to_owned());
     let cached = store.bucket_regions.lock().await.get(&cache_key).cloned();
     let region = if let Some(region) = cached {
@@ -124,6 +146,8 @@ fn failure(error: impl std::error::Error) -> String {
 pub struct Bucket {
     pub name: String,
     pub created: String,
+    #[serde(flatten)]
+    pub connection: S3Connection,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -142,7 +166,32 @@ pub struct ObjectPage {
 }
 
 pub async fn list_buckets(store: &AccountStore, account_id: String) -> Result<Vec<Bucket>, String> {
-    let (client, _, _) = client(&store, &account_id).await?;
+    let account = store.account(&account_id).await?;
+    let defaults = get_s3_defaults(store).await;
+    let (connection, _) = resolve_connection(&account, &defaults, &S3Connection::default());
+    let client = client(&account, &connection).await?;
+    let mut buckets = match list_remote_buckets(&client).await {
+        Ok(buckets) => buckets,
+        // A bucket can live on a different service than the account listing endpoint.
+        Err(_) if !account.bucket_connections.is_empty() => Vec::new(),
+        Err(error) => return Err(error),
+    };
+    let mut connections = account.bucket_connections;
+    for bucket in &mut buckets {
+        if let Some(connection) = connections.remove(&bucket.name) {
+            bucket.connection = connection;
+        }
+    }
+    buckets.extend(connections.into_iter().map(|(name, connection)| Bucket {
+        name,
+        created: String::new(),
+        connection,
+    }));
+    buckets.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(buckets)
+}
+
+async fn list_remote_buckets(client: &Client) -> Result<Vec<Bucket>, String> {
     let mut token = None;
     let mut buckets = Vec::new();
     loop {
@@ -160,6 +209,7 @@ pub async fn list_buckets(store: &AccountStore, account_id: String) -> Result<Ve
                         .creation_date()
                         .map(ToString::to_string)
                         .unwrap_or_default(),
+                    connection: S3Connection::default(),
                 });
             }
         }
@@ -168,7 +218,6 @@ pub async fn list_buckets(store: &AccountStore, account_id: String) -> Result<Ve
             break;
         }
     }
-    buckets.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(buckets)
 }
 
@@ -265,6 +314,7 @@ pub async fn create_bucket(
     store: &AccountStore,
     account_id: String,
     name: String,
+    connection: S3Connection,
 ) -> Result<(), String> {
     if !valid_bucket(&name) {
         return Err(crate::i18n::t(
@@ -272,17 +322,67 @@ pub async fn create_bucket(
         )
         .into());
     }
-    let (client, region, _) = client(&store, &account_id).await?;
+    let connection = connection.normalized()?;
+    let _change = store.connection_changes.lock().await;
+    let account = store.account(&account_id).await?;
+    if account.bucket_connections.contains_key(&name) {
+        return Err(crate::i18n::t("此账户已有同名存储桶，请编辑现有存储桶的连接设置。").into());
+    }
+    let defaults = get_s3_defaults(store).await;
+    let (resolved, _) = resolve_connection(&account, &defaults, &connection);
+    let client = client(&account, &resolved).await?;
+    create_bucket_at(&client, &name, &resolved.region).await?;
+    if !connection.is_empty() {
+        store
+            .save_bucket_connection(&account_id, &name, connection)
+            .await
+            .map_err(|e| crate::lf!("存储桶已创建，但连接设置保存失败：{e}", e = e))?;
+    }
+    Ok(())
+}
+
+async fn create_bucket_at(client: &Client, name: &str, region: &str) -> Result<(), String> {
     let mut request = client.create_bucket().bucket(name);
     if region != "us-east-1" {
         request = request.create_bucket_configuration(
             CreateBucketConfiguration::builder()
-                .location_constraint(BucketLocationConstraint::from(region.as_str()))
+                .location_constraint(BucketLocationConstraint::from(region))
                 .build(),
         );
     }
     request.send().await.map_err(failure)?;
     Ok(())
+}
+
+pub async fn set_bucket_connection(
+    store: &AccountStore,
+    engine: &Engine,
+    account_id: String,
+    bucket: String,
+    connection: S3Connection,
+) -> Result<S3Connection, String> {
+    if bucket.is_empty() {
+        return Err(crate::i18n::t("请填写此字段。").into());
+    }
+    let connection = connection.normalized()?;
+    let _change = store.connection_changes.lock().await;
+    let account = store.account(&account_id).await?;
+    if account
+        .bucket_connections
+        .get(&bucket)
+        .cloned()
+        .unwrap_or_default()
+        == connection
+    {
+        return Ok(connection);
+    }
+    if engine.has_unfinished_bucket(&account_id, &bucket).await {
+        return Err(crate::i18n::t("请先完成或取消此存储桶的传输，再修改连接设置。").into());
+    }
+    store
+        .save_bucket_connection(&account_id, &bucket, connection.clone())
+        .await?;
+    Ok(connection)
 }
 
 pub async fn create_folder(
@@ -567,6 +667,116 @@ mod tests {
                 .endpoint_url(endpoint)
                 .build(),
         )
+    }
+
+    #[tokio::test]
+    async fn bucket_settings_persist_and_keep_explicit_values_after_option_removal() {
+        use crate::accounts::{set_s3_defaults, S3Option};
+        use crate::transfers::Direction;
+        let dir = std::env::temp_dir().join(format!("s3-bucket-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("accounts.json");
+        std::fs::write(
+            &path,
+            r#"[{"id":"test","name":"Test","region":"eu-west-1","pathStyle":true}]"#,
+        )
+        .unwrap();
+        let store = AccountStore::open(path.clone()).unwrap();
+        let engine = Engine::open(dir.join("transfers.json"), std::sync::Arc::new(|_| {})).unwrap();
+        let defaults = set_s3_defaults(
+            &store,
+            S3Defaults {
+                endpoint: "https://global.example".into(),
+                region: "us-east-1".into(),
+                endpoints: vec!["https://bucket.example/Case".into()],
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let bucket = "test-bucket";
+        let connection = set_bucket_connection(
+            &store,
+            &engine,
+            "test".into(),
+            bucket.into(),
+            S3Connection {
+                endpoint: " https://bucket.example/Case/ ".into(),
+                region: String::new(),
+            },
+        )
+        .await
+        .unwrap();
+        let mut options = defaults.clone();
+        options.remove_option(S3Option::Endpoint, &connection.endpoint);
+        let saved = set_s3_defaults(&store, options).await.unwrap();
+        assert_eq!(saved.endpoints, ["https://global.example"]);
+
+        let reopened = AccountStore::open(path).unwrap();
+        let account = reopened.account("test").await.unwrap();
+        assert_eq!(account.bucket_connections[bucket], connection);
+        let (resolved, pinned) = resolve_connection(&account, &saved, &connection);
+        assert!(pinned);
+        assert_eq!(resolved.endpoint, "https://bucket.example/Case");
+        assert_eq!(resolved.region, "eu-west-1");
+        engine
+            .enqueue(
+                Direction::Download,
+                "test".into(),
+                bucket.into(),
+                "file".into(),
+                dir.join("file"),
+            )
+            .await
+            .unwrap();
+        assert!(set_bucket_connection(
+            &reopened,
+            &engine,
+            "test".into(),
+            bucket.into(),
+            S3Connection::default()
+        )
+        .await
+        .is_err());
+        assert_eq!(
+            reopened.account("test").await.unwrap().bucket_connections[bucket],
+            connection
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn creates_bucket_with_selected_endpoint_and_region() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let client = test_client(format!("http://{}", server.server_addr()));
+        let client = Client::from_conf(
+            client
+                .config()
+                .to_builder()
+                .region(Region::new("eu-west-2"))
+                .build(),
+        );
+        let server_thread = std::thread::spawn(move || {
+            let mut request = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            assert_eq!(request.method(), &tiny_http::Method::Put);
+            assert_eq!(request.url(), "/test-bucket/");
+            assert!(request
+                .headers()
+                .iter()
+                .any(|header| header.field.equiv("Authorization")
+                    && header.value.as_str().contains("/eu-west-2/s3/")));
+            let mut body = String::new();
+            request.as_reader().read_to_string(&mut body).unwrap();
+            assert!(body.contains("<LocationConstraint>eu-west-2</LocationConstraint>"));
+            request.respond(tiny_http::Response::empty(200)).unwrap();
+        });
+        create_bucket_at(&client, "test-bucket", "eu-west-2")
+            .await
+            .unwrap();
+        server_thread.join().unwrap();
     }
     #[tokio::test]
     async fn signed_listing_parses_folders_and_passes_pagination_token() {

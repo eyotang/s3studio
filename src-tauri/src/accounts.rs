@@ -35,3 +35,12 @@ pub async fn set_s3_defaults(
 ) -> Result<S3Defaults, String> {
     s3_studio_core::accounts::set_s3_defaults(&store, input).await
 }
+
+#[tauri::command]
+pub async fn add_s3_option(
+    store: State<'_, AccountStore>,
+    field: S3Option,
+    value: String,
+) -> Result<S3Defaults, String> {
+    s3_studio_core::accounts::add_s3_option(&store, field, value).await
+}

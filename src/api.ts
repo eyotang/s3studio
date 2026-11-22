@@ -1,8 +1,20 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { Account, Bucket, ObjectPage, Transfer } from "./types";
+import type {
+  Account,
+  Bucket,
+  ObjectPage,
+  S3Connection,
+  S3Defaults,
+  Transfer,
+} from "./types";
 export const native = isTauri();
 let demoConcurrency = 8;
-let demoS3Defaults = { endpoint: "", region: "" };
+let demoS3Defaults: S3Defaults = {
+  endpoint: "",
+  region: "",
+  endpoints: [],
+  regions: [],
+};
 let demoTransfers: Transfer[] =
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).has("previewTransfers")
@@ -53,7 +65,8 @@ const demoBuckets: Bucket[] = [
   { name: "studio-assets", created: "2026-08-16T08:00:00Z" },
   { name: "application-backups", created: "2026-07-10T08:00:00Z" },
   { name: "team-documents", created: "2026-06-12T08:00:00Z" },
-];
+].map((bucket) => ({ ...bucket, endpoint: "", region: "" }));
+const demoConnections = new Map<string, S3Connection>();
 const demoItems = [
   { name: "Brand assets/", size: 0 },
   { name: "Photography/", size: 0 },
@@ -74,8 +87,33 @@ export async function api<T>(
   if (command === "list_accounts") return demoAccounts as T;
   if (command === "get_s3_defaults") return demoS3Defaults as T;
   if (command === "set_s3_defaults") {
-    demoS3Defaults = args.input as typeof demoS3Defaults;
+    const input = args.input as S3Defaults;
+    demoS3Defaults = { ...input };
+    for (const field of ["endpoint", "region"] as const) {
+      if (input[field])
+        demoS3Defaults[`${field}s`] = [
+          ...new Set([...input[`${field}s`], input[field]]),
+        ].sort();
+    }
     return demoS3Defaults as T;
+  }
+  if (command === "add_s3_option") {
+    const field = args.field as keyof S3Connection;
+    const options = `${field}s` as const;
+    demoS3Defaults = {
+      ...demoS3Defaults,
+      [options]: [
+        ...new Set([...demoS3Defaults[options], String(args.value)]),
+      ].sort(),
+    };
+    return demoS3Defaults as T;
+  }
+  if (command === "set_bucket_connection") {
+    demoConnections.set(
+      JSON.stringify([args.accountId, args.bucket]),
+      args.connection as S3Connection,
+    );
+    return args.connection as T;
   }
   if (command === "list_transfers") return demoTransfers as T;
   if (command === "get_transfer_settings")
@@ -115,7 +153,11 @@ export async function api<T>(
     );
     return undefined as T;
   }
-  if (command === "list_buckets") return demoBuckets as T;
+  if (command === "list_buckets")
+    return demoBuckets.map((bucket) => ({
+      ...bucket,
+      ...demoConnections.get(JSON.stringify([args.accountId, bucket.name])),
+    })) as T;
   if (command === "list_objects") {
     const prefix = (args.prefix as string) || "";
     const items = prefix

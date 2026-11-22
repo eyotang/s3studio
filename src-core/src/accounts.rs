@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashMap},
+    path::PathBuf,
+};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -15,6 +18,8 @@ pub struct Account {
     #[serde(default)]
     pub endpoint: String,
     pub path_style: bool,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub bucket_connections: BTreeMap<String, S3Connection>,
 }
 
 #[derive(Deserialize)]
@@ -34,12 +39,109 @@ pub struct AccountInput {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(default)]
+pub struct S3Connection {
+    pub endpoint: String,
+    pub region: String,
+}
+
+impl S3Connection {
+    pub fn normalized(mut self) -> Result<Self, String> {
+        self.endpoint = self.endpoint.trim().into();
+        self.region = self.region.trim().into();
+        validate_connection(&self.region, &self.endpoint)?;
+        self.endpoint
+            .truncate(self.endpoint.trim_end_matches('/').len());
+        Ok(self)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.endpoint.is_empty() && self.region.is_empty()
+    }
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum S3Option {
+    Endpoint,
+    Region,
+}
+
+impl S3Option {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Endpoint => "endpoint",
+            Self::Region => "region",
+        }
+    }
+
+    pub fn normalize(self, value: String) -> Result<String, String> {
+        let mut connection = S3Connection::default();
+        match self {
+            Self::Endpoint => connection.endpoint = value,
+            Self::Region => connection.region = value,
+        }
+        let connection = connection.normalized()?;
+        Ok(match self {
+            Self::Endpoint => connection.endpoint,
+            Self::Region => connection.region,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(default)]
 pub struct S3Defaults {
     pub region: String,
     pub endpoint: String,
+    pub endpoints: Vec<String>,
+    pub regions: Vec<String>,
 }
 
 impl S3Defaults {
+    pub fn normalized(mut self) -> Result<Self, String> {
+        self.endpoint = S3Option::Endpoint.normalize(self.endpoint)?;
+        self.region = S3Option::Region.normalize(self.region)?;
+        for field in [S3Option::Endpoint, S3Option::Region] {
+            let options = std::mem::take(self.options_mut(field));
+            for value in options {
+                self.add_option(field, field.normalize(value)?);
+            }
+        }
+        self.include_defaults();
+        Ok(self)
+    }
+
+    pub fn options(&self, field: S3Option) -> &[String] {
+        match field {
+            S3Option::Endpoint => &self.endpoints,
+            S3Option::Region => &self.regions,
+        }
+    }
+
+    fn options_mut(&mut self, field: S3Option) -> &mut Vec<String> {
+        match field {
+            S3Option::Endpoint => &mut self.endpoints,
+            S3Option::Region => &mut self.regions,
+        }
+    }
+
+    pub fn add_option(&mut self, field: S3Option, value: String) {
+        let options = self.options_mut(field);
+        if !value.is_empty() && !options.contains(&value) {
+            options.push(value);
+            options.sort();
+        }
+    }
+
+    pub fn remove_option(&mut self, field: S3Option, value: &str) {
+        self.options_mut(field).retain(|option| option != value);
+    }
+
+    fn include_defaults(&mut self) {
+        self.add_option(S3Option::Endpoint, self.endpoint.clone());
+        self.add_option(S3Option::Region, self.region.clone());
+    }
+
     pub fn endpoint_for<'a>(&'a self, account: &'a Account) -> &'a str {
         if account.endpoint.is_empty() {
             &self.endpoint
@@ -70,6 +172,7 @@ pub struct Secret {
 pub struct AccountStore {
     pub accounts: Mutex<Vec<Account>>,
     pub bucket_regions: Mutex<HashMap<(String, String), String>>,
+    pub(crate) connection_changes: Mutex<()>,
     path: PathBuf,
     defaults: Mutex<S3Defaults>,
     defaults_path: PathBuf,
@@ -83,14 +186,16 @@ impl AccountStore {
             Err(e) => return Err(e.into()),
         };
         let defaults_path = path.with_extension("s3-defaults.json");
-        let defaults = match std::fs::read(&defaults_path) {
+        let mut defaults = match std::fs::read(&defaults_path) {
             Ok(data) => serde_json::from_slice(&data)?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => S3Defaults::default(),
             Err(e) => return Err(e.into()),
         };
+        defaults.include_defaults();
         Ok(Self {
             accounts: Mutex::new(accounts),
             bucket_regions: Mutex::new(HashMap::new()),
+            connection_changes: Mutex::new(()),
             path,
             defaults: Mutex::new(defaults),
             defaults_path,
@@ -100,6 +205,42 @@ impl AccountStore {
     async fn persist(&self, accounts: &[Account]) -> Result<(), String> {
         let data = serde_json::to_vec_pretty(accounts).map_err(|e| e.to_string())?;
         persist_config(&self.path, data).await
+    }
+
+    pub(crate) async fn account(&self, id: &str) -> Result<Account, String> {
+        self.accounts
+            .lock()
+            .await
+            .iter()
+            .find(|account| account.id == id)
+            .cloned()
+            .ok_or_else(|| crate::i18n::t("账户不存在。").into())
+    }
+
+    pub(crate) async fn save_bucket_connection(
+        &self,
+        account_id: &str,
+        bucket: &str,
+        connection: S3Connection,
+    ) -> Result<(), String> {
+        let mut accounts = self.accounts.lock().await;
+        let mut updated = accounts.clone();
+        let account = updated
+            .iter_mut()
+            .find(|account| account.id == account_id)
+            .ok_or(crate::i18n::t("账户不存在。"))?;
+        if connection.is_empty() {
+            account.bucket_connections.remove(bucket);
+        } else {
+            account.bucket_connections.insert(bucket.into(), connection);
+        }
+        self.persist(&updated).await?;
+        *accounts = updated;
+        self.bucket_regions
+            .lock()
+            .await
+            .remove(&(account_id.into(), bucket.into()));
+        Ok(())
     }
 }
 
@@ -121,20 +262,41 @@ pub async fn set_s3_defaults(
     store: &AccountStore,
     input: S3Defaults,
 ) -> Result<S3Defaults, String> {
-    let input = S3Defaults {
-        region: input.region.trim().into(),
-        endpoint: input.endpoint.trim().into(),
-    };
-    validate_connection(&input.region, &input.endpoint)?;
-    let input = S3Defaults {
-        endpoint: input.endpoint.trim_end_matches('/').into(),
-        ..input
-    };
+    let input = input.normalized()?;
+    let _change = store.connection_changes.lock().await;
     let mut defaults = store.defaults.lock().await;
-    let data = serde_json::to_vec_pretty(&input).map_err(|e| e.to_string())?;
+    let changed = (defaults.endpoint != input.endpoint) || (defaults.region != input.region);
+    persist_defaults(store, &mut defaults, input).await?;
+    if changed {
+        store.bucket_regions.lock().await.clear();
+    }
+    Ok(defaults.clone())
+}
+
+pub async fn add_s3_option(
+    store: &AccountStore,
+    field: S3Option,
+    value: String,
+) -> Result<S3Defaults, String> {
+    let value = field.normalize(value)?;
+    let mut defaults = store.defaults.lock().await;
+    let mut updated = defaults.clone();
+    updated.add_option(field, value);
+    if updated != *defaults {
+        persist_defaults(store, &mut defaults, updated).await?;
+    }
+    Ok(defaults.clone())
+}
+
+async fn persist_defaults(
+    store: &AccountStore,
+    defaults: &mut S3Defaults,
+    updated: S3Defaults,
+) -> Result<(), String> {
+    let data = serde_json::to_vec_pretty(&updated).map_err(|e| e.to_string())?;
     persist_config(&store.defaults_path, data).await?;
-    *defaults = input.clone();
-    Ok(input)
+    *defaults = updated;
+    Ok(())
 }
 
 fn keyring_error(e: keyring::Error) -> String {
@@ -237,6 +399,7 @@ pub async fn list_accounts(store: &AccountStore) -> Result<Vec<Account>, String>
 
 pub async fn save_account(store: &AccountStore, input: AccountInput) -> Result<Account, String> {
     validate(&input)?;
+    let _change = store.connection_changes.lock().await;
     let mut accounts = store.accounts.lock().await;
     let existing = if input.id.is_empty() {
         None
@@ -262,6 +425,9 @@ pub async fn save_account(store: &AccountStore, input: AccountInput) -> Result<A
         region: input.region,
         endpoint: input.endpoint.trim_end_matches('/').into(),
         path_style: input.path_style,
+        bucket_connections: existing
+            .map(|index| accounts[index].bucket_connections.clone())
+            .unwrap_or_default(),
     };
     let previous_secret = if existing.is_some() && !input.access_key.is_empty() {
         read_optional_secret(id.clone()).await?
@@ -317,6 +483,7 @@ pub async fn remove_account(
     engine: &crate::transfers::Engine,
     account_id: String,
 ) -> Result<(), String> {
+    let _change = store.connection_changes.lock().await;
     let mut accounts = store.accounts.lock().await;
     if engine.has_unfinished_account(&account_id).await {
         return Err(
@@ -370,15 +537,24 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("s3-defaults-{}", Uuid::new_v4()));
         std::fs::create_dir(&dir).unwrap();
         let path = dir.join("accounts.json");
+        std::fs::write(
+            path.with_extension("s3-defaults.json"),
+            r#"{"endpoint":"https://legacy.example","region":"us-west-1"}"#,
+        )
+        .unwrap();
         let accounts = r#"[{"id":"legacy","name":"Legacy","region":"eu-west-1","pathStyle":false},
             {"id":"inherited","name":"Inherited","endpoint":"https://custom.example","pathStyle":true}]"#;
         std::fs::write(&path, accounts).unwrap();
         let store = AccountStore::open(path.clone()).unwrap();
+        let legacy_options = get_s3_defaults(&store).await;
+        assert_eq!(legacy_options.endpoints, ["https://legacy.example"]);
+        assert_eq!(legacy_options.regions, ["us-west-1"]);
         let defaults = set_s3_defaults(
             &store,
             S3Defaults {
                 endpoint: " https://global.example/ ".into(),
                 region: " ap-southeast-1 ".into(),
+                ..Default::default()
             },
         )
         .await
@@ -388,8 +564,21 @@ mod tests {
             ..defaults.clone()
         };
         assert!(set_s3_defaults(&store, invalid).await.is_err());
+        let (endpoint, region) = tokio::join!(
+            add_s3_option(&store, S3Option::Endpoint, "https://other.example/".into()),
+            add_s3_option(&store, S3Option::Region, "eu-central-1".into()),
+        );
+        assert!(endpoint.is_ok() && region.is_ok());
+        let updated = add_s3_option(&store, S3Option::Endpoint, "https://other.example".into())
+            .await
+            .unwrap();
+        assert_eq!(
+            updated.endpoints,
+            ["https://global.example", "https://other.example"]
+        );
+        assert_eq!(updated.regions, ["ap-southeast-1", "eu-central-1"]);
         let reopened = AccountStore::open(path.clone()).unwrap();
-        assert_eq!(get_s3_defaults(&reopened).await, defaults);
+        assert_eq!(get_s3_defaults(&reopened).await, updated);
         assert_eq!(std::fs::read_to_string(path).unwrap(), accounts);
 
         let mut accounts = list_accounts(&reopened).await.unwrap().into_iter();
@@ -431,6 +620,7 @@ mod tests {
                 region: "us-east-1".into(),
                 endpoint: "".into(),
                 path_style: false,
+                bucket_connections: BTreeMap::new(),
             })
             .collect();
         let json = serde_json::to_string(&items).unwrap();

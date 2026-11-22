@@ -1,4 +1,4 @@
-use crate::accounts::AccountStore;
+use crate::accounts::{AccountStore, S3Connection};
 pub use s3_studio_core::s3::*;
 use tauri::State;
 
@@ -26,8 +26,21 @@ pub async fn create_bucket(
     store: State<'_, AccountStore>,
     account_id: String,
     name: String,
+    connection: Option<S3Connection>,
 ) -> Result<(), String> {
-    s3_studio_core::s3::create_bucket(&store, account_id, name).await
+    s3_studio_core::s3::create_bucket(&store, account_id, name, connection.unwrap_or_default())
+        .await
+}
+
+#[tauri::command]
+pub async fn set_bucket_connection(
+    store: State<'_, AccountStore>,
+    engine: State<'_, crate::transfers::Engine>,
+    account_id: String,
+    bucket: String,
+    connection: S3Connection,
+) -> Result<S3Connection, String> {
+    s3_studio_core::s3::set_bucket_connection(&store, &engine, account_id, bucket, connection).await
 }
 
 #[tauri::command]

@@ -56,6 +56,7 @@ pub async fn upload_files(
     else {
         return Ok(0);
     };
+    let _change = store.connection_changes.lock().await;
     let client = bucket_client(&store, &account_id, &bucket).await?;
     let mut count = 0;
     let mut errors = Vec::new();
@@ -122,6 +123,7 @@ pub async fn download_object(
     else {
         return Ok(false);
     };
+    let _change = store.connection_changes.lock().await;
     let client = bucket_client(&store, &account_id, &bucket).await?;
     let id = engine
         .enqueue(

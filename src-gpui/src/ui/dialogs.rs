@@ -1,28 +1,151 @@
 use super::*;
 use gpui::base::FocusTrapElement;
+use gpui::component::{
+    Disableable,
+    button::Button as MenuButton,
+    menu::{DropdownMenu, PopupMenuItem},
+};
+use s3_studio_core::accounts::S3Option;
+
 impl Workspace {
+    fn form_input(&self, key: &'static str, title: &str) -> Option<Input> {
+        Some(
+            Input::new(self.form.inputs.get(key)?)
+                .id(key)
+                .aria_label(title.to_owned())
+                .h(px(38.))
+                .text_size(px(12.))
+                .bg(rgb(0xfcfdfe))
+                .border_color(rgb(0xe0e5ec))
+                .rounded(px(7.)),
+        )
+    }
+
     fn field(&self, key: &'static str, title: &str) -> AnyElement {
-        let Some(input) = self.form.inputs.get(key) else {
-            return div().into_any_element();
-        };
         col()
             .flex_1()
             .min_w_0()
             .mb(px(16.))
             .child(label(title.to_owned(), 12., 0x778294))
+            .children(self.form_input(key, title).map(|input| input.mt(px(7.))))
+            .into_any_element()
+    }
+
+    fn connection_field(
+        &self,
+        field: S3Option,
+        title: &'static str,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let key = field.key();
+        let value = self.input(key, cx);
+        let normalized = field
+            .normalize(value.clone())
+            .unwrap_or_else(|_| value.trim().into());
+        let options = self.form.s3_options.options(field);
+        let can_add = !normalized.is_empty() && !options.contains(&normalized);
+        let choices: Vec<_> = std::iter::once(String::new())
+            .chain(options.iter().cloned())
+            .collect();
+        let choose = crate::i18n::t("选择已保存的值");
+        let select = MenuButton::new(SharedString::from(format!("s3-options-{key}")))
+            .accessibility_label(format!("{title} · {choose}"))
+            .icon(icon("chevron-down", 14.))
+            .disabled(self.is_busy())
+            .dropdown_menu({
+                let select =
+                    std::rc::Rc::new(cx.listener(move |this, value: &String, window, cx| {
+                        this.set_connection_value(field, value, window, cx);
+                    }));
+                move |menu, _, _| {
+                    choices
+                        .iter()
+                        .fold(menu.scrollable(true).max_w(px(360.)), |menu, value| {
+                            let select = select.clone();
+                            let caption = if value.is_empty() {
+                                crate::i18n::t("使用默认值")
+                            } else {
+                                value
+                            };
+                            let value = value.clone();
+                            menu.item(
+                                PopupMenuItem::new(caption.to_owned())
+                                    .checked(value == normalized)
+                                    .on_click(move |_, window, cx| select(&value, window, cx)),
+                            )
+                        })
+                }
+            });
+        col()
+            .mb(px(16.))
+            .gap(px(7.))
+            .child(label(title, 12., 0x778294))
             .child(
-                Input::new(input)
-                    .id(key)
-                    .aria_label(title.to_owned())
-                    .mt(px(7.))
-                    .h(px(38.))
-                    .text_size(px(12.))
-                    .bg(rgb(0xfcfdfe))
-                    .border_color(rgb(0xe0e5ec))
-                    .rounded(px(7.)),
+                row()
+                    .gap(px(6.))
+                    .child(
+                        div().flex_1().min_w_0().children(
+                            self.form_input(key, title)
+                                .map(|input| input.disabled(self.is_busy())),
+                        ),
+                    )
+                    .child(select)
+                    .when(can_add, |row| {
+                        row.child(
+                            secondary(
+                                SharedString::from(format!("add-s3-option-{key}")),
+                                crate::i18n::t("新增"),
+                            )
+                            .disabled(self.is_busy())
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| this.add_s3_option(field, window, cx),
+                            )),
+                        )
+                    }),
+            )
+            .when(
+                self.dialog == Some(Dialog::S3Defaults) && !options.is_empty(),
+                |col| {
+                    col.child(
+                        div()
+                            .id(SharedString::from(format!("saved-s3-options-{key}")))
+                            .flex()
+                            .flex_col()
+                            .max_h(px(92.))
+                            .overflow_y_scroll()
+                            .children(options.iter().map(|value| {
+                                let value = value.clone();
+                                row()
+                                    .justify_between()
+                                    .gap(px(6.))
+                                    .child(
+                                        label(value.clone(), 11., MUTED)
+                                            .flex_1()
+                                            .min_w_0()
+                                            .truncate(),
+                                    )
+                                    .child(
+                                        icon_button(
+                                            SharedString::from(format!(
+                                                "delete-s3-option-{key}-{value}"
+                                            )),
+                                            &format!("{} · {}", crate::i18n::t("删除选项"), value),
+                                            "trash-2",
+                                        )
+                                        .disabled(self.is_busy())
+                                        .on_click(
+                                            cx.listener(move |this, _, window, cx| {
+                                                this.remove_s3_option(field, &value, window, cx);
+                                            }),
+                                        ),
+                                    )
+                            })),
+                    )
+                },
             )
             .into_any_element()
     }
+
     pub(super) fn render_dialog(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(dialog) = self.dialog.clone() else {
             return div().into_any_element();
@@ -33,7 +156,13 @@ impl Workspace {
                 crate::i18n::t("所有凭据仅保存于本机系统密钥库，账户数量没有限制。").into()
             }
             Dialog::Folder => crate::i18n::t("在当前目录中创建一个新的文件夹。").into(),
-            Dialog::Bucket => crate::i18n::t("在当前账户和区域中创建新的 S3 存储桶。").into(),
+            Dialog::Bucket => {
+                crate::i18n::t("在所选 Endpoint 和 Region 创建存储桶。留空时使用账户或全局默认值。")
+                    .into()
+            }
+            Dialog::BucketSettings => {
+                crate::i18n::t("修改此存储桶在本机的连接设置。留空时继承账户或全局默认值。").into()
+            }
             Dialog::Copy => crate::i18n::t("输入目标对象的完整路径，复制到当前存储桶。").into(),
             Dialog::Delete => {
                 let chosen = self.chosen();
@@ -62,7 +191,7 @@ impl Workspace {
             Dialog::About => crate::i18n::t("云端文件，井然有序。").into(),
             Dialog::TransferSettings => crate::i18n::t("管理应用语言、外观和传输并发。").into(),
             Dialog::S3Defaults => {
-                crate::i18n::t("账户的 Endpoint 或 Region 留空时，其存储桶使用对应的全局默认值。")
+                crate::i18n::t("设置全局默认值，并管理账户和存储桶可选择的 Endpoint 和 Region。")
                     .into()
             }
             Dialog::CancelTransfer(id) => crate::lf!(
@@ -170,8 +299,8 @@ impl Workspace {
             Dialog::Account(id)=>{
                 modal = modal
                     .child(self.field("name", crate::i18n::t("账户名称")))
-                    .child(self.field("endpoint", crate::i18n::t("Endpoint  可选 · S3 兼容服务")))
-                    .child(self.field("region", "Region"))
+                    .child(self.connection_field(S3Option::Endpoint, "Endpoint", cx))
+                    .child(self.connection_field(S3Option::Region, "Region", cx))
                     .child(
                         row().gap(px(13.)).items_start()
                             .child(self.field("accessKey", "Access Key ID"))
@@ -181,9 +310,13 @@ impl Workspace {
                     .child(row().gap(px(5.)).mb(px(16.)).child(Checkbox::new("pathStyle").accessibility_label(crate::i18n::t("使用路径风格访问")).checked(self.form.path_style).xsmall().on_click(cx.listener(|this,checked,_,cx|{this.form.path_style = *checked;cx.notify();}))).child(label(crate::i18n::t("使用路径风格访问"),10.,0x778294)).child(label(crate::i18n::t("MinIO 等服务推荐开启"),9.,0xadb5c3)))
                     .when(id.is_some(),|s|s.child(button("remove-account",crate::i18n::t("移除账户")).text_size(px(10.)).text_color(rgb(0xd18282)).justify_start().child(icon("trash-2",14.)).child(crate::i18n::t("移除账户")).on_click(cx.listener(|this,_,window,cx|this.open_dialog(Dialog::RemoveAccount,window,cx)))));
             },
-            Dialog::Folder=>modal=modal.child(self.field("name",crate::i18n::t("文件夹名称"))),Dialog::Bucket=>modal=modal.child(self.field("name",crate::i18n::t("存储桶名称"))),Dialog::Copy=>modal=modal.child(self.field("name",crate::i18n::t("目标对象键"))),
-            Dialog::S3Defaults => {
-                modal = modal.child(self.field("endpoint", "Endpoint")).child(self.field("region", "Region"));
+            Dialog::Folder=>modal=modal.child(self.field("name",crate::i18n::t("文件夹名称"))),Dialog::Copy=>modal=modal.child(self.field("name",crate::i18n::t("目标对象键"))),
+            Dialog::Bucket | Dialog::BucketSettings | Dialog::S3Defaults => {
+                modal = modal
+                    .when(dialog == Dialog::Bucket, |modal| modal.child(self.field("name", crate::i18n::t("存储桶名称"))))
+                    .when(dialog == Dialog::BucketSettings, |modal| modal.child(label(self.bucket.clone(), 12., MUTED).mb(px(16.))))
+                    .child(self.connection_field(S3Option::Endpoint, "Endpoint", cx))
+                    .child(self.connection_field(S3Option::Region, "Region", cx));
             }
             Dialog::TransferSettings => {
                 modal = modal

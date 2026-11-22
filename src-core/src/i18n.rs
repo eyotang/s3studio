@@ -309,6 +309,14 @@ $crate::i18n::Language::French => format!("Dernière vérification : {}", $($arg
 $crate::i18n::Language::German => format!("Zuletzt geprüft: {}", $($args)*),
 $crate::i18n::Language::Russian => format!("Последняя проверка: {}", $($args)*),
 _ => format!("上次检查：{}", $($args)*), } };
+("存储桶已创建，但连接设置保存失败：{e}", $($args:tt)*) => { match $crate::i18n::current() {
+$crate::i18n::Language::English => format!("The bucket was created, but its connection settings could not be saved: {e}", $($args)*),
+$crate::i18n::Language::Korean => format!("버킷을 만들었지만 연결 설정을 저장할 수 없습니다: {e}", $($args)*),
+$crate::i18n::Language::Japanese => format!("バケットを作成しましたが、接続設定を保存できませんでした：{e}", $($args)*),
+$crate::i18n::Language::French => format!("Le bucket a été créé, mais ses paramètres de connexion n’ont pas pu être enregistrés : {e}", $($args)*),
+$crate::i18n::Language::German => format!("Der Bucket wurde erstellt, aber seine Verbindungseinstellungen konnten nicht gespeichert werden: {e}", $($args)*),
+$crate::i18n::Language::Russian => format!("Бакет создан, но не удалось сохранить настройки подключения: {e}", $($args)*),
+_ => format!("存储桶已创建，但连接设置保存失败：{e}", $($args)*), } };
 }
 
 fn settings_path() -> std::io::Result<std::path::PathBuf> {

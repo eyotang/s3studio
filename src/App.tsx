@@ -41,6 +41,7 @@ import TransfersPanel, {
   useTransferManager,
 } from "./TransfersPanel";
 import AppUpdater from "./AppUpdater";
+import ConnectionField from "./ConnectionField";
 import { filterObjects, formatBytes, objectName } from "./utils";
 import type {
   Account,
@@ -48,10 +49,17 @@ import type {
   Bucket,
   ObjectInfo,
   ObjectPage,
+  S3Connection,
+  S3Defaults,
   S3Object,
 } from "./types";
 
-type S3Defaults = Pick<Account, "endpoint" | "region">;
+const emptyS3Defaults: S3Defaults = {
+  endpoint: "",
+  region: "",
+  endpoints: [],
+  regions: [],
+};
 
 type Dialog =
   | { type: "account"; account?: Account }
@@ -59,6 +67,7 @@ type Dialog =
       type:
         | "folder"
         | "bucket"
+        | "bucketSettings"
         | "copy"
         | "delete"
         | "upload"
@@ -122,6 +131,7 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [s3Defaults, setS3Defaults] = useState<S3Defaults | null>(null);
+  const [s3Draft, setS3Draft] = useState(emptyS3Defaults);
   const [dialogError, setDialogError] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
   const [showInfo, setShowInfo] = useState(false);
@@ -143,6 +153,7 @@ export default function App() {
   const first = chosen.length === 1 ? chosen[0] : undefined;
   const notify = (message: string) => setToast(message);
   const openDialog = (value: Dialog) => {
+    if (value.type === "s3Defaults") setS3Draft(s3Defaults || emptyS3Defaults);
     setDialogError("");
     setDialog(value);
   };
@@ -166,33 +177,36 @@ export default function App() {
     const timer = setTimeout(() => setToast(""), 4500);
     return () => clearTimeout(timer);
   }, [toast]);
-  const loadBuckets = useCallback(async () => {
-    const request = ++bucketRequest.current;
-    setBuckets([]);
-    setBucket("");
-    setObjects([]);
-    setNextToken(null);
-    setSelected(new Set());
-    setPrefix("");
-    setError("");
-    if (!activeId) {
-      setBucketLoading(false);
-      return;
-    }
-    setBucketLoading(true);
-    try {
-      const items = await api<Bucket[]>("list_buckets", {
-        accountId: activeId,
-      });
-      if (request !== bucketRequest.current) return;
-      setBuckets(items);
-      setBucket(items[0]?.name || "");
-    } catch (e) {
-      if (request === bucketRequest.current) setError(String(e));
-    } finally {
-      if (request === bucketRequest.current) setBucketLoading(false);
-    }
-  }, [activeId]);
+  const loadBuckets = useCallback(
+    async (select?: string) => {
+      const request = ++bucketRequest.current;
+      setBuckets([]);
+      setBucket("");
+      setObjects([]);
+      setNextToken(null);
+      setSelected(new Set());
+      setPrefix("");
+      setError("");
+      if (!activeId) {
+        setBucketLoading(false);
+        return;
+      }
+      setBucketLoading(true);
+      try {
+        const items = await api<Bucket[]>("list_buckets", {
+          accountId: activeId,
+        });
+        if (request !== bucketRequest.current) return;
+        setBuckets(items);
+        setBucket(select || items[0]?.name || "");
+      } catch (e) {
+        if (request === bucketRequest.current) setError(String(e));
+      } finally {
+        if (request === bucketRequest.current) setBucketLoading(false);
+      }
+    },
+    [activeId],
+  );
   useEffect(() => {
     void loadBuckets();
   }, [loadBuckets]);
@@ -302,7 +316,7 @@ export default function App() {
     const elements = () =>
       Array.from(
         modal?.querySelectorAll<HTMLElement>(
-          "button:not(:disabled), input:not(:disabled)",
+          "button:not(:disabled), input:not(:disabled), select:not(:disabled)",
         ) || [],
       );
     if (!modal?.contains(document.activeElement)) elements()[0]?.focus();
@@ -344,11 +358,81 @@ export default function App() {
       setBusy(false);
     }
   }
+  async function addS3Option(field: keyof S3Connection, value: string) {
+    setDialogError("");
+    const options = `${field}s` as const;
+    if (dialog?.type === "s3Defaults") {
+      setS3Draft((draft) => ({
+        ...draft,
+        [options]: [...draft[options], value].sort(),
+      }));
+      return true;
+    }
+    setBusy(true);
+    try {
+      setS3Defaults(await api<S3Defaults>("add_s3_option", { field, value }));
+      return true;
+    } catch (error) {
+      setDialogError(String(error));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const currentBucket = buckets.find((item) => item.name === bucket);
+  function connectionFields() {
+    const global = dialog?.type === "s3Defaults";
+    const accountForm = dialog?.type === "account";
+    const selected = global
+      ? s3Draft
+      : accountForm
+        ? dialog.account
+        : dialog?.type === "bucketSettings"
+          ? currentBucket
+          : undefined;
+    const options = global ? s3Draft : s3Defaults || emptyS3Defaults;
+    return (["endpoint", "region"] as const).map((field) => {
+      const inherited = global
+        ? ""
+        : (!accountForm && account?.[field]) || s3Defaults?.[field];
+      const fallback =
+        field === "endpoint" ? "https://s3.example.com" : "us-east-1";
+      return (
+        <ConnectionField
+          key={field}
+          name={field}
+          initialValue={selected?.[field] || ""}
+          placeholder={inherited || fallback}
+          options={options[`${field}s`]}
+          disabled={busy}
+          autoFocus={global && field === "endpoint"}
+          onAdd={(value) => addS3Option(field, value)}
+          onDelete={
+            global
+              ? (value) => {
+                  const key = `${field}s` as const;
+                  setS3Draft((draft) => ({
+                    ...draft,
+                    [key]: draft[key].filter((option) => option !== value),
+                  }));
+                }
+              : undefined
+          }
+        />
+      );
+    });
+  }
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setDialogError("");
     const form = new FormData(event.currentTarget);
+    const connection: S3Connection = {
+      endpoint: String(form.get("endpoint") || "").trim(),
+      region: String(form.get("region") || "").trim(),
+    };
     try {
       const name = String(form.get("name") || "").trim();
       if (dialog?.type === "transferSettings") {
@@ -356,10 +440,7 @@ export default function App() {
         notify("设置保存成功");
       } else if (dialog?.type === "s3Defaults") {
         const defaults = await api<S3Defaults>("set_s3_defaults", {
-          input: {
-            region: String(form.get("region") || "").trim(),
-            endpoint: String(form.get("endpoint") || "").trim(),
-          },
+          input: { ...s3Draft, ...connection },
         });
         if (
           account &&
@@ -374,8 +455,7 @@ export default function App() {
         const input: AccountInput = {
           id: dialog.account?.id || "",
           name,
-          region: String(form.get("region")).trim(),
-          endpoint: String(form.get("endpoint") || "").trim(),
+          ...connection,
           pathStyle: form.get("pathStyle") === "on",
           accessKey: String(form.get("accessKey") || "").trim(),
           secretKey: String(form.get("secretKey") || ""),
@@ -389,10 +469,25 @@ export default function App() {
         await loadObjects();
         notify("文件夹已创建");
       } else if (dialog?.type === "bucket") {
-        await api("create_bucket", { accountId: activeId, name });
-        await loadBuckets();
-        setBucket(name);
+        if (buckets.some((item) => item.name === name))
+          throw new Error("此账户已有同名存储桶，请编辑现有存储桶的连接设置。");
+        await api("create_bucket", { accountId: activeId, name, connection });
+        await loadBuckets(name);
         notify("存储桶已创建");
+      } else if (dialog?.type === "bucketSettings") {
+        const updated = await api<S3Connection>("set_bucket_connection", {
+          ...args,
+          connection,
+        });
+        setBuckets((items) =>
+          items.map((item) =>
+            item.name === bucket ? { ...item, ...updated } : item,
+          ),
+        );
+        setQuery("");
+        if (prefix) setPrefix("");
+        else await loadObjects();
+        notify("设置保存成功");
       } else if (dialog?.type === "copy" && first) {
         await api("copy_object", {
           ...args,
@@ -657,9 +752,24 @@ export default function App() {
             <span>
               <span className="live-dot" />
               {account
-                ? account.region || s3Defaults?.region || "us-east-1"
+                ? currentBucket?.region ||
+                  account.region ||
+                  s3Defaults?.region ||
+                  "us-east-1"
                 : "未连接"}
             </span>
+            {currentBucket && (
+              <button
+                type="button"
+                className="bucket-settings-button"
+                aria-label="存储桶设置"
+                title="存储桶设置"
+                disabled={busy}
+                onClick={() => openDialog({ type: "bucketSettings" })}
+              >
+                <Settings2 size={15} />
+              </button>
+            )}
             <span className="summary-divider" />
             <span>{native ? "安全直连" : "示例工作空间"}</span>
             <div className="summary-spacer" />
@@ -1145,6 +1255,7 @@ export default function App() {
                       : "连接一个新账户",
                   folder: "新建文件夹",
                   bucket: "创建存储桶",
+                  bucketSettings: "存储桶设置",
                   copy: "复制对象",
                   delete: "删除所选项目？",
                   upload: "上传文件",
@@ -1160,7 +1271,10 @@ export default function App() {
                 {
                   account: "所有凭据仅保存于本机系统密钥库，账户数量没有限制。",
                   folder: "在当前目录中创建一个新的文件夹。",
-                  bucket: "在当前账户和区域中创建新的 S3 存储桶。",
+                  bucket:
+                    "在所选 Endpoint 和 Region 创建存储桶。留空时使用账户或全局默认值。",
+                  bucketSettings:
+                    "修改此存储桶在本机的连接设置。留空时继承账户或全局默认值。",
                   copy: "输入目标对象的完整路径，复制到当前存储桶。",
                   delete: chosen.some((o) => o.folder)
                     ? `将递归删除 ${chosen.filter((o) => o.folder).length} 个目录及其中所有文件和子目录，并删除 ${chosen.filter((o) => !o.folder).length} 个所选文件。未启用版本控制的对象无法恢复。`
@@ -1171,7 +1285,7 @@ export default function App() {
                     "删除本机保存的账户配置和凭据，云端文件不受影响。",
                   help: "一个基于 Tauri 的跨平台 S3 工作空间。",
                   s3Defaults:
-                    "账户的 Endpoint 或 Region 留空时，其存储桶使用对应的全局默认值。",
+                    "设置全局默认值，并管理账户和存储桶可选择的 Endpoint 和 Region。",
                   transferSettings:
                     "设置整个应用的并发上限，所有上传和下载任务共同使用。建议从默认 8 路开始。",
                 }[dialog.type]
@@ -1235,29 +1349,7 @@ export default function App() {
                     </p>
                   </>
                 )}
-                {dialog.type === "s3Defaults" && (
-                  <>
-                    <label>
-                      Endpoint
-                      <input
-                        autoCapitalize="none"
-                        name="endpoint"
-                        defaultValue={s3Defaults?.endpoint}
-                        placeholder="https://s3.example.com"
-                        autoFocus
-                      />
-                    </label>
-                    <label>
-                      Region
-                      <input
-                        autoCapitalize="none"
-                        name="region"
-                        defaultValue={s3Defaults?.region}
-                        placeholder="us-east-1"
-                      />
-                    </label>
-                  </>
-                )}
+                {dialog.type === "s3Defaults" && connectionFields()}
                 {dialog.type === "account" && (
                   <>
                     <label>
@@ -1272,27 +1364,7 @@ export default function App() {
                         maxLength={80}
                       />
                     </label>
-                    <label>
-                      Endpoint <span>可选 · S3 兼容服务</span>
-                      <input
-                        autoCapitalize="none"
-                        name="endpoint"
-                        type="url"
-                        defaultValue={dialog.account?.endpoint}
-                        placeholder={
-                          s3Defaults?.endpoint || "https://s3.example.com"
-                        }
-                      />
-                    </label>
-                    <label>
-                      Region
-                      <input
-                        autoCapitalize="none"
-                        name="region"
-                        defaultValue={dialog.account?.region}
-                        placeholder={s3Defaults?.region || "us-east-1"}
-                      />
-                    </label>
+                    {connectionFields()}
                     <div className="form-grid">
                       <label>
                         Access Key ID
@@ -1382,7 +1454,7 @@ export default function App() {
                       }
                       pattern={
                         dialog.type === "bucket"
-                          ? "[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]"
+                          ? "[a-z0-9][a-z0-9.\\-]{1,61}[a-z0-9]"
                           : dialog.type === "folder"
                             ? "[^/\\]+"
                             : undefined
@@ -1390,6 +1462,11 @@ export default function App() {
                     />
                   </label>
                 )}
+                {dialog.type === "bucketSettings" && (
+                  <p className="modal-description">{bucket}</p>
+                )}
+                {["bucket", "bucketSettings"].includes(dialog.type) &&
+                  connectionFields()}
                 {dialog.type === "delete" && (
                   <div className="delete-list">
                     {chosen.map((o) => (
@@ -1430,6 +1507,7 @@ export default function App() {
                           account: "保存账户",
                           folder: "创建文件夹",
                           bucket: "创建存储桶",
+                          bucketSettings: "保存设置",
                           copy: "复制",
                           delete: "确认删除",
                           upload: "选择文件并上传",

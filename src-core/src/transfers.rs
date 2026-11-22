@@ -354,6 +354,11 @@ impl Engine {
             .iter()
             .any(|j| j.view.account_id == account_id && !terminal(&j.view.status))
     }
+    pub async fn has_unfinished_bucket(&self, account_id: &str, bucket: &str) -> bool {
+        self.0.db.lock().await.jobs.iter().any(|j| {
+            j.view.account_id == account_id && j.view.bucket == bucket && !terminal(&j.view.status)
+        })
+    }
     pub async fn set_settings(&self, concurrency: usize) -> Result<Settings, String> {
         if !(1..=32).contains(&concurrency) {
             return Err(crate::i18n::t("并发数量需为 1–32 的整数。").into());

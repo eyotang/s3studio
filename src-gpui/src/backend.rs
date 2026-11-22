@@ -6,7 +6,10 @@ use s3_studio_core::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 pub enum Message {
     Response(u64, Result<Value, String>),
@@ -24,6 +27,7 @@ pub struct Backend {
     services: Option<Arc<Services>>,
     sender: UnboundedSender<Message>,
     pub preview: bool,
+    preview_defaults: Arc<Mutex<accounts::S3Defaults>>,
     updater: Arc<crate::updater::UpdaterState>,
 }
 impl Backend {
@@ -56,6 +60,7 @@ impl Backend {
                 services,
                 sender,
                 preview,
+                preview_defaults: Default::default(),
                 updater,
             },
             receiver,
@@ -65,6 +70,7 @@ impl Backend {
         let services = self.services.clone();
         let sender = self.sender.clone();
         let updater = self.updater.clone();
+        let preview_defaults = self.preview_defaults.clone();
         self.runtime.spawn(async move {
             let result = match command {
                 "get_app_update_status" => {
@@ -93,7 +99,7 @@ impl Backend {
                     }),
                 _ => match services {
                     Some(services) => dispatch(&services, command, args).await,
-                    None => preview(command, args),
+                    None => preview(command, args, &mut preview_defaults.lock().unwrap()),
                 },
             };
             let _ = sender.unbounded_send(Message::Response(id, result));
@@ -124,6 +130,14 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             )
             .await,
         ),
+        "add_s3_option" => value(
+            accounts::add_s3_option(
+                store,
+                serde_json::from_value(args["field"].clone()).map_err(|e| e.to_string())?,
+                text("value"),
+            )
+            .await,
+        ),
         "list_accounts" => value(accounts::list_accounts(store).await),
         "save_account" => value(
             accounts::save_account(
@@ -144,7 +158,25 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             )
             .await,
         ),
-        "create_bucket" => value(s3::create_bucket(store, account, text("name")).await),
+        "create_bucket" => value(
+            s3::create_bucket(
+                store,
+                account,
+                text("name"),
+                serde_json::from_value(args["connection"].clone()).map_err(|e| e.to_string())?,
+            )
+            .await,
+        ),
+        "set_bucket_connection" => value(
+            s3::set_bucket_connection(
+                store,
+                engine,
+                account,
+                bucket,
+                serde_json::from_value(args["connection"].clone()).map_err(|e| e.to_string())?,
+            )
+            .await,
+        ),
         "create_folder" => value(s3::create_folder(store, account, bucket, text("key")).await),
         "copy_object" => {
             value(s3::copy_object(store, account, bucket, text("key"), text("destination")).await)
@@ -189,9 +221,31 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
         _ => Err(crate::lf!("未知操作：{command}", command = command)),
     }
 }
-fn preview(command: &str, args: Value) -> Result<Value, String> {
+fn preview(
+    command: &str,
+    args: Value,
+    defaults: &mut accounts::S3Defaults,
+) -> Result<Value, String> {
     match command {
-        "get_s3_defaults" => value(Ok(accounts::S3Defaults::default())),
+        "get_s3_defaults" => value(Ok(&*defaults)),
+        "set_s3_defaults" => {
+            let input: accounts::S3Defaults =
+                serde_json::from_value(args["input"].clone()).map_err(|e| e.to_string())?;
+            *defaults = input.normalized()?;
+            value(Ok(&*defaults))
+        }
+        "add_s3_option" => {
+            let field: accounts::S3Option =
+                serde_json::from_value(args["field"].clone()).map_err(|e| e.to_string())?;
+            let option = field.normalize(args["value"].as_str().unwrap_or_default().into())?;
+            defaults.add_option(field, option);
+            value(Ok(&*defaults))
+        }
+        "set_bucket_connection" => {
+            let connection: accounts::S3Connection =
+                serde_json::from_value(args["connection"].clone()).map_err(|e| e.to_string())?;
+            value(connection.normalized())
+        }
         "list_accounts" => Ok(json!([
             {"id":"demo-aws","name":"Design workspace","region":"ap-southeast-1","endpoint":"","pathStyle":false},
             {"id":"demo-minio","name":"Local development","region":"us-east-1","endpoint":"http://localhost:9000","pathStyle":true}

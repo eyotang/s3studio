@@ -1166,7 +1166,8 @@ h1 {
   font-size: 11px;
   margin-bottom: 16px;
 }
-.modal label > input:not([type="checkbox"]) {
+.modal label > input:not([type="checkbox"]),
+.connection-control > input {
   display: block;
   width: 100%;
   margin-top: 7px;
@@ -1178,7 +1179,8 @@ h1 {
   font-size: 11px;
   outline: none;
 }
-.modal label > input:focus {
+.modal label > input:focus,
+.connection-control > input:focus {
   border-color: #85b9fc;
   box-shadow: 0 0 0 3px #007aff0b;
 }
@@ -1197,6 +1199,73 @@ h1 {
 }
 .s3-defaults-button {
   margin-bottom: 16px;
+}
+.connection-field {
+  margin-bottom: 16px;
+  color: #778294;
+  font-size: 12px;
+}
+.connection-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+}
+.connection-control > input {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+.connection-picker {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 36px;
+  border: 1px solid #e1e5ec;
+  border-radius: 7px;
+}
+.connection-picker:focus-within {
+  outline: 2px solid #85b9fc;
+  outline-offset: 1px;
+}
+.connection-picker select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.connection-options {
+  max-height: 96px;
+  overflow-y: auto;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.connection-options li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-left: 2px;
+}
+.connection-options li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.connection-options button,
+.bucket-settings-button {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  padding: 5px;
+  border-radius: 5px;
+}
+.connection-options button:hover:not(:disabled),
+.bucket-settings-button:hover:not(:disabled) {
+  background: #edf3fa;
 }
 .modal label.checkbox-label {
   display: flex;
@@ -1487,7 +1556,8 @@ h1 {
 .form-grid > label {
   font-size: 12px;
 }
-.modal label > input:not([type="checkbox"]) {
+.modal label > input:not([type="checkbox"]),
+.connection-control > input {
   font-size: 12px;
 }
 .help-content p {

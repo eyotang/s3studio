@@ -1,8 +1,14 @@
-export interface Account {
+export interface S3Connection {
+  endpoint: string;
+  region: string;
+}
+export interface S3Defaults extends S3Connection {
+  endpoints: string[];
+  regions: string[];
+}
+export interface Account extends S3Connection {
   id: string;
   name: string;
-  region: string;
-  endpoint: string;
   pathStyle: boolean;
 }
 export interface AccountInput extends Account {
@@ -10,7 +16,7 @@ export interface AccountInput extends Account {
   secretKey: string;
   sessionToken: string;
 }
-export interface Bucket {
+export interface Bucket extends S3Connection {
   name: string;
   created: string;
 }
