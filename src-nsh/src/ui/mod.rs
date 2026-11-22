@@ -34,16 +34,23 @@ pub fn workspace(store: Store) -> AnyElement {
         });
         effect(move || app_menu(store, menu_state.get().0));
     }
-    on_key("escape", move |_| {
-        store.change(|state| {
-            if state.dialog.is_some() {
-                state.close_dialog();
-            } else if !state.is_busy() {
-                state.selected.clear();
-                state.selection_changed();
-            }
-        });
-    });
+    on_key_with(
+        "escape",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            ..Default::default()
+        },
+        move |_| {
+            store.change(|state| {
+                if state.dialog.is_some() {
+                    state.close_dialog();
+                } else if !state.is_busy() {
+                    state.selected.clear();
+                    state.selection_changed();
+                }
+            });
+        },
+    );
 
     let width = computed(|| window().width.0);
     let inset = move || px(if width.get() <= 1050.0 { 22.0 } else { 34.0 });

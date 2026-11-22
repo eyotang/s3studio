@@ -80,7 +80,9 @@ fn account_form_preserves_drafts_and_requires_credentials() {
     app.press("id:submit-dialog").unwrap();
     app.wait_for(i18n::t("请填写完整的账户名称、Access Key 和 Secret Key。"))
         .unwrap();
-    app.press("id:cancel-dialog").unwrap();
+    app.type_text("id:name", " draft").unwrap();
+    app.press_key("escape").unwrap();
+    app.wait_for_gone("id:name", WAIT).unwrap();
     app.press("id:account-settings").unwrap();
     assert_eq!(
         app.screen().input_text("id:name").unwrap(),
@@ -102,6 +104,10 @@ fn bucket_options_can_be_added_reused_and_removed() {
     app.press("id:cancel-dialog").unwrap();
 
     app.press("id:bucket-settings").unwrap();
+    app.press("id:s3-options-region").unwrap();
+    app.wait_for("eu-west-2").unwrap();
+    app.press_key("escape").unwrap();
+    app.wait_for_gone("eu-west-2", WAIT).unwrap();
     app.press("id:s3-options-region").unwrap();
     app.press("eu-west-2").unwrap();
     assert_eq!(

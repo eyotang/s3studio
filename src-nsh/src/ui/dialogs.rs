@@ -28,7 +28,13 @@ pub(super) fn active(store: Store) -> AnyElement {
                         .items_center()
                         .justify_center()
                         .p(px(18.0))
-                        .bg(SCRIM.opacity(0.32))
+                        .child(
+                            view()
+                                .absolute()
+                                .inset_0()
+                                .bg(SCRIM.opacity(0.32))
+                                .on_press(store.action(Workspace::close_dialog)),
+                        )
                         .child(
                             scroll()
                                 .test_id("modal")
