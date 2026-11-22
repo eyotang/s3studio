@@ -7,8 +7,8 @@
     <MajorUpgrade Schedule="afterInstallInitialize"
                   DowngradeErrorMessage="A newer version of S3 Studio is already installed."/>
     <MediaTemplate EmbedCab="yes"/>
-    <Icon Id="ProductIcon" SourceFile="$(var.AppIcon)"/>
-    <Property Id="ARPPRODUCTICON" Value="ProductIcon"/>
+    <Icon Id="ProductIcon.exe" SourceFile="$(var.AppIcon)"/>
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon.exe"/>
     <Property Id="AUTOLAUNCHAPP" Secure="yes"/>
     <Property Id="INSTALLDIR" Secure="yes">
       <RegistrySearch Id="PreviousDirectory" Root="HKCU" Key="Software\s3studio\S3 Studio"
@@ -28,7 +28,7 @@
           <Component Id="Application" Guid="*" Win64="yes">
             <File Id="StudioExe" Name="s3-studio.exe" Source="$(var.AppBinary)" KeyPath="yes">
               <Shortcut Id="StudioShortcut" Directory="ProgramMenuFolder" Name="S3 Studio"
-                        Advertise="yes" WorkingDirectory="INSTALLDIR" Icon="ProductIcon">
+                        Advertise="yes" WorkingDirectory="INSTALLDIR" Icon="ProductIcon.exe">
                 <ShortcutProperty Key="System.AppUserModel.ID" Value="com.s3studio.desktop"/>
               </Shortcut>
             </File>
