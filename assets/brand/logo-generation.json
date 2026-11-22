@@ -3,7 +3,7 @@
   "version": "0.2.2",
   "concept": "三层几何存储标志",
   "designDirection": "Apple 风格的留白、光学平衡与克制渐变；保留原浅蓝色底，使用三层相连的等距几何线条表达对象存储。",
-  "method": "最终图形使用 SVG 矢量绘制；PNG、ICO、ICNS 由 Tauri CLI 导出。",
+  "method": "最终图形使用 SVG 矢量绘制，并导出为桌面 PNG、ICO 和 ICNS。",
   "source": "s3-studio-logo.svg",
   "monochromeMark": "s3-studio-mark.svg",
   "desktopIcons": "../../src-nsh/icons",

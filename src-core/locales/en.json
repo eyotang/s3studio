@@ -147,7 +147,6 @@
   "输入目标对象的完整路径，复制到当前存储桶。": "Enter the full destination key to copy within this bucket.",
   "接下来选择本地文件。当前目录中同名的对象将被覆盖；大文件自动分片上传。": "Select local files next. Objects with matching names will be overwritten; large files use multipart uploads.",
   "删除本机保存的账户配置和凭据，云端文件不受影响。": "Remove locally saved account settings and credentials. Cloud files are unaffected.",
-  "一个基于 Tauri 的跨平台 S3 工作空间。": "A cross-platform S3 workspace built with GPUI.",
   " · 有新版本可用": " · Update available",
   "关闭更新窗口": "Close update window",
   "关闭弹窗": "Close dialog",

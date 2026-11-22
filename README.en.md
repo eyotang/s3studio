@@ -76,7 +76,7 @@ cargo test --locked --manifest-path src-nsh/Cargo.toml
 node --test tests/update-signature.test.mjs
 ```
 
-Install the standalone bundler with `cargo install --locked tauri-cli --version 2.12.1`. Run `node scripts/build-native.mjs` and `node scripts/bundle-native.mjs` on the target operating system. Packaging and release scripts use Node.js 22.12+ and its standard library. See the [development reference](README.md#开发与贡献) for Universal builds, storage paths, and release signing. Update language catalogs in `src-core/locales`, then run `node scripts/sync-i18n.mjs` and format Rust before testing.
+Run `node scripts/build-native.mjs` and `node scripts/package-native.mjs` on the target operating system. Packaging and release scripts use Node.js 22.12+ and its standard library. See the [development reference](README.md#开发与贡献) for Universal builds, storage paths, and release signing. Update language catalogs in `src-core/locales`, then run `node scripts/sync-i18n.mjs` and format Rust before testing.
 
 Issues should include the app version, operating system, reproduction steps, and errors. Remove credentials and private data from logs and screenshots. Pull requests should explain the problem, resulting behavior, and validation; include screenshots for UI changes. Tests use a local S3 simulator rather than real cloud accounts. Follow [AGENTS.md](AGENTS.md) when publishing: English release notes first, Chinese second, with the macOS xattr instructions in both.
 

@@ -15,7 +15,7 @@ const env = {
   ...process.env,
   CARGO_TARGET_DIR: targetDirectory,
   ...(process.platform === "darwin"
-    ? { MACOSX_DEPLOYMENT_TARGET: appConfig.bundle.macOS.minimumSystemVersion }
+    ? { MACOSX_DEPLOYMENT_TARGET: appConfig.minimumMacOS }
     : {}),
 };
 function run(command, args) {
@@ -34,7 +34,6 @@ for (const target of targets) {
   ]);
 }
 const binary = process.platform === "win32" ? "s3-studio.exe" : "s3-studio";
-// The bundler writes the installer type into its copy of the executable.
 const destination = path.join(
   "src-nsh/target/installer",
   ...(universal ? ["universal-apple-darwin"] : []),

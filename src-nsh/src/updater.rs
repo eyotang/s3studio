@@ -1,13 +1,19 @@
 use crate::backend::Message;
+use anyhow::Context;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futures::channel::mpsc::UnboundedSender;
+use minisign_verify::{PublicKey, Signature};
 use s3_studio_core::transfers::Engine;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tauri::utils::config::BundleType;
-use tauri_plugin_updater::{Update, UpdaterBuilder};
+use tokio::io::AsyncWriteExt;
+
+mod install;
+use install::{Package, StagedUpdate};
 
 const MANIFEST: &str = "https://github.com/eyotang/s3studio/releases/latest/download/latest.json";
 const RELEASES: &str = "https://github.com/eyotang/s3studio/releases";
@@ -51,26 +57,24 @@ impl Status {
 pub struct UpdaterState {
     status: Mutex<Status>,
     sender: UnboundedSender<Message>,
+    package: Option<Package>,
     pending: Mutex<Option<Update>>,
     operation: tokio::sync::Mutex<()>,
 }
-fn mode(debug: bool, bundle: Option<BundleType>) -> &'static str {
+fn mode(debug: bool, package: Option<Package>) -> &'static str {
     if debug {
         return "disabled";
     }
-    match bundle {
-        Some(BundleType::Nsis | BundleType::Msi | BundleType::AppImage) => "inApp",
-        _ => "manual",
-    }
+    if package.is_some() { "inApp" } else { "manual" }
 }
 impl UpdaterState {
     pub fn new(preview: bool, sender: UnboundedSender<Message>) -> Arc<Self> {
-        let mode = mode(
-            preview || cfg!(debug_assertions),
-            tauri::utils::platform::bundle_type(),
-        );
+        let disabled = preview || cfg!(debug_assertions);
+        let package = if disabled { None } else { Package::installed() };
+        let mode = mode(disabled, package);
         Arc::new(Self {
             sender,
+            package,
             status: Mutex::new(Status {
                 revision: 0,
                 mode,
@@ -117,6 +121,86 @@ fn stable_version(value: &str) -> Result<semver::Version, String> {
 struct Manifest {
     version: String,
     notes: Option<String>,
+    #[serde(default)]
+    platforms: HashMap<String, ReleaseAsset>,
+}
+
+#[derive(Deserialize)]
+struct ReleaseAsset {
+    url: String,
+    signature: String,
+}
+
+#[derive(Clone)]
+struct Update {
+    package: Package,
+    version: String,
+    url: String,
+    signature: String,
+}
+
+impl Manifest {
+    fn update(&self, package: Package) -> Result<Update, String> {
+        let asset = self
+            .platforms
+            .get(package.manifest_key())
+            .ok_or(crate::i18n::t("更新清单格式无效。"))?;
+        let prefix = format!("{RELEASES}/download/v{}/", self.version);
+        if !asset.url.strip_prefix(&prefix).is_some_and(|file| {
+            file.ends_with(package.extension()) && !file.contains(['/', '\\', '?', '#', '%'])
+        }) {
+            return Err(crate::i18n::t("更新包地址不属于官方发布仓库。").into());
+        }
+        Ok(Update {
+            package,
+            version: self.version.clone(),
+            url: asset.url.clone(),
+            signature: asset.signature.clone(),
+        })
+    }
+}
+
+impl Update {
+    async fn download(
+        &self,
+        mut progress: impl FnMut(usize, Option<u64>),
+    ) -> anyhow::Result<StagedUpdate> {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../../packaging/app.json"))?;
+        let key = config["updaterPublicKey"]
+            .as_str()
+            .context("Missing update public key")?;
+        let public_key = PublicKey::decode(&String::from_utf8(STANDARD.decode(key)?)?)?;
+        let signature = Signature::decode(&String::from_utf8(STANDARD.decode(&self.signature)?)?)?;
+        let mut verifier = public_key.verify_stream(&signature)?;
+
+        let mut response = client(Duration::from_secs(5 * 60))?
+            .get(&self.url)
+            .send()
+            .await?
+            .error_for_status()?;
+        let total = response.content_length();
+        let stage = StagedUpdate::new(self.package)?;
+        let mut file = tokio::fs::File::from_std(stage.file.reopen()?);
+        while let Some(chunk) = response.chunk().await? {
+            verifier.update(&chunk);
+            file.write_all(&chunk).await?;
+            progress(chunk.len(), total);
+        }
+        verifier.finalize()?;
+        // The trusted comment is authenticated by finalize().
+        let version = signature
+            .trusted_comment()
+            .split('\t')
+            .find_map(|part| part.strip_prefix("version:"))
+            .and_then(|version| semver::Version::parse(version.trim_start_matches('v')).ok());
+        anyhow::ensure!(
+            version.as_ref() == Some(&semver::Version::parse(&self.version)?),
+            "Update signature version does not match the release"
+        );
+        file.sync_all().await?;
+        Ok(stage)
+    }
 }
 fn parse_manifest(bytes: &[u8], current: &str) -> Result<Option<Manifest>, String> {
     if bytes.len() > MAX_MANIFEST {
@@ -134,14 +218,16 @@ fn parse_manifest(bytes: &[u8], current: &str) -> Result<Option<Manifest>, Strin
     }
     Ok(newer.then_some(manifest))
 }
-async fn manual_check(current: &str) -> Result<Option<Manifest>, String> {
-    let client = reqwest::Client::builder()
+fn client(timeout: Duration) -> reqwest::Result<reqwest::Client> {
+    reqwest::Client::builder()
         .https_only(true)
-        .timeout(Duration::from_secs(15))
+        .timeout(timeout)
         .redirect(reqwest::redirect::Policy::limited(5))
         .user_agent(concat!("S3-Studio/", env!("CARGO_PKG_VERSION")))
         .build()
-        .map_err(|e| e.to_string())?;
+}
+async fn fetch_release(current: &str) -> Result<Option<Manifest>, String> {
+    let client = client(Duration::from_secs(15)).map_err(|e| e.to_string())?;
     let mut response = client
         .get(MANIFEST)
         .send()
@@ -176,51 +262,16 @@ pub async fn check(state: Arc<UpdaterState>, user_initiated: bool) -> Result<Sta
         status.phase = "checking";
         status.error = None;
     });
-    let result: Result<Option<Manifest>, String> = async {
-        if previous.mode == "inApp" {
-            let config: serde_json::Value =
-                serde_json::from_str(include_str!("../tauri.conf.json"))
-                    .map_err(|e| e.to_string())?;
-            let config = serde_json::from_value(config["plugins"]["updater"].clone())
-                .map_err(|e| e.to_string())?;
-            let builder =
-                UpdaterBuilder::standalone(stable_version(&previous.current_version)?, config)
-                    .timeout(Duration::from_secs(15));
-            // Same path override as UpdaterExt: update the outer AppImage, not its mounted executable.
-            #[cfg(target_os = "linux")]
-            let builder = if let Some(path) = std::env::var_os("APPIMAGE") {
-                builder.executable_path(std::path::PathBuf::from(path))
-            } else {
-                builder
+    let result = fetch_release(&previous.current_version)
+        .await
+        .and_then(|manifest| {
+            let update = match (state.package, &manifest) {
+                (Some(package), Some(release)) => Some(release.update(package)?),
+                _ => None,
             };
-            let update = builder
-                .build()
-                .map_err(|e| e.to_string())?
-                .check()
-                .await
-                .map_err(|e| e.to_string())?;
-            if let Some(mut update) = update {
-                stable_version(&update.version)?;
-                let allowed = format!("{RELEASES}/download/v{}/", update.version);
-                if !update.download_url.as_str().starts_with(&allowed) {
-                    return Err(crate::i18n::t("更新包地址不属于官方发布仓库。").into());
-                }
-                update.timeout = Some(Duration::from_secs(5 * 60));
-                let manifest = Manifest {
-                    version: update.version.clone(),
-                    notes: update.body.clone(),
-                };
-                *state.pending.lock().unwrap_or_else(|e| e.into_inner()) = Some(update);
-                Ok(Some(manifest))
-            } else {
-                *state.pending.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                Ok(None)
-            }
-        } else {
-            manual_check(&previous.current_version).await
-        }
-    }
-    .await;
+            *state.pending.lock().unwrap_or_else(|e| e.into_inner()) = update;
+            Ok(manifest)
+        });
     match result {
         Ok(available) => Ok(state.edit(|status| {
             status.phase = if available.is_some() {
@@ -288,20 +339,17 @@ pub async fn install_app_update(state: Arc<UpdaterState>, engine: &Engine) -> Re
     });
     let progress_state = state.clone();
     let result: Result<(), String> = async {
-        let bytes = update
-            .download(
-                move |length, total| {
-                    progress_state.edit(|status| {
-                        status.downloaded = status.downloaded.saturating_add(length as u64);
-                        status.total = total;
-                    });
-                },
-                || {},
-            )
+        let installer = update
+            .download(move |length, total| {
+                progress_state.edit(|status| {
+                    status.downloaded = status.downloaded.saturating_add(length as u64);
+                    status.total = total;
+                });
+            })
             .await
             .map_err(|e| e.to_string())?;
         state.edit(|status| status.phase = "installing");
-        tokio::task::spawn_blocking(move || update.install(bytes))
+        tokio::task::spawn_blocking(move || installer.install())
             .await
             .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?;
@@ -357,12 +405,9 @@ mod tests {
     }
     #[test]
     fn distribution_modes_preserve_installer_compatibility() {
-        assert_eq!(mode(true, Some(BundleType::Nsis)), "disabled");
-        for bundle in [BundleType::Nsis, BundleType::Msi, BundleType::AppImage] {
-            assert_eq!(mode(false, Some(bundle)), "inApp");
-        }
-        for bundle in [BundleType::App, BundleType::Deb] {
-            assert_eq!(mode(false, Some(bundle)), "manual");
+        assert_eq!(mode(true, Some(Package::Nsis)), "disabled");
+        for package in [Package::Nsis, Package::Msi, Package::AppImage] {
+            assert_eq!(mode(false, Some(package)), "inApp");
         }
         assert_eq!(mode(false, None), "manual");
     }
@@ -395,9 +440,13 @@ mod tests {
     #[ignore = "Reads the official release manifest over HTTPS"]
     fn official_release_manifest_is_readable() {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        tokio::runtime::Runtime::new()
+        let release = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(manual_check(env!("CARGO_PKG_VERSION")))
+            .block_on(fetch_release("0.0.0"))
+            .unwrap()
             .unwrap();
+        for package in [Package::Nsis, Package::Msi, Package::AppImage] {
+            assert_eq!(release.update(package).unwrap().version, release.version);
+        }
     }
 }

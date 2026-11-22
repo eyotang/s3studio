@@ -111,7 +111,7 @@ impl Backend {
     }
 }
 fn data_directory() -> anyhow::Result<PathBuf> {
-    // Matches Tauri app_data_dir and the existing keyring service identifier.
+    // Keep the data directory and keyring service used by earlier installations.
     Ok(dirs::data_dir()
         .ok_or_else(|| anyhow::anyhow!(crate::i18n::t("无法定位应用数据目录")))?
         .join("com.s3studio.desktop"))

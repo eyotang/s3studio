@@ -76,7 +76,7 @@ cargo test --locked --manifest-path src-nsh/Cargo.toml
 node --test tests/update-signature.test.mjs
 ```
 
-`cargo install --locked tauri-cli --version 2.12.1` でスタンドアロンのTauri CLIをインストールし、対象OSで `node scripts/build-native.mjs` と `node scripts/bundle-native.mjs` を実行します。パッケージ化とリリースにはNode.js 22.12以降の標準ライブラリを使用します。Universalビルド、保存先、更新署名は[開発リファレンス](README.md#开发与贡献)を参照してください。翻訳は `src-core/locales` を編集し、`node scripts/sync-i18n.mjs` を実行してRustを整形後、テストしてください。
+対象OSで `node scripts/build-native.mjs` と `node scripts/package-native.mjs` を実行します。パッケージ化とリリースにはNode.js 22.12以降の標準ライブラリを使用します。Universalビルド、保存先、更新署名は[開発リファレンス](README.md#开发与贡献)を参照してください。翻訳は `src-core/locales` を編集し、`node scripts/sync-i18n.mjs` を実行してRustを整形後、テストしてください。
 
 Issueにはアプリのバージョン、OS、再現手順、エラーを記載してください。ログやスクリーンショットから認証情報や個人情報を取り除いてください。Pull Requestには問題、変更後の動作、検証結果を記載し、UI変更にはスクリーンショットを添付してください。テストは実際のクラウドアカウントではなくローカルS3シミュレーターを使用します。公開時は[AGENTS.md](AGENTS.md)に従い、説明を英語、次に中国語の順に記載し、両方にmacOSのxattr手順を含めます。
 

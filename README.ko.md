@@ -76,7 +76,7 @@ cargo test --locked --manifest-path src-nsh/Cargo.toml
 node --test tests/update-signature.test.mjs
 ```
 
-`cargo install --locked tauri-cli --version 2.12.1`로 독립 실행형 Tauri CLI를 설치하고 대상 운영체제에서 `node scripts/build-native.mjs`와 `node scripts/bundle-native.mjs`를 실행합니다. 패키징 및 릴리스 스크립트는 Node.js 22.12+ 표준 라이브러리를 사용합니다. Universal 빌드, 저장 경로 및 릴리스 서명은 [개발 참조](README.md#开发与贡献)를 확인하세요. `src-core/locales`의 번역을 수정한 뒤 `node scripts/sync-i18n.mjs`를 실행하고 Rust 형식을 정리한 다음 테스트하세요.
+대상 운영체제에서 `node scripts/build-native.mjs`와 `node scripts/package-native.mjs`를 실행합니다. 패키징 및 릴리스 스크립트는 Node.js 22.12+ 표준 라이브러리를 사용합니다. Universal 빌드, 저장 경로 및 릴리스 서명은 [개발 참조](README.md#开发与贡献)를 확인하세요. `src-core/locales`의 번역을 수정한 뒤 `node scripts/sync-i18n.mjs`를 실행하고 Rust 형식을 정리한 다음 테스트하세요.
 
 Issue에는 앱 버전, 운영체제, 재현 단계와 오류를 포함하세요. 로그와 스크린샷에서 자격 증명과 개인정보를 제거하세요. Pull Request에는 문제, 변경 후 동작과 검증 결과를 설명하고 UI 변경 시 스크린샷을 첨부하세요. 테스트는 실제 클라우드 계정 대신 로컬 S3 시뮬레이터를 사용합니다. 릴리스 시 [AGENTS.md](AGENTS.md)를 따라 영어 설명을 먼저, 중국어를 다음에 작성하고 양쪽에 macOS xattr 안내를 포함하세요.
 

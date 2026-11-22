@@ -18,13 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            args: "--bundles nsis,msi"
-          - os: ubuntu-22.04
-            args: "--bundles deb,appimage"
-          - os: macos-latest
-            args: "--target universal-apple-darwin --bundles app,dmg"
+        os: [windows-latest, ubuntu-22.04, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -43,11 +37,24 @@ jobs:
           cache-on-failure: true
       - name: Linux native dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libfontconfig1-dev libasound2-dev libx11-xcb-dev libxi-dev libxrandr-dev libxinerama-dev libxcursor-dev libclang-dev mesa-vulkan-drivers xvfb x11-utils
-      - name: Install standalone Tauri bundler
+        run: sudo apt-get update && sudo apt-get install -y build-essential file libdbus-1-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libfontconfig1-dev libasound2-dev libx11-xcb-dev libxi-dev libxrandr-dev libxinerama-dev libxcursor-dev libclang-dev mesa-vulkan-drivers xvfb x11-utils desktop-file-utils
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        run: choco install nsis --yes --no-progress --version=3.11.0
+      - name: Install WiX Toolset
+        if: runner.os == 'Windows'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/install-bundler.mjs
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'wix314-binaries.zip'
+          gh release download wix3141rtm --repo wixtoolset/wix3 --pattern wix314-binaries.zip --dir $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) { throw 'WiX download failed' }
+          if ((Get-FileHash $archive).Hash.ToLowerInvariant() -ne '6ac824e1642d6f7277d0ed7ea09411a508f6116ba6fae0aa5f2c7daa2ff43d31') {
+            throw 'WiX checksum mismatch'
+          }
+          $tools = Join-Path $env:RUNNER_TEMP 'wix314'
+          Expand-Archive -LiteralPath $archive -DestinationPath $tools
+          "WIX_BIN=$tools" >> $env:GITHUB_ENV
       - name: Test release signatures
         run: node --test tests/update-signature.test.mjs
       - name: Rust tests
@@ -87,39 +94,45 @@ jobs:
       - name: Build desktop installers
         shell: bash
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ runner.os != 'macOS' && github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ runner.os != 'macOS' && github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          update_args=()
-          if [ "$RUNNER_OS" != "macOS" ]; then
-            if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-              update_args=(--config tauri.release.conf.json)
-            elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-              echo 'Missing TAURI_SIGNING_PRIVATE_KEY for release signing' >&2
-              exit 1
-            fi
-          fi
           set +e
-          node scripts/bundle-native.mjs ${{ matrix.args }} "${update_args[@]}" 2>&1 | tee desktop-build.log
+          node scripts/package-native.mjs 2>&1 | tee desktop-build.log
           result=${PIPESTATUS[0]}
           printf '### Desktop installers\n```text\n' >> "$GITHUB_STEP_SUMMARY"
           tail -n 100 desktop-build.log >> "$GITHUB_STEP_SUMMARY"
           printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
           if [ "$result" -ne 0 ]; then node scripts/annotate-ci.mjs desktop-build.log; fi
           exit "$result"
+      - name: Run the packaged AppImage
+        if: runner.os == 'Linux'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: dbus-run-session -- xvfb-run -a bash scripts/smoke-linux.sh src-nsh/target/installer/bundle/*.AppImage
+      - name: Verify Windows installer upgrades
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/smoke-windows-installers.ps1
+      - name: Preserve installer diagnostics
+        if: failure() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-diagnostics
+          path: ${{ runner.temp }}/s3-studio-installer-smoke/*.log
+          if-no-files-found: ignore
       - name: Build and test Omarchy package
         if: runner.os == 'Linux'
-        run: bash scripts/build-omarchy.sh src-nsh/target/installer/release/bundle/deb/*.deb artifacts/omarchy
+        run: bash scripts/build-omarchy.sh src-nsh/target/installer/bundle/*.deb artifacts/omarchy
       - uses: actions/upload-artifact@v4
         with:
           name: s3-studio-${{ matrix.os }}
           path: |
-            src-nsh/target/installer/release/bundle/**/*.msi
-            src-nsh/target/installer/release/bundle/**/*.exe
-            src-nsh/target/installer/release/bundle/**/*.deb
-            src-nsh/target/installer/release/bundle/**/*.AppImage
-            src-nsh/target/installer/universal-apple-darwin/release/bundle/**/*.dmg
-            src-nsh/target/installer/release/bundle/**/*.sig
+            src-nsh/target/installer/bundle/*.msi
+            src-nsh/target/installer/bundle/*.exe
+            src-nsh/target/installer/bundle/*.deb
+            src-nsh/target/installer/bundle/*.AppImage
+            src-nsh/target/installer/bundle/*.dmg
             artifacts/omarchy/*.pkg.tar.zst
           if-no-files-found: error
   release:
@@ -133,10 +146,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/download-artifact@v4
         with:
           pattern: s3-studio-*
           path: artifacts/release-input
+      - name: Compile update signer
+        run: cargo build --locked --manifest-path packaging/signing/Cargo.toml
+      - name: Sign in-app update packages
+        env:
+          S3_STUDIO_UPDATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          S3_STUDIO_UPDATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          mapfile -d '' installers < <(find artifacts/release-input -type f \( -name '*.msi' -o -name '*.exe' -o -name '*.AppImage' \) -print0)
+          test "${#installers[@]}" -eq 3
+          packaging/signing/target/debug/sign-s3-studio-update "${installers[@]}"
       - name: Verify and collect all three platforms
         run: node scripts/prepare-release.mjs artifacts/release-input artifacts/release
       - name: Publish complete release

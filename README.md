@@ -113,7 +113,7 @@ macOS、Ubuntu deb 和直接运行的可执行文件会打开对应发布页，�
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev gnome-keyring libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libfontconfig1-dev libasound2-dev libx11-xcb-dev libxi-dev libxrandr-dev libxinerama-dev libxcursor-dev libclang-dev
+sudo apt-get install -y build-essential file libdbus-1-dev gnome-keyring libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libfontconfig1-dev libasound2-dev libx11-xcb-dev libxi-dev libxrandr-dev libxinerama-dev libxcursor-dev libclang-dev
 ```
 
 使用 Cargo 启动桌面应用。
@@ -138,17 +138,16 @@ cargo test --locked --manifest-path src-nsh/Cargo.toml
 node --test tests/update-signature.test.mjs
 ```
 
-在目标操作系统上安装独立 Tauri CLI，构建 NSH 可执行文件并生成安装包。
+在目标操作系统上构建 NSH 可执行文件并生成安装包。Linux 需要 `dpkg-deb` 和 GitHub CLI，打包脚本会下载并校验 AppImage 工具。Windows 需要 PowerShell 7、NSIS 3.11 和 WiX Toolset 3.14.1。
 
 ```bash
-cargo install --locked tauri-cli --version 2.12.1
 node scripts/build-native.mjs
-node scripts/bundle-native.mjs
+node scripts/package-native.mjs
 ```
 
-macOS 使用 AppKit，Windows 使用 Win32，Linux 使用 Native Shell 的 GPUI 渲染后端。Tauri 打包沿用原有应用 ID 和更新签名格式。安装包输出到 `src-nsh/target/installer/release/bundle/`，包括 Windows NSIS/MSI、Linux deb/AppImage 和 macOS app/DMG。
+macOS 使用 AppKit，Windows 使用 Win32，Linux 使用 Native Shell 的 GPUI 渲染后端。各平台使用原生打包工具，沿用原有应用 ID 和更新签名格式。安装包输出到 `src-nsh/target/installer/bundle/`，包括 Windows NSIS/MSI、Linux deb/AppImage 和 macOS Universal DMG。
 
-macOS Universal 构建使用 `node scripts/build-native.mjs --universal`，再执行 `node scripts/bundle-native.mjs --target universal-apple-darwin --bundles app,dmg`。Universal 包位于 `src-nsh/target/installer/universal-apple-darwin/release/bundle/`。
+macOS 构建前通过 `rustup target add aarch64-apple-darwin x86_64-apple-darwin` 安装两个目标。使用 `node scripts/build-native.mjs --universal` 构建，再执行 `node scripts/package-native.mjs` 生成 Universal DMG。
 
 推送与应用版本一致的 `v<版本号>` 标签后，工作流等待三平台测试与构建全部通过，汇总六个安装包（含 Omarchy）、三份更新签名和 `latest.json`，生成 SHA-256 校验清单，先上传到草稿 Release，核对远端文件数量和大小后再正式发布。Windows / AppImage 更新包使用专用密钥签名；安装包尚未配置系统代码签名，macOS 尚未进行 Apple 公证。
 
@@ -170,7 +169,7 @@ Omarchy 包复用同版本 deb 中的原生可执行文件，通过 Arch 的 `ma
 
 ### 发布与验证
 
-GitHub Actions 使用仓库 Secret `TAURI_SIGNING_PRIVATE_KEY`，有密码时另设 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。与其匹配的公钥固定在 `src-nsh/tauri.conf.json`；私钥应离线备份，不能提交到仓库或放入安装包。发布脚本会验证三份实际更新包签名与版本绑定，错误密钥或缺少签名会阻止发布。更新清单由本仓库 Release 的 `latest.json` 提供。
+更新签名继续使用已有的 Minisign 密钥。GitHub Actions 将现有仓库 Secret 传给独立签名工具，公钥固定在 `packaging/app.json`。发布脚本会校验三份更新包的签名和绑定的版本。更新清单由本仓库 Release 的 `latest.json` 提供。
 
 Windows Release 构建后可运行 `powershell -NoProfile -File scripts/smoke-desktop.ps1` 检查原生程序启动；测试会结束自己启动的进程，报告保存到 `artifacts/native-startup.json`。
 
@@ -190,6 +189,6 @@ Windows Release 构建后可运行 `powershell -NoProfile -File scripts/smoke-de
 
 ### 项目参考与品牌资源
 
-参考 [S3 Browser 的公开功能](https://s3browser.com/)，本项目采用独立实现，并非 AWS 官方产品。桌面界面使用 [Native Shell](https://nsh.dev/docs/rust/)，打包配置依据 [Tauri 官方文档](https://v2.tauri.app/)，S3 请求由 [AWS 官方 Rust SDK](https://docs.aws.amazon.com/sdk-for-rust/latest/dg/welcome.html) 完成。
+本项目参考 S3 Browser 的公开功能，桌面界面使用 Native Shell，S3 请求由 AWS SDK for Rust 完成。[S3 Browser](https://s3browser.com/) · [Native Shell](https://nsh.dev/docs/rust/) · [AWS SDK for Rust](https://docs.aws.amazon.com/sdk-for-rust/latest/dg/welcome.html)
 
-Logo 以 Apple Design 的留白和几何层级为参考，保留浅蓝色圆角底，采用三层等距几何线条表达对象存储。侧栏、桌面与安装包使用同一标志。SVG 源文件和设计说明位于 `assets/brand/`，桌面 PNG / ICO / ICNS 位于 `src-nsh/icons/`。使用 `cargo tauri icon --output <临时目录> assets/brand/s3-studio-logo.svg` 导出，再更新打包配置中列出的桌面图标。
+Logo 以 Apple Design 的留白和几何层级为参考，保留浅蓝色圆角底，采用三层等距几何线条表达对象存储。侧栏、桌面与安装包使用同一标志。SVG 源文件和设计说明位于 `assets/brand/`，桌面 PNG / ICO / ICNS 位于 `src-nsh/icons/`。

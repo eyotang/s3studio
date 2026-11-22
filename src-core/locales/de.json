@@ -147,7 +147,6 @@
   "输入目标对象的完整路径，复制到当前存储桶。": "Geben Sie den vollständigen Zielschlüssel zum Kopieren innerhalb dieses Buckets ein.",
   "接下来选择本地文件。当前目录中同名的对象将被覆盖；大文件自动分片上传。": "Wählen Sie lokale Dateien. Gleichnamige Objekte werden überschrieben; große Dateien werden mehrteilig hochgeladen.",
   "删除本机保存的账户配置和凭据，云端文件不受影响。": "Entfernt lokale Kontoeinstellungen und Zugangsdaten. Cloud-Dateien bleiben unverändert.",
-  "一个基于 Tauri 的跨平台 S3 工作空间。": "Ein plattformübergreifender S3-Arbeitsbereich auf GPUI-Basis.",
   " · 有新版本可用": " · Update verfügbar",
   "关闭更新窗口": "Update-Fenster schließen",
   "关闭弹窗": "Dialog schließen",

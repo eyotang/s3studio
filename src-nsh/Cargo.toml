@@ -18,7 +18,7 @@ s3-studio-core = { path = "../src-core" }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+tokio = { version = "1", features = ["fs", "io-util", "rt-multi-thread", "sync", "time"] }
 futures = "0.3"
 dirs = "6"
 chrono = "0.4"
@@ -26,9 +26,10 @@ icu_collator = "2.4"
 icu_locale = "2.4"
 env_logger = { version = "0.11", default-features = false }
 semver = "1"
-reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream"] }
-tauri = { version = "2", default-features = false, features = [] }
-tauri-plugin-updater = "=2.13.2"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream", "system-proxy"] }
+base64 = "0.22"
+minisign-verify = "0.2"
+tempfile = "3"
 open = "5"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 
@@ -60,6 +61,3 @@ debug = 0
 strip = true
 lto = "thin"
 codegen-units = 8
-
-[patch.crates-io]
-tauri-plugin-updater = { path = "vendor/tauri-plugin-updater" }

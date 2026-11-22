@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <!-- Keep this UpgradeCode to replace existing x64 MSI installations. -->
+  <Product Id="*" Name="S3 Studio" Language="1033" Manufacturer="S3 Studio"
+           Version="$(var.AppVersion)" UpgradeCode="9F440433-9579-5F8C-AA0B-1188DB213F0C">
+    <Package InstallerVersion="450" Compressed="yes" InstallScope="perMachine" Platform="x64"/>
+    <MajorUpgrade Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of S3 Studio is already installed."/>
+    <MediaTemplate EmbedCab="yes"/>
+    <Icon Id="ProductIcon" SourceFile="$(var.AppIcon)"/>
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon"/>
+    <Property Id="AUTOLAUNCHAPP" Secure="yes"/>
+    <Property Id="INSTALLDIR" Secure="yes">
+      <RegistrySearch Id="PreviousDirectory" Root="HKCU" Key="Software\S3 Studio\S3 Studio"
+                      Name="InstallDir" Type="raw" Win64="no"/>
+      <RegistrySearch Id="PreviousDirectory64" Root="HKCU" Key="Software\S3 Studio\S3 Studio"
+                      Name="InstallDir" Type="raw" Win64="yes"/>
+      <RegistrySearch Id="MachineDirectory" Root="HKLM" Key="Software\S3 Studio\S3 Studio"
+                      Name="InstallDir" Type="raw" Win64="yes"/>
+    </Property>
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR"/>
+    <UIRef Id="WixUI_InstallDir"/>
+    <UI>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Order="2">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">1</Publish>
+    </UI>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="S3 Studio">
+          <Component Id="Application" Guid="*" Win64="yes">
+            <File Id="StudioExe" Name="s3-studio.exe" Source="$(var.AppBinary)" KeyPath="yes"/>
+            <File Id="InstallMarker" Name="s3-studio.install" Source="$(var.InstallMarker)"/>
+          </Component>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Component Id="StartMenuEntry" Guid="*" Win64="yes">
+          <Shortcut Id="StudioShortcut" Name="S3 Studio" Target="[#StudioExe]"
+                    WorkingDirectory="INSTALLDIR" Icon="ProductIcon">
+            <ShortcutProperty Key="System.AppUserModel.ID" Value="com.s3studio.desktop"/>
+          </Shortcut>
+          <RegistryValue Root="HKLM" Key="Software\S3 Studio\S3 Studio"
+                         Name="Start Menu Shortcut" Type="integer" Value="1" KeyPath="yes"/>
+          <RegistryValue Root="HKLM" Key="Software\S3 Studio\S3 Studio"
+                         Name="InstallDir" Type="string" Value="[INSTALLDIR]"/>
+        </Component>
+      </Directory>
+    </Directory>
+    <Feature Id="Main" Level="1" Title="S3 Studio" ConfigurableDirectory="INSTALLDIR">
+      <ComponentRef Id="Application"/>
+      <ComponentRef Id="StartMenuEntry"/>
+    </Feature>
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLDIR]" After="CostFinalize"/>
+    <CustomAction Id="LaunchApplication" FileKey="StudioExe" ExeCommand="" Impersonate="yes" Return="asyncNoWait"/>
+    <InstallExecuteSequence>
+      <Custom Action="LaunchApplication" After="InstallFinalize">AUTOLAUNCHAPP AND NOT Installed</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>

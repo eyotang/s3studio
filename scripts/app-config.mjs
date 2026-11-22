@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 export const appConfig = JSON.parse(
-  await readFile(new URL("../src-nsh/tauri.conf.json", import.meta.url), "utf8"),
+  await readFile(new URL("../packaging/app.json", import.meta.url), "utf8"),
 );
 
 export async function checkApplicationVersions() {

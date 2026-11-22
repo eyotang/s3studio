@@ -76,7 +76,7 @@ cargo test --locked --manifest-path src-nsh/Cargo.toml
 node --test tests/update-signature.test.mjs
 ```
 
-Установите самостоятельную Tauri CLI командой `cargo install --locked tauri-cli --version 2.12.1`. Запустите `node scripts/build-native.mjs` и `node scripts/bundle-native.mjs` на целевой ОС. Скрипты упаковки и публикации используют стандартную библиотеку Node.js 22.12+. Universal-сборки, пути данных и подписи описаны в [справочнике разработчика](README.md#开发与贡献). Измените переводы в `src-core/locales`, выполните `node scripts/sync-i18n.mjs`, отформатируйте Rust и запустите тесты.
+Запустите `node scripts/build-native.mjs` и `node scripts/package-native.mjs` на целевой ОС. Скрипты упаковки и публикации используют стандартную библиотеку Node.js 22.12+. Universal-сборки, пути данных и подписи описаны в [справочнике разработчика](README.md#开发与贡献). Измените переводы в `src-core/locales`, выполните `node scripts/sync-i18n.mjs`, отформатируйте Rust и запустите тесты.
 
 В Issue укажите версию приложения, ОС, шаги воспроизведения и ошибки. Удалите учётные и личные данные из журналов и снимков экрана. В Pull Request опишите проблему, новое поведение и проверки; для изменений интерфейса приложите снимки. Тесты используют локальный симулятор S3. При публикации следуйте [AGENTS.md](AGENTS.md): сначала английский текст, затем китайский, с инструкцией macOS xattr в обеих частях.
 

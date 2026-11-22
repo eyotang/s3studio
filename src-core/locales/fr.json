@@ -147,7 +147,6 @@
   "输入目标对象的完整路径，复制到当前存储桶。": "Saisissez la clé de destination complète pour copier dans ce compartiment.",
   "接下来选择本地文件。当前目录中同名的对象将被覆盖；大文件自动分片上传。": "Choisissez ensuite des fichiers locaux. Les objets de même nom seront écrasés ; les gros fichiers seront téléversés en plusieurs parties.",
   "删除本机保存的账户配置和凭据，云端文件不受影响。": "Supprimez les réglages et identifiants locaux du compte. Les fichiers cloud ne sont pas affectés.",
-  "一个基于 Tauri 的跨平台 S3 工作空间。": "Un espace de travail S3 multiplateforme basé sur GPUI.",
   " · 有新版本可用": " · Mise à jour disponible",
   "关闭更新窗口": "Fermer la fenêtre de mise à jour",
   "关闭弹窗": "Fermer la boîte de dialogue",

@@ -74,7 +74,7 @@ for (const [extension, suffix] of packages) {
     await verifyUpdateSignature(
       target,
       signature,
-      appConfig.plugins.updater.pubkey,
+      appConfig.updaterPublicKey,
       version,
     );
     const signatureName = `${name}.sig`;
