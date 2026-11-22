@@ -94,11 +94,12 @@ pub fn object_name<'a>(key: &'a str, prefix: &str) -> &'a str {
     let name = key.strip_prefix(prefix).unwrap_or(key);
     name.strip_suffix('/').unwrap_or(name)
 }
-pub fn bytes(value: u64) -> String {
+pub fn bytes(value: u128) -> String {
     if value == 0 {
         return "0 B".into();
     }
-    let unit = ((value as f64).log(1024.).floor() as usize).min(4);
+    let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+    let unit = ((value as f64).log(1024.).floor() as usize).min(units.len() - 1);
     let number = if unit == 0 {
         value.to_string()
     } else {
@@ -120,7 +121,7 @@ pub fn bytes(value: u64) -> String {
         grouped.push('.');
         grouped.push_str(fraction);
     }
-    format!("{grouped} {}", ["B", "KB", "MB", "GB", "TB"][unit])
+    format!("{grouped} {}", units[unit])
 }
 pub fn date(value: &str) -> String {
     DateTime::parse_from_rfc3339(value)
@@ -151,7 +152,7 @@ pub fn visible(objects: &[S3Object], query: &str, sort: Sort, ascending: bool) -
     });
     result
 }
-fn natural_cmp(a: &str, b: &str) -> Ordering {
+pub(crate) fn natural_cmp(a: &str, b: &str) -> Ordering {
     use icu_collator::{Collator, CollatorBorrowed};
     use std::sync::LazyLock;
     // Matches localeCompare(..., "zh-CN", { numeric: true }) in the original UI.

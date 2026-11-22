@@ -8,9 +8,13 @@ use aws_sdk_s3::{
         timeout::TimeoutConfig, BehaviorVersion, Region, RequestChecksumCalculation,
         ResponseChecksumValidation,
     },
+    operation::list_objects_v2::builders::ListObjectsV2FluentBuilder,
     presigning::PresigningConfig,
     primitives::ByteStream,
-    types::{BucketLocationConstraint, CreateBucketConfiguration, Delete, ObjectIdentifier},
+    types::{
+        BucketLocationConstraint, CreateBucketConfiguration, Delete, EncodingType, Object,
+        ObjectIdentifier,
+    },
     Client,
 };
 use serde::{Deserialize, Serialize};
@@ -228,8 +232,38 @@ pub async fn list_objects(
     prefix: String,
     token: Option<String>,
 ) -> Result<ObjectPage, String> {
-    let client = bucket_client(&store, &account_id, &bucket).await?;
+    let client = bucket_client(store, &account_id, &bucket).await?;
     fetch_objects(&client, &bucket, &prefix, token).await
+}
+
+fn object_listing(
+    client: &Client,
+    bucket: &str,
+    prefix: &str,
+    token: Option<String>,
+) -> ListObjectsV2FluentBuilder {
+    client
+        .list_objects_v2()
+        .bucket(bucket)
+        .prefix(prefix)
+        .max_keys(1000)
+        .set_continuation_token(token)
+}
+
+fn listed_object(item: &Object, key: String, folder: bool) -> S3Object {
+    S3Object {
+        key,
+        size: item.size().unwrap_or(0),
+        modified: item
+            .last_modified()
+            .map(ToString::to_string)
+            .unwrap_or_default(),
+        storage_class: item
+            .storage_class()
+            .map(|s| s.as_str().into())
+            .unwrap_or_default(),
+        folder,
+    }
 }
 
 async fn fetch_objects(
@@ -238,13 +272,8 @@ async fn fetch_objects(
     prefix: &str,
     token: Option<String>,
 ) -> Result<ObjectPage, String> {
-    let response = client
-        .list_objects_v2()
-        .bucket(bucket)
-        .prefix(prefix)
+    let response = object_listing(client, bucket, prefix, token)
         .delimiter("/")
-        .max_keys(1000)
-        .set_continuation_token(token)
         .send()
         .await
         .map_err(failure)?;
@@ -263,19 +292,7 @@ async fn fetch_objects(
     for item in response.contents() {
         if let Some(key) = item.key() {
             if key != prefix {
-                objects.push(S3Object {
-                    key: key.into(),
-                    size: item.size().unwrap_or(0),
-                    modified: item
-                        .last_modified()
-                        .map(ToString::to_string)
-                        .unwrap_or_default(),
-                    storage_class: item
-                        .storage_class()
-                        .map(|s| s.as_str().into())
-                        .unwrap_or_default(),
-                    folder: key.ends_with('/'),
-                });
+                objects.push(listed_object(item, key.into(), key.ends_with('/')));
             }
         }
     }
@@ -283,6 +300,66 @@ async fn fetch_objects(
         objects,
         next_token: response.next_continuation_token().map(str::to_owned),
     })
+}
+
+/// Enumerates current objects beneath a prefix using one flat, paginated listing.
+pub async fn scan_objects(
+    store: &AccountStore,
+    account_id: &str,
+    bucket: &str,
+    prefix: &str,
+    on_page: impl FnMut(Vec<S3Object>),
+) -> Result<(), String> {
+    let client = bucket_client(store, account_id, bucket).await?;
+    scan_listing(&client, bucket, prefix, on_page).await
+}
+
+async fn scan_listing(
+    client: &Client,
+    bucket: &str,
+    prefix: &str,
+    mut on_page: impl FnMut(Vec<S3Object>),
+) -> Result<(), String> {
+    let mut token = None;
+    let mut seen_tokens = BTreeSet::new();
+    loop {
+        let page = object_listing(client, bucket, prefix, token)
+            .encoding_type(EncodingType::Url)
+            .send()
+            .await
+            .map_err(failure)?;
+        let encoded = page.encoding_type() == Some(&EncodingType::Url);
+        let mut objects = Vec::with_capacity(page.contents().len());
+        for item in page.contents() {
+            let key = item
+                .key()
+                .ok_or_else(|| crate::i18n::t("服务端列出的对象缺少键名。"))?;
+            let key = if encoded {
+                percent_encoding::percent_decode_str(key)
+                    .decode_utf8()
+                    .map_err(|_| crate::i18n::t("服务端返回了无法解码的对象键。"))?
+                    .into_owned()
+            } else {
+                key.to_owned()
+            };
+            if !key.starts_with(prefix) || key.is_empty() || item.size().is_none_or(|size| size < 0)
+            {
+                return Err(crate::i18n::t("服务端返回了无效的对象键或大小。").into());
+            }
+            let folder = key.ends_with('/') && item.size() == Some(0);
+            objects.push(listed_object(item, key, folder));
+        }
+        let next = page.next_continuation_token();
+        if !page.is_truncated().unwrap_or(next.is_some()) {
+            on_page(objects);
+            return Ok(());
+        }
+        let next = next
+            .filter(|next| !next.is_empty() && seen_tokens.insert((*next).to_owned()))
+            .ok_or_else(|| crate::i18n::t("服务端未返回有效的分页标记，无法完成大小统计。"))?;
+        on_page(objects);
+        token = Some(next.to_owned());
+    }
 }
 
 fn valid_bucket(name: &str) -> bool {
@@ -424,9 +501,7 @@ async fn delete_selection(
     folders: Vec<String>,
 ) -> Result<usize, String> {
     if (keys.is_empty() && folders.is_empty())
-        || keys
-            .iter()
-            .any(|key| key.is_empty() || key.ends_with('/') || key.len() > 1024)
+        || keys.iter().any(|key| key.is_empty() || key.len() > 1024)
         || folders
             .iter()
             .any(|prefix| prefix.len() < 2 || !prefix.ends_with('/') || prefix.len() > 1024)
@@ -446,12 +521,7 @@ async fn delete_selection(
         let mut token = None;
         let mut seen = BTreeSet::new();
         loop {
-            let page = client
-                .list_objects_v2()
-                .bucket(bucket)
-                .prefix(root)
-                .max_keys(1000)
-                .set_continuation_token(token)
+            let page = object_listing(client, bucket, root, token)
                 .send()
                 .await
                 .map_err(failure)?;
@@ -816,6 +886,97 @@ mod tests {
         assert!(second.next_token.is_none());
         thread.join().unwrap();
     }
+
+    #[tokio::test]
+    async fn flat_scan_follows_pages_and_decodes_object_keys_once() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let client = test_client(format!("http://{}", server.server_addr()));
+        let thread = std::thread::spawn(move || {
+            let first = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            assert!(first.url().contains("list-type=2"));
+            assert!(first.url().contains("prefix=design%2F"));
+            assert!(first.url().contains("encoding-type=url"));
+            assert!(!first.url().contains("delimiter="));
+            first.respond(tiny_http::Response::from_string(r#"<ListBucketResult><EncodingType>url</EncodingType><IsTruncated>true</IsTruncated><NextContinuationToken>a+/=</NextContinuationToken><Contents><Key>design%2Fphotos%2F%E6%A0%B7%E7%89%87%20a%252Fb.png</Key><Size>42</Size><StorageClass>GLACIER</StorageClass></Contents></ListBucketResult>"#)).unwrap();
+            let second = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            assert!(second.url().contains("continuation-token=a%2B%2F%3D"));
+            assert!(!second.url().contains("delimiter="));
+            second.respond(tiny_http::Response::from_string(r#"<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>design/photos/</Key><Size>0</Size></Contents><Contents><Key>design/photos/a%2Fb/</Key><Size>12</Size></Contents></ListBucketResult>"#)).unwrap();
+        });
+        let mut pages = Vec::new();
+        scan_listing(&client, "test-bucket", "design/", |page| pages.push(page))
+            .await
+            .unwrap();
+        thread.join().unwrap();
+        assert_eq!(pages.len(), 2);
+        assert_eq!(pages[0][0].key, "design/photos/样片 a%2Fb.png");
+        assert_eq!(pages[0][0].size, 42);
+        assert_eq!(pages[0][0].storage_class, "GLACIER");
+        assert_eq!(pages[1][0].key, "design/photos/");
+        assert!(pages[1][0].folder);
+        assert_eq!(pages[1][1].key, "design/photos/a%2Fb/");
+        assert!(!pages[1][1].folder);
+    }
+
+    #[tokio::test]
+    async fn flat_scan_rejects_a_repeated_continuation_token() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let client = test_client(format!("http://{}", server.server_addr()));
+        let thread = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let request = server
+                    .recv_timeout(Duration::from_secs(10))
+                    .unwrap()
+                    .unwrap();
+                request.respond(tiny_http::Response::from_string(r#"<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>again</NextContinuationToken><Contents><Key>design/a</Key><Size>5</Size></Contents></ListBucketResult>"#)).unwrap();
+            }
+        });
+        let mut pages = 0;
+        assert!(
+            scan_listing(&client, "test-bucket", "design/", |_| pages += 1)
+                .await
+                .is_err()
+        );
+        thread.join().unwrap();
+        assert_eq!(pages, 1);
+    }
+
+    #[tokio::test]
+    async fn deletes_an_explicit_slash_ending_object_without_listing_its_prefix() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let client = test_client(format!("http://{}", server.server_addr()));
+        let thread = std::thread::spawn(move || {
+            let mut request = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            assert_eq!(request.method(), &tiny_http::Method::Post);
+            assert!(request.url().contains("?delete"));
+            let mut body = String::new();
+            request.as_reader().read_to_string(&mut body).unwrap();
+            assert!(body.contains("<Key>design/object/</Key>"));
+            request
+                .respond(tiny_http::Response::from_string("<DeleteResult/>"))
+                .unwrap();
+        });
+        let count = delete_selection(
+            &client,
+            "test-bucket",
+            vec!["design/object/".into()],
+            vec![],
+        )
+        .await
+        .unwrap();
+        assert_eq!(count, 1);
+        thread.join().unwrap();
+    }
+
     #[tokio::test]
     async fn presigned_links_contain_signature_expiration_and_encoded_key() {
         let client = test_client("https://s3.example.com".into());

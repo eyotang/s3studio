@@ -561,10 +561,10 @@ fn update_status(state: &Workspace) -> View {
             body.child(progress(fraction, BLUE)).child(label(
                 format!(
                     "{}{}",
-                    model::bytes(status.downloaded),
+                    model::bytes(status.downloaded.into()),
                     status
                         .total
-                        .map(|size| format!(" / {}", model::bytes(size)))
+                        .map(|size| format!(" / {}", model::bytes(size.into())))
                         .unwrap_or_default()
                 ),
                 11.0,

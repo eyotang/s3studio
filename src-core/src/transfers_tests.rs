@@ -559,6 +559,18 @@ async fn empty_upload_and_download_finish_without_parts() {
 }
 
 #[tokio::test]
+async fn downloads_an_object_with_a_slash_ending_key() {
+    let workspace = Workspace::new();
+    let mock = Mock::new(42);
+    let engine = workspace.engine();
+    let file = workspace.0.join("saved.bin");
+    let id = enqueue(&engine, Direction::Download, file.clone(), "design/object/").await;
+    engine.start(&id, mock.client()).await.unwrap();
+    until(&engine, &id, |j| j.view.status == "done").await;
+    assert_eq!(tokio::fs::read(file).await.unwrap(), *mock.data);
+}
+
+#[tokio::test]
 async fn changed_source_prevents_upload_resume() {
     let workspace = Workspace::new();
     let mock = Mock::new(CHUNK as usize + 137);

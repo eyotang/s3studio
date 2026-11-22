@@ -97,7 +97,7 @@ pub async fn download_object(
     bucket: String,
     key: String,
 ) -> Result<bool, String> {
-    if key.is_empty() || key.ends_with('/') {
+    if key.is_empty() || key.len() > 1024 {
         return Err(crate::i18n::t("请选择文件下载。").into());
     }
     let name = key

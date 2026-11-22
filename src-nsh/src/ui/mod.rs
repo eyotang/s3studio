@@ -45,8 +45,7 @@ pub fn workspace(store: Store) -> AnyElement {
                 if state.dialog.is_some() {
                     state.close_dialog();
                 } else if !state.is_busy() {
-                    state.selected.clear();
-                    state.selection_changed();
+                    state.clear_selection();
                 }
             });
         },

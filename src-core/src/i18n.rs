@@ -37,6 +37,22 @@ include!(concat!(env!("OUT_DIR"), "/translations.rs"));
 
 #[macro_export]
 macro_rules! lf {
+("{count} 个对象 · {size}", $($args:tt)*) => { match $crate::i18n::current() {
+$crate::i18n::Language::English => format!("{count} objects · {size}", $($args)*),
+$crate::i18n::Language::Korean => format!("객체 {count}개 · {size}", $($args)*),
+$crate::i18n::Language::Japanese => format!("{count} 個のオブジェクト · {size}", $($args)*),
+$crate::i18n::Language::French => format!("{count} objets · {size}", $($args)*),
+$crate::i18n::Language::German => format!("{count} Objekte · {size}", $($args)*),
+$crate::i18n::Language::Russian => format!("Объекты — {count} · {size}", $($args)*),
+_ => format!("{count} 个对象 · {size}", $($args)*), } };
+("已扫描 {count} 个对象 · {size}", $($args:tt)*) => { match $crate::i18n::current() {
+$crate::i18n::Language::English => format!("Scanned {count} objects · {size}", $($args)*),
+$crate::i18n::Language::Korean => format!("객체 {count}개 스캔 완료 · {size}", $($args)*),
+$crate::i18n::Language::Japanese => format!("{count} 個のオブジェクトをスキャン済み · {size}", $($args)*),
+$crate::i18n::Language::French => format!("{count} objets analysés · {size}", $($args)*),
+$crate::i18n::Language::German => format!("{count} Objekte gescannt · {size}", $($args)*),
+$crate::i18n::Language::Russian => format!("Обработано объектов — {count} · {size}", $($args)*),
+_ => format!("已扫描 {count} 个对象 · {size}", $($args)*), } };
 ("已删除至少 {} 个对象，部分对象删除失败，请刷新列表确认：{}", $($args:tt)*) => { match $crate::i18n::current() {
 $crate::i18n::Language::English => format!("Deleted at least {} objects; some deletions failed. Refresh the list to confirm: {}", $($args)*),
 $crate::i18n::Language::Korean => format!("최소 {}개 객체를 삭제했지만 일부 삭제에 실패했습니다. 목록을 새로 고침하세요: {}", $($args)*),

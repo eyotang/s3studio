@@ -1,14 +1,16 @@
+mod tree;
+
 use super::*;
-use crate::model;
+use crate::{model, workspace::ObjectView};
 use s3_studio_core::s3::S3Object;
 
 pub(super) fn browser(store: Store, search: ElementRef) -> View {
     let visible = computed(move || store.read(Workspace::visible));
-    let grid = computed(move || store.read(|state| state.grid));
+    let grid = computed(move || store.read(|state| state.object_view == ObjectView::Grid));
+    let tree = computed(move || store.read(|state| state.object_view == ObjectView::Tree));
     let show_info = computed(move || store.read(|state| state.show_info));
     let narrow = computed(move || window().width.0 <= 1050.0);
     let compact = computed(move || narrow.get() || show_info.get());
-    let table = objects(store, visible, grid, compact);
 
     controls::panel()
         .child(dynamic(move || store.read(|state| toolbar(store, state))))
@@ -33,20 +35,35 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                                 move || store.read(|state| state.search.clone()),
                             )
                             .element_ref(&search)
-                            .label(move || store.read(|_| SharedString::from(t("搜索当前目录"))))
+                            .label(move || {
+                                store.read(|state| {
+                                    SharedString::from(if state.object_view == ObjectView::Tree {
+                                        t("搜索对象树")
+                                    } else {
+                                        t("搜索当前目录")
+                                    })
+                                })
+                            })
                             .placeholder(move || {
-                                store.read(|_| t("搜索当前目录中的文件…").to_owned())
+                                store.read(|state| {
+                                    if state.object_view == ObjectView::Tree {
+                                        t("搜索目录及其子目录…")
+                                    } else {
+                                        t("搜索当前目录中的文件…")
+                                    }
+                                    .to_owned()
+                                })
                             })
                             .flex_1()
                             .on_change(move |value: &str| {
-                                store.change(|state| state.search = value.into())
+                                store.change(|state| state.set_search(value))
                             }),
                         )
                         .child(when(
                             move || store.read(|state| !state.search.is_empty()),
                             move || {
                                 icon_button("clear-search", t("清除搜索"), "x")
-                                    .on_press(store.action(|state| state.search.clear()))
+                                    .on_press(store.action(|state| state.set_search("")))
                             },
                         )),
                 )
@@ -67,7 +84,11 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
         .child(
             row()
                 .items_stretch()
-                .child(table)
+                .child(when(
+                    move || !tree.get(),
+                    move || objects(store, visible, grid, compact),
+                ))
+                .child(when(tree, move || tree::objects(store)))
                 .child(when(show_info, move || {
                     scroll()
                         .test_id("object-inspector")
@@ -81,17 +102,16 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
         )
         .child(divider())
         .child(dynamic(move || {
-            let count = visible.with(Vec::len);
             store.read(|state| {
-                row()
-                    .justify_between()
-                    .px(px(15.0))
-                    .h(px(33.0))
-                    .bg(SUBTLE)
+                let footer = row().justify_between().px(px(15.0)).h(px(33.0)).bg(SUBTLE);
+                if state.object_view == ObjectView::Tree {
+                    return footer.child(tree::summary(state));
+                }
+                footer
                     .child(label(
                         crate::lf!(
                             "{} 个项目{}{}",
-                            count,
+                            visible.with(Vec::len),
                             if state.search.is_empty() {
                                 ""
                             } else {
@@ -109,7 +129,7 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                     .child(label(
                         crate::lf!(
                             "{} · 当前已加载",
-                            model::bytes(state.objects.iter().map(|o| o.size.max(0) as u64).sum())
+                            model::bytes(state.objects.iter().map(|o| o.size.max(0) as u128).sum())
                         ),
                         11.0,
                         MUTED,
@@ -167,15 +187,24 @@ fn toolbar(store: Store, state: &Workspace) -> View {
                 )
                 .child(
                     icon_button("list-view", t("列表视图"), "list")
-                        .selected(!state.grid)
+                        .selected(state.object_view == ObjectView::List)
                         .selected_style(|s| s.bg(SELECTED))
-                        .on_press(store.action(|state| state.grid = false)),
+                        .disabled(state.is_busy())
+                        .on_press(store.action(|state| state.set_object_view(ObjectView::List))),
                 )
                 .child(
                     icon_button("grid-view", t("网格视图"), "layout-grid")
-                        .selected(state.grid)
+                        .selected(state.object_view == ObjectView::Grid)
                         .selected_style(|s| s.bg(SELECTED))
-                        .on_press(store.action(|state| state.grid = true)),
+                        .disabled(state.is_busy())
+                        .on_press(store.action(|state| state.set_object_view(ObjectView::Grid))),
+                )
+                .child(
+                    icon_button("tree-view", t("树状视图"), "list-tree")
+                        .selected(state.object_view == ObjectView::Tree)
+                        .selected_style(|s| s.bg(SELECTED))
+                        .disabled(state.is_busy())
+                        .on_press(store.action(|state| state.set_object_view(ObjectView::Tree))),
                 )
                 .child(
                     icon_button("toggle-info", t("对象详情"), "info")
@@ -190,7 +219,8 @@ fn toolbar(store: Store, state: &Workspace) -> View {
 }
 
 fn selection_actions(store: Store, state: &Workspace) -> Option<View> {
-    if state.selected.is_empty() {
+    let count = state.selection_count();
+    if count == 0 {
         return None;
     }
     let single_file = state.first().is_some_and(|first| !first.folder);
@@ -199,7 +229,7 @@ fn selection_actions(store: Store, state: &Workspace) -> Option<View> {
         row()
             .gap(px(4.0))
             .flex_shrink_0()
-            .child(label(crate::lf!("已选 {} 项", state.selected.len()), 11.0, MUTED).mr(px(4.0)))
+            .child(label(crate::lf!("已选 {} 项", count), 11.0, MUTED).mr(px(4.0)))
             .child(
                 icon_button(
                     "download-selection",
@@ -328,7 +358,7 @@ fn objects(
     column()
         .flex_1()
         .min_w_0()
-        .h(move || px((window().height.0 - 478.0).clamp(250.0, 620.0)))
+        .h(objects_height)
         .child(when(
             move || !grid.get() && visible.with(|objects| !objects.is_empty()),
             move || {
@@ -340,6 +370,10 @@ fn objects(
             },
         ))
         .child(list)
+}
+
+fn objects_height() -> Points {
+    px((window().height.0 - 478.0).clamp(250.0, 620.0))
 }
 
 fn empty_state(store: Store, state: &Workspace) -> View {
@@ -516,7 +550,7 @@ fn object_row(store: Store, state: &Workspace, object: &S3Object, compact: bool)
                         if object.folder {
                             "—".into()
                         } else {
-                            model::bytes(object.size.max(0) as u64)
+                            model::bytes(object.size.max(0) as u128)
                         },
                         11.0,
                         MUTED,
@@ -595,7 +629,7 @@ fn card(store: Store, state: &Workspace, object: &S3Object) -> AnyElement {
                     if object.folder {
                         t("文件夹").into()
                     } else {
-                        model::bytes(object.size.max(0) as u64)
+                        model::bytes(object.size.max(0) as u128)
                     },
                     10.0,
                     MUTED,
@@ -645,14 +679,21 @@ fn inspector(store: Store, state: &Workspace) -> View {
         return panel.child(label(t("选择一个对象以查看详情。"), 11.0, MUTED));
     };
     let info = state.info.as_ref();
+    let folder_totals = state
+        .tree
+        .snapshot()
+        .filter(|_| object.folder && state.object_view == ObjectView::Tree)
+        .zip(state.tree.selected.first())
+        .map(|(tree, &id)| tree.node(id).totals);
     let mut entries = vec![
         (t("对象键").into(), object.key.clone()),
         (
             t("大小").into(),
             if object.folder {
-                t("文件夹").into()
+                folder_totals
+                    .map_or_else(|| t("文件夹").into(), |totals| model::bytes(totals.bytes))
             } else {
-                model::bytes(info.map_or(object.size, |info| info.size).max(0) as u64)
+                model::bytes(info.map_or(object.size, |info| info.size).max(0) as u128)
             },
         ),
         (
@@ -672,6 +713,9 @@ fn inspector(store: Store, state: &Workspace) -> View {
             },
         ),
     ];
+    if let Some(totals) = folder_totals {
+        entries.insert(2, (t("对象数").into(), totals.objects.to_string()));
+    }
     if let Some(info) = info {
         entries.push(("Content-Type".into(), info.content_type.clone()));
         entries.push(("ETag".into(), info.etag.clone()));
@@ -725,11 +769,14 @@ fn inspector(store: Store, state: &Workspace) -> View {
 }
 
 fn file_icon(object: &S3Object, size: f32) -> impl IntoElement {
-    let (name, ink) = if object.folder {
+    object_icon(&object.key, object.folder, size)
+}
+
+fn object_icon(key: &str, folder: bool, size: f32) -> impl IntoElement + use<> {
+    let (name, ink) = if folder {
         ("folder", FOLDER)
     } else {
-        match object
-            .key
+        match key
             .rsplit('.')
             .next()
             .unwrap_or("")

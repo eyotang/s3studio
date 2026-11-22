@@ -53,6 +53,69 @@ fn search_selection_grid_and_delete_confirmation() {
 }
 
 #[test]
+fn tree_view_expands_levels_and_displays_parent_size_shares() {
+    let mut app = preview();
+    app.press("id:tree-view").unwrap();
+    app.wait_for("id:tree-totals").unwrap();
+    let folder = "id:tree-folder-Brand assets/";
+    let guides = "id:tree-folder-Brand assets/Guides/";
+    let file = "id:tree-file-Brand assets/Guides/Usage.pdf";
+    app.wait_for(folder).unwrap();
+    app.wait_for("24.6 MB").unwrap();
+    assert!(!app.screen().matches(guides).unwrap());
+    assert_eq!(
+        app.screen().accessibility_state(folder).unwrap().expanded,
+        Some(false)
+    );
+    app.press(folder).unwrap();
+    app.wait_for(guides).unwrap();
+    app.wait_for("97.5%").unwrap();
+    assert_eq!(app.screen().accessibility_level(guides).unwrap(), Some(2));
+    assert!(!app.screen().matches(file).unwrap());
+    app.press(guides).unwrap();
+    app.wait_for(file).unwrap();
+    assert_eq!(app.screen().accessibility_level(file).unwrap(), Some(3));
+    app.press("id:tree-sort-count").unwrap();
+    app.wait_for(file).unwrap();
+    app.press(guides).unwrap();
+    app.wait_for_gone(file, WAIT).unwrap();
+    app.press("id:list-view").unwrap();
+    app.wait_for("id:object-Brand assets/").unwrap();
+}
+
+#[test]
+fn tree_search_reveals_matches_and_clears_hidden_selections() {
+    let mut app = preview();
+    app.press("id:tree-view").unwrap();
+    app.wait_for("id:tree-totals").unwrap();
+    app.type_text("id:object-search", "usage").unwrap();
+    let guides = "id:tree-folder-Brand assets/Guides/";
+    let file = "id:tree-file-Brand assets/Guides/Usage.pdf";
+    app.wait_for(file).unwrap();
+    assert!(
+        !app.screen()
+            .matches("id:tree-file-Brand assets/Logo.svg")
+            .unwrap()
+    );
+    app.press("id:tree-check-file-Brand assets/Guides/Usage.pdf")
+        .unwrap();
+    assert!(app.screen().enabled("id:copy-selection").unwrap());
+    app.press("id:delete-selection").unwrap();
+    app.wait_for("id:delete-list").unwrap();
+    app.press_key("escape").unwrap();
+    app.press(guides).unwrap();
+    app.wait_for_gone(file, WAIT).unwrap();
+    app.wait_for_gone("id:delete-selection", WAIT).unwrap();
+    app.press(guides).unwrap();
+    app.press(file).unwrap();
+    app.wait_for("application/octet-stream").unwrap();
+    assert!(app.screen().enabled("id:inspector-download").unwrap());
+    app.press("id:clear-search").unwrap();
+    app.wait_for_gone(file, WAIT).unwrap();
+    app.wait_for("id:tree-totals").unwrap();
+}
+
+#[test]
 fn switches_buckets_and_shows_details_for_the_selected_object() {
     let mut app = preview();
     app.press("id:bucket-application-backups").unwrap();
@@ -219,7 +282,7 @@ fn formatting_and_directory_priority_match_existing_behavior() {
     assert_eq!(bytes(1024), "1 KB");
     assert_eq!(bytes(1280), "1.3 KB");
     assert_eq!(bytes(2488000), "2.4 MB");
-    assert_eq!(bytes(1024_u64.pow(4)), "1 TB");
+    assert_eq!(bytes(1024_u128.pow(4)), "1 TB");
     assert_eq!(object_name("design/Archive/", "design/"), "Archive");
     assert_eq!(object_name("design/Archive//", "design/"), "Archive/");
     let objects: Vec<s3_studio_core::s3::S3Object> = serde_json::from_value(serde_json::json!([

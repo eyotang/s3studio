@@ -7,6 +7,7 @@ mod appearance;
 mod backend;
 mod i18n;
 mod model;
+mod object_tree;
 mod ui;
 mod updater;
 mod workspace;

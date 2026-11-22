@@ -304,5 +304,19 @@
   "设置全局默认值，并管理账户和存储桶可选择的 Endpoint 和 Region。": "Définissez les valeurs globales par défaut et gérez les options Endpoint et Region proposées aux comptes et aux buckets.",
   "此账户已有同名存储桶，请编辑现有存储桶的连接设置。": "Un bucket porte déjà ce nom dans ce compte. Modifiez les paramètres de connexion du bucket existant.",
   "请先完成或取消此存储桶的传输，再修改连接设置。": "Terminez ou annulez les transferts de ce bucket avant de modifier ses paramètres de connexion.",
-  "存储桶已创建，但连接设置保存失败：{e}": "Le bucket a été créé, mais ses paramètres de connexion n’ont pas pu être enregistrés : {e}"
+  "存储桶已创建，但连接设置保存失败：{e}": "Le bucket a été créé, mais ses paramètres de connexion n’ont pas pu être enregistrés : {e}",
+  "树状视图": "Arborescence",
+  "搜索对象树": "Rechercher dans l’arborescence",
+  "搜索目录及其子目录…": "Rechercher dans le dossier et les sous-dossiers…",
+  "对象数": "Objets",
+  "占父目录": "Part du dossier parent",
+  "正在扫描目录及其子目录": "Analyse du dossier et des sous-dossiers",
+  "取消扫描": "Annuler l’analyse",
+  "已取消扫描": "Analyse annulée",
+  "重新扫描": "Relancer l’analyse",
+  "服务端返回了无法解码的对象键。": "Le serveur a renvoyé une clé d’objet impossible à décoder.",
+  "服务端返回了无效的对象键或大小。": "Le serveur a renvoyé une clé ou une taille d’objet non valide.",
+  "服务端未返回有效的分页标记，无法完成大小统计。": "Le serveur n’a pas renvoyé de jeton de continuation valide. Les tailles totales sont indisponibles.",
+  "{count} 个对象 · {size}": "{count} objets · {size}",
+  "已扫描 {count} 个对象 · {size}": "{count} objets analysés · {size}"
 }

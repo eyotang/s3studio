@@ -189,6 +189,7 @@ pub fn icon(name: &'static str, size: f32, ink: AdaptiveColor) -> impl IntoEleme
         "layout-grid",
         "link",
         "list",
+        "list-tree",
         "loader-circle",
         "pause",
         "play",

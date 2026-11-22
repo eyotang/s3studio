@@ -304,5 +304,19 @@
   "设置全局默认值，并管理账户和存储桶可选择的 Endpoint 和 Region。": "Set global defaults and manage the Endpoint and Region options available to accounts and buckets.",
   "此账户已有同名存储桶，请编辑现有存储桶的连接设置。": "This account already has a bucket with that name. Edit the existing bucket’s connection settings.",
   "请先完成或取消此存储桶的传输，再修改连接设置。": "Finish or cancel this bucket’s transfers before editing its connection settings.",
-  "存储桶已创建，但连接设置保存失败：{e}": "The bucket was created, but its connection settings could not be saved: {e}"
+  "存储桶已创建，但连接设置保存失败：{e}": "The bucket was created, but its connection settings could not be saved: {e}",
+  "树状视图": "Tree view",
+  "搜索对象树": "Search object tree",
+  "搜索目录及其子目录…": "Search folder and subfolders…",
+  "对象数": "Objects",
+  "占父目录": "Share of parent",
+  "正在扫描目录及其子目录": "Scanning folder and subfolders",
+  "取消扫描": "Cancel scan",
+  "已取消扫描": "Scan canceled",
+  "重新扫描": "Scan again",
+  "服务端返回了无法解码的对象键。": "The server returned an object key that could not be decoded.",
+  "服务端返回了无效的对象键或大小。": "The server returned an invalid object key or size.",
+  "服务端未返回有效的分页标记，无法完成大小统计。": "The server did not return a valid continuation token. Size totals are unavailable.",
+  "{count} 个对象 · {size}": "{count} objects · {size}",
+  "已扫描 {count} 个对象 · {size}": "Scanned {count} objects · {size}"
 }

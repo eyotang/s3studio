@@ -384,7 +384,10 @@ impl Engine {
         key: String,
         local_path: PathBuf,
     ) -> Result<String, String> {
-        if key.is_empty() || key.len() > 1024 || key.ends_with('/') {
+        if key.is_empty()
+            || key.len() > 1024
+            || (direction == Direction::Upload && key.ends_with('/'))
+        {
             return Err(crate::i18n::t("对象键无效。").into());
         }
         let id = Uuid::new_v4().to_string();

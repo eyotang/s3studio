@@ -146,7 +146,7 @@ fn transfer_row(store: Store, state: &Workspace, transfer: &Transfer) -> View {
         t("下载")
     };
     let speed = if status == "running" && transfer.speed > 0 {
-        format!(" · {}/s", model::bytes(transfer.speed))
+        format!(" · {}/s", model::bytes(transfer.speed.into()))
     } else {
         String::new()
     };
@@ -225,8 +225,8 @@ fn transfer_row(store: Store, state: &Workspace, transfer: &Transfer) -> View {
                 .child(label(
                     format!(
                         "{direction} · {} / {}{speed}",
-                        model::bytes(transfer.bytes),
-                        model::bytes(transfer.total)
+                        model::bytes(transfer.bytes.into()),
+                        model::bytes(transfer.total.into())
                     ),
                     10.0,
                     MUTED,

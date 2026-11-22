@@ -1,3 +1,4 @@
+use crate::object_tree::{ObjectTree, Totals, TreeBuilder, TreeSort};
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use s3_studio_core::{
     accounts::{self, AccountStore},
@@ -7,12 +8,16 @@ use s3_studio_core::{
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
+    collections::HashSet,
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 pub enum Message {
     Response(u64, Result<Value, String>),
+    TreeProgress(u64, Totals),
+    TreeReady(u64, Result<ObjectTree, String>),
     Transfer(Transfer),
     Update(crate::updater::Status),
     Restart(s3_studio_core::transfers::UpdateGuard),
@@ -108,6 +113,42 @@ impl Backend {
             };
             let _ = sender.unbounded_send(Message::Response(id, result));
         });
+    }
+
+    pub fn scan_tree(
+        &self,
+        revision: u64,
+        account_id: String,
+        bucket: String,
+        prefix: String,
+        sort: (TreeSort, bool),
+    ) -> tokio::task::AbortHandle {
+        let services = self.services.clone();
+        let sender = self.sender.clone();
+        self.runtime
+            .spawn(async move {
+                let mut builder = TreeBuilder::new(&prefix);
+                let mut last_report: Option<Instant> = None;
+                let result = if let Some(services) = services {
+                    s3::scan_objects(&services.store, &account_id, &bucket, &prefix, |objects| {
+                        builder.extend(objects);
+                        if last_report
+                            .is_none_or(|last| last.elapsed() >= Duration::from_millis(200))
+                        {
+                            last_report = Some(Instant::now());
+                            let _ = sender
+                                .unbounded_send(Message::TreeProgress(revision, builder.scanned()));
+                        }
+                    })
+                    .await
+                } else {
+                    builder.extend(preview_objects(&prefix, true));
+                    Ok(())
+                };
+                let result = result.map(|()| builder.finish(sort.0, sort.1));
+                let _ = sender.unbounded_send(Message::TreeReady(revision, result));
+            })
+            .abort_handle()
     }
 }
 fn data_directory() -> anyhow::Result<PathBuf> {
@@ -261,24 +302,10 @@ fn preview(
         ])),
         "list_objects" => {
             let prefix = args["prefix"].as_str().unwrap_or_default();
-            let items = if prefix.is_empty() {
-                vec![
-                    ("Brand assets/", 0),
-                    ("Photography/", 0),
-                    ("Product design/", 0),
-                    ("Brand guidelines.pdf", 2488000),
-                    ("Homepage exploration.fig", 18400000),
-                    ("Mountain retreat.jpg", 6720000),
-                    ("Project manifest.json", 2140),
-                    ("Summer collection.zip", 48700000),
-                    ("Welcome.md", 1820),
-                ]
-            } else {
-                vec![("Readme.md", 1024), ("Reference.png", 254000)]
-            };
-            Ok(
-                json!({"objects":items.iter().enumerate().map(|(i,(name,size))| json!({"key":format!("{prefix}{name}"),"size":size,"folder":name.ends_with('/'),"modified":format!("2026-10-0{}T08:30:00Z",9-i%5),"storageClass":"STANDARD"})).collect::<Vec<_>>(),"nextToken":null}),
-            )
+            value(Ok(s3::ObjectPage {
+                objects: preview_objects(prefix, false),
+                next_token: None,
+            }))
         }
         "list_transfers" => Ok(json!([])),
         "get_transfer_settings" => Ok(json!({"concurrency":8})),
@@ -287,4 +314,43 @@ fn preview(
         ),
         _ => Err(crate::i18n::t("当前是界面预览。请在桌面应用中连接真实账户。").into()),
     }
+}
+
+fn preview_objects(prefix: &str, recursive: bool) -> Vec<s3::S3Object> {
+    let mut seen = HashSet::new();
+    [
+        ("Brand guidelines.pdf", 2_488_000),
+        ("Homepage exploration.fig", 18_400_000),
+        ("Mountain retreat.jpg", 6_720_000),
+        ("Project manifest.json", 2_140),
+        ("Summer collection.zip", 48_700_000),
+        ("Welcome.md", 1_820),
+        ("Brand assets/Logo.svg", 650_000),
+        ("Brand assets/Guides/Usage.pdf", 25_165_824),
+        ("Brand assets/Guides/Typography.txt", 4_096),
+        ("Photography/Mountain.jpg", 8_388_608),
+        ("Product design/Archive/", 0),
+        ("Product design/Prototype.fig", 16_777_216),
+    ]
+    .into_iter()
+    .enumerate()
+    .filter_map(|(i, (key, size))| {
+        let suffix = key.strip_prefix(prefix)?;
+        if !recursive && suffix.is_empty() {
+            return None;
+        }
+        let (key, size) = if !recursive && let Some(slash) = suffix.find('/') {
+            (&key[..prefix.len() + slash + 1], 0)
+        } else {
+            (key, size)
+        };
+        seen.insert(key).then(|| s3::S3Object {
+            key: key.to_owned(),
+            size,
+            folder: size == 0 && key.ends_with('/'),
+            modified: format!("2026-10-0{}T08:30:00Z", 9 - i % 5),
+            storage_class: "STANDARD".into(),
+        })
+    })
+    .collect()
 }

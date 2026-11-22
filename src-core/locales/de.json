@@ -304,5 +304,19 @@
   "设置全局默认值，并管理账户和存储桶可选择的 Endpoint 和 Region。": "Legen Sie globale Standardwerte fest und verwalten Sie die Endpoint- und Region-Optionen für Konten und Buckets.",
   "此账户已有同名存储桶，请编辑现有存储桶的连接设置。": "In diesem Konto gibt es bereits einen Bucket mit diesem Namen. Bearbeiten Sie die Verbindungseinstellungen des vorhandenen Buckets.",
   "请先完成或取消此存储桶的传输，再修改连接设置。": "Schließen Sie die Übertragungen dieses Buckets ab oder brechen Sie sie ab, bevor Sie die Verbindungseinstellungen ändern.",
-  "存储桶已创建，但连接设置保存失败：{e}": "Der Bucket wurde erstellt, aber seine Verbindungseinstellungen konnten nicht gespeichert werden: {e}"
+  "存储桶已创建，但连接设置保存失败：{e}": "Der Bucket wurde erstellt, aber seine Verbindungseinstellungen konnten nicht gespeichert werden: {e}",
+  "树状视图": "Baumansicht",
+  "搜索对象树": "Objektbaum durchsuchen",
+  "搜索目录及其子目录…": "Ordner und Unterordner durchsuchen…",
+  "对象数": "Objekte",
+  "占父目录": "Anteil am Überordner",
+  "正在扫描目录及其子目录": "Ordner und Unterordner werden gescannt",
+  "取消扫描": "Scan abbrechen",
+  "已取消扫描": "Scan abgebrochen",
+  "重新扫描": "Erneut scannen",
+  "服务端返回了无法解码的对象键。": "Der Server hat einen Objektschlüssel zurückgegeben, der sich nicht dekodieren lässt.",
+  "服务端返回了无效的对象键或大小。": "Der Server hat einen ungültigen Objektschlüssel oder eine ungültige Größe zurückgegeben.",
+  "服务端未返回有效的分页标记，无法完成大小统计。": "Der Server hat kein gültiges Fortsetzungstoken zurückgegeben. Die Gesamtgrößen sind nicht verfügbar.",
+  "{count} 个对象 · {size}": "{count} Objekte · {size}",
+  "已扫描 {count} 个对象 · {size}": "{count} Objekte gescannt · {size}"
 }
