@@ -34,6 +34,39 @@ fn preview() -> Headless {
 const WAIT: Duration = Duration::from_secs(5);
 
 #[test]
+fn search_clear_is_inside_the_field_and_returns_keyboard_focus() {
+    let mut app = preview();
+    let input = "id:object-search";
+    let clear = "id:clear-search";
+    assert!(!app.screen().matches("id:locate-path").unwrap());
+    assert!(!app.screen().matches(clear).unwrap());
+    app.type_text(input, "guidelines").unwrap();
+    app.wait_for(clear).unwrap();
+
+    let layout = app.screen().layout_nodes();
+    let node = |id| {
+        layout
+            .iter()
+            .find(|node| node.test_id.as_deref() == Some(id))
+            .unwrap()
+    };
+    let field = node("object-search-field");
+    let input_node = node("object-search");
+    let clear_node = node("clear-search");
+    assert_eq!(input_node.parent, field.id);
+    assert_eq!(clear_node.parent, field.id);
+    assert!(input_node.bounds.right() <= clear_node.bounds.origin.x);
+    assert!(field.bounds.contains(&clear_node.bounds.center()));
+    assert!(clear_node.bounds.right() < field.bounds.right());
+
+    app.press(clear).unwrap();
+    app.wait_for_gone(clear, WAIT).unwrap();
+    assert_eq!(app.screen().input_text(input).unwrap(), Some(""));
+    app.press_key("w").unwrap();
+    assert_eq!(app.screen().input_text(input).unwrap(), Some("w"));
+}
+
+#[test]
 fn search_selection_grid_and_delete_confirmation() {
     let mut app = preview();
     app.type_text("id:object-search", "guidelines").unwrap();
@@ -133,10 +166,13 @@ fn search_filters_partial_paths_and_locates_a_pasted_s3_uri() {
 #[test]
 fn locator_opens_a_directory_in_another_bucket_and_keeps_location_on_a_miss() {
     let mut app = preview();
-    app.press("id:locate-path").unwrap();
+    app.type_text(
+        "id:object-search",
+        "s3://application-backups/Brand assets/Guides/",
+    )
+    .unwrap();
+    app.press_key("shift+enter").unwrap();
     app.wait_for("id:path").unwrap();
-    app.type_text("id:path", "s3://application-backups/Brand assets/Guides/")
-        .unwrap();
     app.press("id:submit-dialog").unwrap();
     let directory = "id:breadcrumb-Brand assets/Guides/";
     app.wait_for(directory).unwrap();
@@ -148,10 +184,9 @@ fn locator_opens_a_directory_in_another_bucket_and_keeps_location_on_a_miss() {
             .unwrap()
     );
 
-    app.press("id:locate-path").unwrap();
-    app.wait_for("id:path").unwrap();
-    app.type_text("id:path", "brand assets/Guides/").unwrap();
-    app.press("id:submit-dialog").unwrap();
+    app.type_text("id:object-search", "brand assets/Guides/")
+        .unwrap();
+    app.press_key("enter").unwrap();
     app.wait_for(i18n::t("找不到指定的目录或对象。")).unwrap();
     app.press_key("escape").unwrap();
     app.wait_for(directory).unwrap();
@@ -160,9 +195,11 @@ fn locator_opens_a_directory_in_another_bucket_and_keeps_location_on_a_miss() {
 #[test]
 fn locator_can_select_a_slash_ending_key_as_an_object() {
     let mut app = preview();
-    app.press("id:locate-path").unwrap();
+    let path = "Product design/Archive/";
+    app.type_text("id:object-search", path).unwrap();
+    app.press_key("shift+enter").unwrap();
     app.wait_for("id:path").unwrap();
-    app.type_text("id:path", "Product design/Archive/").unwrap();
+    assert_eq!(app.screen().input_text("id:path").unwrap(), Some(path));
     app.press("id:locate-object-only").unwrap();
     app.press("id:submit-dialog").unwrap();
     app.wait_for("id:object-Product design/Archive/").unwrap();

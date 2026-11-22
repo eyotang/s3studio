@@ -21,60 +21,7 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                 .py(px(9.0))
                 .gap(px(10.0))
                 .justify_between()
-                .child(
-                    row()
-                        .flex_1()
-                        .min_w_0()
-                        .max_w(px(470.0))
-                        .gap(px(5.0))
-                        .child(
-                            input_field(
-                                "object-search",
-                                t("搜索当前目录"),
-                                t("搜索当前目录，或输入完整路径…"),
-                                move || store.read(|state| state.search.clone()),
-                            )
-                            .element_ref(&search)
-                            .label(move || {
-                                store.read(|state| {
-                                    SharedString::from(if state.object_view == ObjectView::Tree {
-                                        t("搜索对象树")
-                                    } else {
-                                        t("搜索当前目录")
-                                    })
-                                })
-                            })
-                            .placeholder(move || {
-                                store.read(|state| {
-                                    if state.object_view == ObjectView::Tree {
-                                        t("搜索对象树，或输入完整路径…")
-                                    } else {
-                                        t("搜索当前目录，或输入完整路径…")
-                                    }
-                                    .to_owned()
-                                })
-                            })
-                            .flex_1()
-                            .on_change(move |value: &str| store.set_search(value))
-                            .on_submit(move |value: &str| {
-                                store.change(|state| state.locate_search(value))
-                            }),
-                        )
-                        .child(when(
-                            move || store.read(|state| !state.search.is_empty()),
-                            move || {
-                                icon_button("clear-search", t("清除搜索"), "x")
-                                    .on_press(move || store.set_search(""))
-                            },
-                        ))
-                        .child(dynamic(move || {
-                            store.read(|state| {
-                                secondary("locate-path", t("定位路径"))
-                                    .disabled(state.bucket.is_empty() || state.is_busy())
-                                    .on_press(store.open(Dialog::LocatePath))
-                            })
-                        })),
-                )
+                .child(search_field(store, search))
                 .child(dynamic(move || {
                     store.read(|state| selection_actions(store, state))
                 })),
@@ -144,6 +91,89 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                     ))
             })
         }))
+}
+
+fn search_field(store: Store, search: ElementRef) -> View {
+    let focused = signal(false);
+    effect(move || {
+        if focused.get() {
+            on_key_with(
+                "shift+enter",
+                KeyOptions {
+                    when: nsh_core::keymap::When::Always,
+                    for_focus: true,
+                    ..Default::default()
+                },
+                move |_| {
+                    store.change(|state| {
+                        if state.dialog.is_none() && !state.bucket.is_empty() {
+                            state.open_dialog(Dialog::LocatePath);
+                        }
+                    });
+                },
+            );
+        }
+    });
+
+    row()
+        .test_id("object-search-field")
+        .flex_1()
+        .min_w_0()
+        .max_w(px(470.0))
+        .h(px(36.0))
+        .rounded(px(7.0))
+        .border_1()
+        .border_color(LINE)
+        .focus_within(|style| style.border_color(ACCENT))
+        .bg(SUBTLE)
+        .child(
+            input_field(
+                "object-search",
+                t("搜索当前目录"),
+                t("搜索当前目录，或输入完整路径…"),
+                move || store.read(|state| state.search.clone()),
+            )
+            .element_ref(&search)
+            .label(move || {
+                store.read(|state| {
+                    SharedString::from(if state.object_view == ObjectView::Tree {
+                        t("搜索对象树")
+                    } else {
+                        t("搜索当前目录")
+                    })
+                })
+            })
+            .placeholder(move || {
+                store.read(|state| {
+                    if state.object_view == ObjectView::Tree {
+                        t("搜索对象树，或输入完整路径…")
+                    } else {
+                        t("搜索当前目录，或输入完整路径…")
+                    }
+                    .to_owned()
+                })
+            })
+            .flex_1()
+            .h_full()
+            .border(px(0.0))
+            .bg(AdaptiveColor::TRANSPARENT)
+            .on_focus(move || focused.set(true))
+            .on_blur(move || focused.set(false))
+            .on_change(move |value: &str| store.set_search(value))
+            .on_submit(move |value: &str| store.change(|state| state.locate_search(value))),
+        )
+        .child(when(
+            move || store.read(|state| !state.search.is_empty()),
+            move || {
+                icon_button("clear-search", t("清除搜索"), "x")
+                    .mr(px(3.0))
+                    .hover(|style| style.bg(LINE))
+                    .on_press(move || {
+                        store.set_search("");
+                        search.focus();
+                    })
+            },
+        ))
 }
 
 fn toolbar(store: Store, state: &Workspace) -> View {
