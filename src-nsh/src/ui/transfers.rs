@@ -1,8 +1,34 @@
 use super::*;
 use crate::model;
+use nsh_base::popover;
 use s3_studio_core::transfers::{Direction, Transfer};
 
-pub(super) fn panel(store: Store, state: &Workspace) -> View {
+pub(super) fn activity(store: Store) -> impl IntoElement {
+    popover()
+        .placement(Placement::Top)
+        .align(Align::Start)
+        .offset(px(8.0))
+        .margin(px(12.0))
+        .popup_style(|style| style.rounded(px(11.0)).shadow_lg())
+        .trigger(
+            button("transfers-toggle", t("传输活动"))
+                .w_full()
+                .h(px(34.0))
+                .justify_start()
+                .px(px(8.0))
+                .child(icon("arrow-down-to-line", 16.0, MUTED))
+                .child(label(t("传输活动"), 12.0, TEXT)),
+        )
+        .child(
+            view()
+                .w(|| px((window().width.0 - 24.0).clamp(0.0, 620.0)))
+                .child(dynamic(move || {
+                    store.read_transfers(|state| panel(store, state))
+                })),
+        )
+}
+
+fn panel(store: Store, state: &Workspace) -> View {
     let active = state
         .transfers
         .iter()
@@ -21,53 +47,29 @@ pub(super) fn panel(store: Store, state: &Workspace) -> View {
         t("一切已就绪").into()
     };
     controls::panel()
+        .test_id("transfers-panel")
         .child(
             row()
+                .h(px(43.0))
                 .px(px(11.0))
-                .gap(px(6.0))
+                .gap(px(8.0))
                 .child(
-                    button("transfers-toggle", t("传输活动"))
+                    label(t("传输活动"), 12.0, TEXT)
                         .flex_1()
                         .min_w_0()
-                        .h(px(43.0))
-                        .justify_between()
-                        .px(px(5.0))
-                        .selected(state.expanded)
-                        .child(
-                            row()
-                                .gap(px(7.0))
-                                .child(icon("arrow-down-to-line", 16.0, MUTED))
-                                .child(
-                                    label(t("传输活动"), 12.0, TEXT)
-                                        .font_weight(FontWeight::MEDIUM),
-                                ),
-                        )
-                        .child(
-                            row()
-                                .gap(px(8.0))
-                                .child(label(summary, 10.0, MUTED))
-                                .child(
-                                    label(
-                                        crate::lf!("{} 路并发", state.settings.concurrency),
-                                        10.0,
-                                        ACCENT,
-                                    )
-                                    .px(px(6.0))
-                                    .py(px(3.0))
-                                    .rounded(px(5.0))
-                                    .bg(SELECTED),
-                                )
-                                .child(icon(
-                                    if state.expanded {
-                                        "chevron-down"
-                                    } else {
-                                        "chevron-right"
-                                    },
-                                    14.0,
-                                    MUTED,
-                                )),
-                        )
-                        .on_press(store.action(|state| state.expanded = !state.expanded)),
+                        .font_weight(FontWeight::MEDIUM),
+                )
+                .child(label(summary, 10.0, MUTED))
+                .child(
+                    label(
+                        crate::lf!("{} 路并发", state.settings.concurrency),
+                        10.0,
+                        ACCENT,
+                    )
+                    .px(px(6.0))
+                    .py(px(3.0))
+                    .rounded(px(5.0))
+                    .bg(SELECTED),
                 )
                 .child(
                     icon_button("transfer-settings", t("传输设置"), "settings-2")
@@ -86,9 +88,8 @@ pub(super) fn panel(store: Store, state: &Workspace) -> View {
                     ),
             )
         })
-        .when(state.expanded, |panel| {
-            panel.child(divider()).child(list(store, state))
-        })
+        .child(divider())
+        .child(list(store, state))
 }
 
 fn list(store: Store, state: &Workspace) -> View {

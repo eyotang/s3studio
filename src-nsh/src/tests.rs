@@ -102,6 +102,21 @@ fn enter_locates_and_selects_an_object_outside_the_first_directory_page() {
     assert!(app.screen().enabled("id:copy-selection").unwrap());
     assert!(!app.screen().matches("id:tree-objects").unwrap());
 
+    let layout = app.screen().layout_nodes();
+    let breadcrumb = |id| {
+        layout
+            .iter()
+            .find(|node| node.test_id.as_deref() == Some(id))
+            .unwrap()
+            .bounds
+    };
+    let root = breadcrumb("root-directory");
+    let parent = breadcrumb("breadcrumb-Brand assets/");
+    let current = breadcrumb("breadcrumb-Brand assets/Guides/");
+    assert!(root.right() < parent.origin.x && parent.right() < current.origin.x);
+    assert_eq!(root.center().y, parent.center().y);
+    assert_eq!(parent.center().y, current.center().y);
+
     app.press("id:load-more").unwrap();
     app.wait_for_gone("id:load-more", WAIT).unwrap();
     assert_eq!(app.screen().count(&row).unwrap(), 1);
@@ -373,7 +388,14 @@ fn bucket_options_can_be_added_reused_and_removed() {
     );
     app.press("id:cancel-dialog").unwrap();
 
-    app.press("id:app-settings").unwrap();
+    assert!(!app.screen().matches("id:app-settings").unwrap());
+    assert!(!app.screen().matches("id:transfers-panel").unwrap());
+    app.press("id:transfers-toggle").unwrap();
+    app.wait_for("id:transfers-panel").unwrap();
+    app.press("id:transfers-toggle").unwrap();
+    app.wait_for_gone("id:transfers-panel", WAIT).unwrap();
+    app.press("id:transfers-toggle").unwrap();
+    app.press("id:transfer-settings").unwrap();
     for id in [
         "s3-defaults",
         "settings-language-system",
@@ -485,7 +507,6 @@ fn update_dialog_tracks_progress_and_blocks_install_during_transfers() {
     let mut app = Headless::start(config).unwrap();
     let sender = receiver.recv_timeout(WAIT).unwrap();
     app.wait_for("id:object-Brand assets/").unwrap();
-    app.scroll("id:workspace-body", px(500.0)).unwrap();
     app.press("id:update").unwrap();
     app.wait_for("id:check-update").unwrap();
     assert!(!app.screen().enabled("id:check-update").unwrap());

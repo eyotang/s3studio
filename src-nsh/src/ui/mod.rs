@@ -75,9 +75,6 @@ pub fn workspace(store: Store) -> AnyElement {
                                 store.read(|state| bucket_heading(store, state))
                             }))
                             .child(files::browser(store, search))
-                            .child(dynamic(move || {
-                                store.read_transfers(|state| transfers::panel(store, state))
-                            }))
                             .child(footer(store)),
                     ),
                 ),
@@ -275,18 +272,14 @@ fn sidebar(store: Store, width: Memo<f32>) -> View {
                 store.read(|state| bucket_buttons(store, state))
             })),
         ))
-        .child(dynamic(move || {
-            store.read(|state| {
-                column()
-                    .gap(px(8.0))
-                    .pt(px(10.0))
-                    .child(
-                        secondary("app-settings", t("设置"))
-                            .disabled(!state.can_open_app_dialog())
-                            .on_press(store.open(Dialog::TransferSettings)),
-                    )
-                    .child(divider())
-                    .child(
+        .child(
+            column()
+                .gap(px(8.0))
+                .pt(px(10.0))
+                .child(transfers::activity(store))
+                .child(divider())
+                .child(dynamic(move || {
+                    store.read(|state| {
                         row()
                             .justify_between()
                             .child(
@@ -304,10 +297,10 @@ fn sidebar(store: Store, width: Memo<f32>) -> View {
                                 icon_button("help", t("使用帮助"), "circle-question-mark")
                                     .disabled(state.is_busy())
                                     .on_press(store.open(Dialog::Help)),
-                            ),
-                    )
-            })
-        }))
+                            )
+                    })
+                })),
+        )
 }
 
 fn account_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {

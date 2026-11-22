@@ -177,7 +177,7 @@ fn search_field(store: Store, search: ElementRef) -> View {
 }
 
 fn toolbar(store: Store, state: &Workspace) -> View {
-    let mut crumbs = row().gap(px(3.0)).flex_1().min_w_0().child(
+    let mut crumbs = row().h(px(34.0)).gap(px(3.0)).flex_shrink_0().child(
         button("root-directory", t("根目录"))
             .h(px(30.0))
             .px(px(5.0))
@@ -186,20 +186,23 @@ fn toolbar(store: Store, state: &Workspace) -> View {
             .child(label(t("根目录"), 11.0, MUTED))
             .on_press(store.action(|state| state.navigate(state.bucket.clone(), String::new()))),
     );
-    // Preserve empty components in keys such as a//b/ for breadcrumb targets.
+    // Empty S3 path components have their own clickable slash.
     let mut prefix = String::new();
     for part in state.prefix.split_inclusive('/') {
         prefix.push_str(part);
         let target = prefix.clone();
-        let title = part.trim_end_matches('/');
-        let title = if title.is_empty() { "/" } else { title };
-        crumbs = crumbs.child(icon("chevron-right", 12.0, MUTED)).child(
+        let title = if part == "/" {
+            part
+        } else {
+            crumbs = crumbs.child(label("/", 12.0, MUTED).flex_shrink_0());
+            part.strip_suffix('/').unwrap_or(part)
+        };
+        crumbs = crumbs.child(
             button(&format!("breadcrumb-{target}"), title.to_owned())
                 .h(px(30.0))
                 .px(px(4.0))
-                .max_w(px(145.0))
                 .disabled(state.is_busy())
-                .child(label(title.to_owned(), 11.0, TEXT).truncate())
+                .child(label(title.to_owned(), 11.0, TEXT).flex_shrink_0())
                 .on_press(
                     store.action(move |state| state.navigate(state.bucket.clone(), target.clone())),
                 ),
@@ -209,7 +212,15 @@ fn toolbar(store: Store, state: &Workspace) -> View {
         .h(px(48.0))
         .px(px(12.0))
         .gap(px(8.0))
-        .child(scroll().horizontal().flex_1().min_w_0().child(crumbs))
+        .child(
+            scroll()
+                .test_id("object-breadcrumbs")
+                .horizontal()
+                .h(px(34.0))
+                .flex_1()
+                .min_w_0()
+                .child(crumbs),
+        )
         .child(
             row()
                 .gap(px(4.0))

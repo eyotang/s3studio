@@ -37,5 +37,7 @@ else
     codesign --verify --strict --all-architectures "$app"
 fi
 ln -s /Applications "$work/Applications"
-hdiutil create -ov -format UDZO -volname "$name" -srcfolder "$work" \
+payload_kib=$(du -sk "$work" | awk '{print $1}')
+volume_kib=$((payload_kib + 64 * 1024))
+hdiutil create -ov -format UDZO -fs 'HFS+' -size "${volume_kib}k" -volname "$name" -srcfolder "$work" \
     "$output/S3-Studio_${version}_macOS_universal.dmg"
