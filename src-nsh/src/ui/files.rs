@@ -183,7 +183,7 @@ fn toolbar(store: Store, state: &Workspace) -> View {
                 .child(
                     icon_button("refresh", t("刷新"), "refresh-cw")
                         .disabled(state.disabled())
-                        .on_press(store.action(|state| state.load_objects(false))),
+                        .on_press(store.action(Workspace::refresh_objects)),
                 )
                 .child(
                     icon_button("list-view", t("列表视图"), "list")
@@ -224,7 +224,8 @@ fn selection_actions(store: Store, state: &Workspace) -> Option<View> {
         return None;
     }
     let single_file = state.first().is_some_and(|first| !first.folder);
-    let disabled = state.is_busy() || !single_file;
+    let busy = state.is_busy() || (state.object_view == ObjectView::Tree && state.tree.querying());
+    let disabled = busy || !single_file;
     Some(
         row()
             .gap(px(4.0))
@@ -251,7 +252,7 @@ fn selection_actions(store: Store, state: &Workspace) -> Option<View> {
             )
             .child(
                 icon_button("delete-selection", t("删除所选项目"), "trash")
-                    .disabled(state.is_busy())
+                    .disabled(busy)
                     .on_press(store.open(Dialog::Delete)),
             ),
     )
@@ -679,12 +680,16 @@ fn inspector(store: Store, state: &Workspace) -> View {
         return panel.child(label(t("选择一个对象以查看详情。"), 11.0, MUTED));
     };
     let info = state.info.as_ref();
-    let folder_totals = state
-        .tree
-        .snapshot()
-        .filter(|_| object.folder && state.object_view == ObjectView::Tree)
-        .zip(state.tree.selected.first())
-        .map(|(tree, &id)| tree.node(id).totals);
+    let folder_totals = if object.folder && state.object_view == ObjectView::Tree {
+        state
+            .tree
+            .selected
+            .first()
+            .and_then(|key| state.tree.entry(key))
+            .map(|item| item.totals)
+    } else {
+        None
+    };
     let mut entries = vec![
         (t("对象键").into(), object.key.clone()),
         (

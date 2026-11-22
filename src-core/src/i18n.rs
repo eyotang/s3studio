@@ -37,6 +37,22 @@ include!(concat!(env!("OUT_DIR"), "/translations.rs"));
 
 #[macro_export]
 macro_rules! lf {
+("目录缓存操作失败：{}", $($args:tt)*) => { match $crate::i18n::current() {
+$crate::i18n::Language::English => format!("Directory cache error. {}", $($args)*),
+$crate::i18n::Language::Korean => format!("폴더 캐시 처리에 실패했습니다. {}", $($args)*),
+$crate::i18n::Language::Japanese => format!("フォルダーキャッシュの処理に失敗しました。{}", $($args)*),
+$crate::i18n::Language::French => format!("Erreur du cache des dossiers. {}", $($args)*),
+$crate::i18n::Language::German => format!("Fehler im Ordnercache. {}", $($args)*),
+$crate::i18n::Language::Russian => format!("Ошибка кэша папок. {}", $($args)*),
+_ => format!("目录缓存操作失败：{}", $($args)*), } };
+("上次扫描 {}", $($args:tt)*) => { match $crate::i18n::current() {
+$crate::i18n::Language::English => format!("Last scan {}", $($args)*),
+$crate::i18n::Language::Korean => format!("마지막 스캔 {}", $($args)*),
+$crate::i18n::Language::Japanese => format!("前回のスキャン {}", $($args)*),
+$crate::i18n::Language::French => format!("Dernière analyse {}", $($args)*),
+$crate::i18n::Language::German => format!("Letzter Scan {}", $($args)*),
+$crate::i18n::Language::Russian => format!("Последнее сканирование {}", $($args)*),
+_ => format!("上次扫描 {}", $($args)*), } };
 ("{count} 个对象 · {size}", $($args:tt)*) => { match $crate::i18n::current() {
 $crate::i18n::Language::English => format!("{count} objects · {size}", $($args)*),
 $crate::i18n::Language::Korean => format!("객체 {count}개 · {size}", $($args)*),

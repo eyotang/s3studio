@@ -20,6 +20,8 @@ pub struct Account {
     pub path_style: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub bucket_connections: BTreeMap<String, S3Connection>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) cache_revision: String,
 }
 
 #[derive(Deserialize)]
@@ -428,6 +430,7 @@ pub async fn save_account(store: &AccountStore, input: AccountInput) -> Result<A
         bucket_connections: existing
             .map(|index| accounts[index].bucket_connections.clone())
             .unwrap_or_default(),
+        cache_revision: Uuid::new_v4().to_string(),
     };
     let previous_secret = if existing.is_some() && !input.access_key.is_empty() {
         read_optional_secret(id.clone()).await?
@@ -621,6 +624,7 @@ mod tests {
                 endpoint: "".into(),
                 path_style: false,
                 bucket_connections: BTreeMap::new(),
+                cache_revision: String::new(),
             })
             .collect();
         let json = serde_json::to_string(&items).unwrap();

@@ -1,60 +1,119 @@
-use crate::object_tree::{ObjectTree, Totals, TreeBuilder, TreeSort};
+use crate::{
+    object_tree::{Totals, TreeListing, TreeOptions},
+    tree_cache::{TreeCache, TreeChange, TreeScope},
+};
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use s3_studio_core::{
     accounts::{self, AccountStore},
     s3, transfer_commands as transfers,
-    transfers::{Engine, Transfer},
+    transfers::{Direction, Engine, Transfer},
 };
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     collections::HashSet,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 pub enum Message {
     Response(u64, Result<Value, String>),
+    TreeScanning(u64),
     TreeProgress(u64, Totals),
-    TreeReady(u64, Result<ObjectTree, String>),
+    TreeReady(u64, Result<(), String>),
+    TreeRows(u64, Result<Option<TreeListing>, String>),
+    TreeUpload(TreeScope, String),
     Transfer(Transfer),
     Update(crate::updater::Status),
     Restart(s3_studio_core::transfers::UpdateGuard),
 }
 struct Services {
-    store: AccountStore,
+    store: Arc<AccountStore>,
     engine: Engine,
+    cache: Arc<TreeCache>,
 }
 #[derive(Clone)]
 pub struct Backend {
     runtime: Arc<tokio::runtime::Runtime>,
     services: Option<Arc<Services>>,
+    cache: Arc<TreeCache>,
     sender: UnboundedSender<Message>,
     pub preview: bool,
     preview_defaults: Arc<Mutex<accounts::S3Defaults>>,
     updater: Arc<crate::updater::UpdaterState>,
 }
+
+pub struct TreeTask {
+    cancel: Arc<AtomicBool>,
+    task: tokio::task::AbortHandle,
+}
+
+impl Drop for TreeTask {
+    fn drop(&mut self) {
+        self.cancel.store(true, Ordering::Relaxed);
+        self.task.abort();
+    }
+}
+
 impl Backend {
     pub fn open(preview: bool) -> anyhow::Result<(Self, UnboundedReceiver<Message>)> {
         let runtime = Arc::new(tokio::runtime::Runtime::new()?);
         let (sender, receiver) = unbounded();
-        let services = if preview {
-            None
+        let (services, cache) = if preview {
+            (None, Arc::new(TreeCache::preview()?))
         } else {
             let dir = data_directory()?;
             std::fs::create_dir_all(&dir)?;
-            let store = AccountStore::open(dir.join("accounts.json"))
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            let store = Arc::new(
+                AccountStore::open(dir.join("accounts.json"))
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?,
+            );
+            let cache_dir = dirs::cache_dir()
+                .map(|dir| dir.join("com.s3studio.desktop"))
+                .unwrap_or_else(|| dir.join("cache"));
+            let cache = Arc::new(TreeCache::new(cache_dir.join("object-tree-v1")));
             let sink = sender.clone();
+            let handle = runtime.handle().clone();
+            let upload_cache = cache.clone();
+            let upload_store = store.clone();
             let engine = Engine::open(
                 dir.join("transfers.json"),
                 Arc::new(move |t| {
+                    if t.status == "done" && t.direction == Direction::Upload {
+                        let scope =
+                            TreeScope::new(t.account_id.clone(), t.bucket.clone(), String::new());
+                        let (store, cache, sink, key) = (
+                            upload_store.clone(),
+                            upload_cache.clone(),
+                            sink.clone(),
+                            t.key.clone(),
+                        );
+                        handle.spawn(async move {
+                            let _changes = cache.mutations.lock().await;
+                            if let Ok(scope) = cache_scope(Some(&store), scope).await
+                                && tokio::task::block_in_place(|| cache.wants_key(&scope, &key))
+                            {
+                                update_cached_object(&store, &cache, &scope, key.clone()).await;
+                                let _ = sink.unbounded_send(Message::TreeUpload(scope, key));
+                            }
+                        });
+                    }
                     let _ = sink.unbounded_send(Message::Transfer(t));
                 }),
             )
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-            Some(Arc::new(Services { store, engine }))
+            (
+                Some(Arc::new(Services {
+                    store,
+                    engine,
+                    cache: cache.clone(),
+                })),
+                cache,
+            )
         };
         let updater = crate::updater::UpdaterState::new(preview, sender.clone());
         let _ = sender.unbounded_send(Message::Update(updater.snapshot()));
@@ -63,6 +122,7 @@ impl Backend {
             Self {
                 runtime,
                 services,
+                cache,
                 sender,
                 preview,
                 preview_defaults: Default::default(),
@@ -115,42 +175,156 @@ impl Backend {
         });
     }
 
-    pub fn scan_tree(
-        &self,
-        revision: u64,
-        account_id: String,
-        bucket: String,
-        prefix: String,
-        sort: (TreeSort, bool),
-    ) -> tokio::task::AbortHandle {
+    pub fn scan_tree(&self, revision: u64, scope: TreeScope, force: bool) -> TreeTask {
         let services = self.services.clone();
+        let cache = self.cache.clone();
         let sender = self.sender.clone();
-        self.runtime
+        let cancel = Arc::new(AtomicBool::new(false));
+        let scan_cancel = cancel.clone();
+        let task = self
+            .runtime
             .spawn(async move {
-                let mut builder = TreeBuilder::new(&prefix);
-                let mut last_report: Option<Instant> = None;
-                let result = if let Some(services) = services {
-                    s3::scan_objects(&services.store, &account_id, &bucket, &prefix, |objects| {
-                        builder.extend(objects);
-                        if last_report
-                            .is_none_or(|last| last.elapsed() >= Duration::from_millis(200))
-                        {
-                            last_report = Some(Instant::now());
-                            let _ = sender
-                                .unbounded_send(Message::TreeProgress(revision, builder.scanned()));
+                let result = async {
+                    let scope = cache_scope(
+                        services.as_ref().map(|service| service.store.as_ref()),
+                        scope,
+                    )
+                    .await?;
+                    if !force {
+                        let (cache, scope) = (cache.clone(), scope.clone());
+                        if cache_job(move || cache.available(&scope)).await? {
+                            return Ok(());
                         }
-                    })
-                    .await
-                } else {
-                    builder.extend(preview_objects(&prefix, true));
-                    Ok(())
-                };
-                let result = result.map(|()| builder.finish(sort.0, sort.1));
+                    }
+                    let _ = sender.unbounded_send(Message::TreeScanning(revision));
+                    let (work_cache, work_scope) = (cache.clone(), scope.clone());
+                    let mut scan =
+                        cache_job(move || work_cache.begin(work_scope, scan_cancel)).await?;
+                    let mut last_report: Option<Instant> = None;
+                    if let Some(services) = services {
+                        s3::scan_objects(
+                            &services.store,
+                            &scope.account,
+                            &scope.bucket,
+                            &scope.prefix,
+                            |objects| {
+                                let progress =
+                                    tokio::task::block_in_place(|| scan.append(&objects))
+                                        .map_err(cache_error)?;
+                                if last_report
+                                    .is_none_or(|last| last.elapsed() >= Duration::from_millis(200))
+                                {
+                                    last_report = Some(Instant::now());
+                                    let _ = sender
+                                        .unbounded_send(Message::TreeProgress(revision, progress));
+                                }
+                                Ok(())
+                            },
+                        )
+                        .await?;
+                    } else {
+                        tokio::task::block_in_place(|| {
+                            scan.append(&preview_objects(&scope.prefix, true))
+                        })
+                        .map_err(cache_error)?;
+                    }
+                    cache_job(move || scan.publish()).await
+                }
+                .await;
                 let _ = sender.unbounded_send(Message::TreeReady(revision, result));
             })
-            .abort_handle()
+            .abort_handle();
+        TreeTask { cancel, task }
+    }
+
+    pub fn query_tree(&self, revision: u64, scope: TreeScope, options: TreeOptions) -> TreeTask {
+        let (cache, sender) = (self.cache.clone(), self.sender.clone());
+        let services = self.services.clone();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let query_cancel = cancel.clone();
+        let task = self
+            .runtime
+            .spawn(async move {
+                if !options.search.is_empty() {
+                    tokio::time::sleep(Duration::from_millis(140)).await;
+                }
+                let result = async {
+                    let scope = cache_scope(
+                        services.as_ref().map(|service| service.store.as_ref()),
+                        scope,
+                    )
+                    .await?;
+                    cache_job(move || cache.rows(&scope, &options, query_cancel)).await
+                }
+                .await;
+                let _ = sender.unbounded_send(Message::TreeRows(revision, result));
+            })
+            .abort_handle();
+        TreeTask { cancel, task }
     }
 }
+
+async fn cache_scope(
+    store: Option<&AccountStore>,
+    mut scope: TreeScope,
+) -> Result<TreeScope, String> {
+    if let Some(store) = store {
+        scope.namespace =
+            s3::directory_cache_namespace(store, &scope.account, &scope.bucket).await?;
+    }
+    Ok(scope)
+}
+
+fn cache_error(error: impl std::fmt::Display) -> String {
+    crate::lf!("目录缓存操作失败：{}", error)
+}
+
+async fn cache_job<T: Send + 'static>(
+    job: impl FnOnce() -> anyhow::Result<T> + Send + 'static,
+) -> Result<T, String> {
+    tokio::task::spawn_blocking(job)
+        .await
+        .map_err(cache_error)?
+        .map_err(cache_error)
+}
+
+async fn record_tree_change(cache: &Arc<TreeCache>, scope: &TreeScope, change: TreeChange) {
+    let (cache, scope) = (cache.clone(), scope.clone());
+    if let Err(error) = cache_job(move || cache.update(&scope, change)).await {
+        eprintln!("{error}");
+    }
+}
+
+async fn update_cached_object(
+    store: &AccountStore,
+    cache: &Arc<TreeCache>,
+    scope: &TreeScope,
+    key: String,
+) {
+    let change =
+        match s3::object_listing_entry(store, &scope.account, &scope.bucket, key.clone()).await {
+            Ok(entry) => TreeChange::Upsert(entry),
+            Err(_) => TreeChange::Unknown {
+                keys: vec![key],
+                folders: vec![],
+            },
+        };
+    record_tree_change(cache, scope, change).await;
+}
+
+async fn invalidate_tree_cache(
+    cache: &Arc<TreeCache>,
+    account: Option<String>,
+    bucket: Option<String>,
+) {
+    let cache = cache.clone();
+    if let Err(error) =
+        cache_job(move || cache.invalidate(account.as_deref(), bucket.as_deref())).await
+    {
+        eprintln!("{error}");
+    }
+}
+
 fn data_directory() -> anyhow::Result<PathBuf> {
     // Keep the data directory and keyring service used by earlier installations.
     Ok(dirs::data_dir()
@@ -162,19 +336,26 @@ fn value<T: Serialize>(result: Result<T, String>) -> Result<Value, String> {
 }
 async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Value, String> {
     let text = |key: &str| args[key].as_str().unwrap_or_default().to_owned();
-    let store = &service.store;
+    let store = service.store.as_ref();
     let engine = &service.engine;
+    let cache = &service.cache;
     let account = text("accountId");
     let bucket = text("bucket");
     match command {
         "get_s3_defaults" => value(Ok(accounts::get_s3_defaults(store).await)),
-        "set_s3_defaults" => value(
-            accounts::set_s3_defaults(
+        "set_s3_defaults" => {
+            let _changes = cache.mutations.lock().await;
+            let previous = accounts::get_s3_defaults(store).await;
+            let defaults = accounts::set_s3_defaults(
                 store,
                 serde_json::from_value(args["input"].clone()).map_err(|e| e.to_string())?,
             )
-            .await,
-        ),
+            .await?;
+            if previous.endpoint != defaults.endpoint || previous.region != defaults.region {
+                invalidate_tree_cache(cache, None, None).await;
+            }
+            value(Ok(defaults))
+        }
         "add_s3_option" => value(
             accounts::add_s3_option(
                 store,
@@ -184,14 +365,22 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             .await,
         ),
         "list_accounts" => value(accounts::list_accounts(store).await),
-        "save_account" => value(
-            accounts::save_account(
+        "save_account" => {
+            let _changes = cache.mutations.lock().await;
+            let account = accounts::save_account(
                 store,
                 serde_json::from_value(args["input"].clone()).map_err(|e| e.to_string())?,
             )
-            .await,
-        ),
-        "remove_account" => value(accounts::remove_account(store, engine, account).await),
+            .await?;
+            invalidate_tree_cache(cache, Some(account.id.clone()), None).await;
+            value(Ok(account))
+        }
+        "remove_account" => {
+            let _changes = cache.mutations.lock().await;
+            accounts::remove_account(store, engine, account.clone()).await?;
+            invalidate_tree_cache(cache, Some(account), None).await;
+            value(Ok(()))
+        }
         "list_buckets" => value(s3::list_buckets(store, account).await),
         "list_objects" => value(
             s3::list_objects(
@@ -203,39 +392,102 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             )
             .await,
         ),
-        "create_bucket" => value(
-            s3::create_bucket(
+        "create_bucket" => {
+            let _changes = cache.mutations.lock().await;
+            let name = text("name");
+            let result = s3::create_bucket(
                 store,
-                account,
-                text("name"),
+                account.clone(),
+                name.clone(),
                 serde_json::from_value(args["connection"].clone()).map_err(|e| e.to_string())?,
             )
-            .await,
-        ),
-        "set_bucket_connection" => value(
-            s3::set_bucket_connection(
+            .await?;
+            invalidate_tree_cache(cache, Some(account), Some(name)).await;
+            value(Ok(result))
+        }
+        "set_bucket_connection" => {
+            let _changes = cache.mutations.lock().await;
+            let connection = s3::set_bucket_connection(
                 store,
                 engine,
-                account,
-                bucket,
+                account.clone(),
+                bucket.clone(),
                 serde_json::from_value(args["connection"].clone()).map_err(|e| e.to_string())?,
             )
-            .await,
-        ),
-        "create_folder" => value(s3::create_folder(store, account, bucket, text("key")).await),
-        "copy_object" => {
-            value(s3::copy_object(store, account, bucket, text("key"), text("destination")).await)
+            .await?;
+            invalidate_tree_cache(cache, Some(account), Some(bucket)).await;
+            value(Ok(connection))
         }
-        "delete_objects" => value(
-            s3::delete_objects(
+        "create_folder" => {
+            let _changes = cache.mutations.lock().await;
+            let key = text("key");
+            s3::create_folder(store, account.clone(), bucket.clone(), key.clone()).await?;
+            let scope =
+                cache_scope(Some(store), TreeScope::new(account, bucket, String::new())).await;
+            if let Ok(scope) = scope
+                && tokio::task::block_in_place(|| cache.wants_key(&scope, &key))
+            {
+                record_tree_change(
+                    cache,
+                    &scope,
+                    TreeChange::Upsert(s3::S3Object {
+                        key,
+                        size: 0,
+                        folder: true,
+                        modified: String::new(),
+                        storage_class: String::new(),
+                    }),
+                )
+                .await;
+            }
+            value(Ok(()))
+        }
+        "copy_object" => {
+            let _changes = cache.mutations.lock().await;
+            let destination = text("destination");
+            s3::copy_object(
                 store,
-                account,
-                bucket,
-                serde_json::from_value(args["keys"].clone()).map_err(|e| e.to_string())?,
-                serde_json::from_value(args["folders"].clone()).map_err(|e| e.to_string())?,
+                account.clone(),
+                bucket.clone(),
+                text("key"),
+                destination.clone(),
             )
-            .await,
-        ),
+            .await?;
+            let scope =
+                cache_scope(Some(store), TreeScope::new(account, bucket, String::new())).await;
+            if let Ok(scope) = scope
+                && tokio::task::block_in_place(|| cache.wants_key(&scope, &destination))
+            {
+                update_cached_object(store, cache, &scope, destination).await;
+            }
+            value(Ok(()))
+        }
+        "delete_objects" => {
+            let _changes = cache.mutations.lock().await;
+            let keys: Vec<String> =
+                serde_json::from_value(args["keys"].clone()).map_err(|e| e.to_string())?;
+            let folders: Vec<String> =
+                serde_json::from_value(args["folders"].clone()).map_err(|e| e.to_string())?;
+            let result = s3::delete_objects(
+                store,
+                account.clone(),
+                bucket.clone(),
+                keys.clone(),
+                folders.clone(),
+            )
+            .await;
+            let scope =
+                cache_scope(Some(store), TreeScope::new(account, bucket, String::new())).await;
+            let change = if result.is_ok() {
+                TreeChange::Delete { keys, folders }
+            } else {
+                TreeChange::Unknown { keys, folders }
+            };
+            if let Ok(scope) = scope {
+                record_tree_change(cache, &scope, change).await;
+            }
+            value(result)
+        }
         "object_info" => value(s3::object_info(store, account, bucket, text("key")).await),
         "presign_object" => {
             value(s3::presign_object(store, account, bucket, text("key"), 3600).await)

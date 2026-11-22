@@ -318,5 +318,12 @@
   "服务端返回了无效的对象键或大小。": "The server returned an invalid object key or size.",
   "服务端未返回有效的分页标记，无法完成大小统计。": "The server did not return a valid continuation token. Size totals are unavailable.",
   "{count} 个对象 · {size}": "{count} objects · {size}",
-  "已扫描 {count} 个对象 · {size}": "Scanned {count} objects · {size}"
+  "已扫描 {count} 个对象 · {size}": "Scanned {count} objects · {size}",
+  "目录缓存操作失败：{}": "Directory cache error. {}",
+  "扫描期间缓存已变更，请重新扫描。": "The cache changed during the scan. Run the scan again.",
+  "上次扫描 {}": "Last scan {}",
+  "缓存待刷新": "Cache needs refresh",
+  "正在读取目录缓存…": "Reading directory cache…",
+  "上一页": "Previous page",
+  "下一页": "Next page"
 }

@@ -318,5 +318,12 @@
   "服务端返回了无效的对象键或大小。": "Der Server hat einen ungültigen Objektschlüssel oder eine ungültige Größe zurückgegeben.",
   "服务端未返回有效的分页标记，无法完成大小统计。": "Der Server hat kein gültiges Fortsetzungstoken zurückgegeben. Die Gesamtgrößen sind nicht verfügbar.",
   "{count} 个对象 · {size}": "{count} Objekte · {size}",
-  "已扫描 {count} 个对象 · {size}": "{count} Objekte gescannt · {size}"
+  "已扫描 {count} 个对象 · {size}": "{count} Objekte gescannt · {size}",
+  "目录缓存操作失败：{}": "Fehler im Ordnercache. {}",
+  "扫描期间缓存已变更，请重新扫描。": "Der Cache wurde während des Scans geändert. Starten Sie den Scan erneut.",
+  "上次扫描 {}": "Letzter Scan {}",
+  "缓存待刷新": "Cache aktualisieren",
+  "正在读取目录缓存…": "Ordnercache wird gelesen…",
+  "上一页": "Vorherige Seite",
+  "下一页": "Nächste Seite"
 }

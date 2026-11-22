@@ -50,6 +50,30 @@ fn resolve_connection(
     )
 }
 
+/// Local cache identity. A credential edit changes the account revision without
+/// storing either credentials or a derivative of them in the object cache.
+pub async fn directory_cache_namespace(
+    store: &AccountStore,
+    id: &str,
+    bucket: &str,
+) -> Result<String, String> {
+    let account = store.account(id).await?;
+    let defaults = get_s3_defaults(store).await;
+    let empty = S3Connection::default();
+    let (connection, pinned) = resolve_connection(
+        &account,
+        &defaults,
+        account.bucket_connections.get(bucket).unwrap_or(&empty),
+    );
+    serde_json::to_string(&(
+        account.cache_revision,
+        connection,
+        pinned,
+        account.path_style,
+    ))
+    .map_err(failure)
+}
+
 async fn client(account: &Account, connection: &S3Connection) -> Result<Client, String> {
     let secret = read_secret(account.id.clone()).await?;
     let credentials = Credentials::new(
@@ -308,7 +332,7 @@ pub async fn scan_objects(
     account_id: &str,
     bucket: &str,
     prefix: &str,
-    on_page: impl FnMut(Vec<S3Object>),
+    on_page: impl FnMut(Vec<S3Object>) -> Result<(), String>,
 ) -> Result<(), String> {
     let client = bucket_client(store, account_id, bucket).await?;
     scan_listing(&client, bucket, prefix, on_page).await
@@ -318,7 +342,7 @@ async fn scan_listing(
     client: &Client,
     bucket: &str,
     prefix: &str,
-    mut on_page: impl FnMut(Vec<S3Object>),
+    mut on_page: impl FnMut(Vec<S3Object>) -> Result<(), String>,
 ) -> Result<(), String> {
     let mut token = None;
     let mut seen_tokens = BTreeSet::new();
@@ -351,13 +375,13 @@ async fn scan_listing(
         }
         let next = page.next_continuation_token();
         if !page.is_truncated().unwrap_or(next.is_some()) {
-            on_page(objects);
+            on_page(objects)?;
             return Ok(());
         }
         let next = next
             .filter(|next| !next.is_empty() && seen_tokens.insert((*next).to_owned()))
             .ok_or_else(|| crate::i18n::t("服务端未返回有效的分页标记，无法完成大小统计。"))?;
-        on_page(objects);
+        on_page(objects)?;
         token = Some(next.to_owned());
     }
 }
@@ -673,14 +697,7 @@ pub async fn object_info(
     bucket: String,
     key: String,
 ) -> Result<ObjectInfo, String> {
-    let client = bucket_client(&store, &account_id, &bucket).await?;
-    let result = client
-        .head_object()
-        .bucket(bucket)
-        .key(key)
-        .send()
-        .await
-        .map_err(failure)?;
+    let result = head_object(store, &account_id, &bucket, &key).await?;
     Ok(ObjectInfo {
         size: result.content_length().unwrap_or(0),
         content_type: result
@@ -693,6 +710,48 @@ pub async fn object_info(
             .map(ToString::to_string)
             .unwrap_or_default(),
         metadata: result.metadata().cloned().unwrap_or_default(),
+    })
+}
+
+async fn head_object(
+    store: &AccountStore,
+    account_id: &str,
+    bucket: &str,
+    key: &str,
+) -> Result<aws_sdk_s3::operation::head_object::HeadObjectOutput, String> {
+    bucket_client(store, account_id, bucket)
+        .await?
+        .head_object()
+        .bucket(bucket)
+        .key(key)
+        .send()
+        .await
+        .map_err(failure)
+}
+
+pub async fn object_listing_entry(
+    store: &AccountStore,
+    account_id: &str,
+    bucket: &str,
+    key: String,
+) -> Result<S3Object, String> {
+    let result = head_object(store, account_id, bucket, &key).await?;
+    let size = result
+        .content_length()
+        .filter(|&size| size >= 0)
+        .ok_or_else(|| crate::i18n::t("服务端返回了无效的对象键或大小。"))?;
+    Ok(S3Object {
+        folder: size == 0 && key.ends_with('/'),
+        key,
+        size,
+        modified: result
+            .last_modified()
+            .map(ToString::to_string)
+            .unwrap_or_default(),
+        storage_class: result
+            .storage_class()
+            .map(|class| class.as_str().to_owned())
+            .unwrap_or_else(|| "STANDARD".into()),
     })
 }
 
@@ -910,9 +969,12 @@ mod tests {
             second.respond(tiny_http::Response::from_string(r#"<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>design/photos/</Key><Size>0</Size></Contents><Contents><Key>design/photos/a%2Fb/</Key><Size>12</Size></Contents></ListBucketResult>"#)).unwrap();
         });
         let mut pages = Vec::new();
-        scan_listing(&client, "test-bucket", "design/", |page| pages.push(page))
-            .await
-            .unwrap();
+        scan_listing(&client, "test-bucket", "design/", |page| {
+            pages.push(page);
+            Ok(())
+        })
+        .await
+        .unwrap();
         thread.join().unwrap();
         assert_eq!(pages.len(), 2);
         assert_eq!(pages[0][0].key, "design/photos/样片 a%2Fb.png");
@@ -938,11 +1000,12 @@ mod tests {
             }
         });
         let mut pages = 0;
-        assert!(
-            scan_listing(&client, "test-bucket", "design/", |_| pages += 1)
-                .await
-                .is_err()
-        );
+        assert!(scan_listing(&client, "test-bucket", "design/", |_| {
+            pages += 1;
+            Ok(())
+        })
+        .await
+        .is_err());
         thread.join().unwrap();
         assert_eq!(pages, 1);
     }

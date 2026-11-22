@@ -1,7 +1,10 @@
 use crate::{
-    backend::{Backend, Message},
+    backend::{Backend, Message, TreeTask},
     model::{self, Dialog, Sort},
-    object_tree::{ObjectTree, Totals, TreeRow, TreeSort},
+    object_tree::{
+        Totals, TreeEntry, TreeKey, TreeListing, TreeOptions, TreePage, TreeRow, TreeSort,
+    },
+    tree_cache::{CACHE_LIFETIME_MS, TreeScope},
 };
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use nsh_core::prelude::*;
@@ -54,67 +57,91 @@ pub enum ObjectView {
 
 pub enum TreeStatus {
     Idle,
+    Opening,
     Scanning(Totals),
     Cancelled,
     Failed(String),
-    Ready(ObjectTree),
 }
 
 pub struct TreeBrowser {
     pub status: TreeStatus,
-    pub sort: TreeSort,
-    pub ascending: bool,
+    pub options: TreeOptions,
     pub rows: Rc<Vec<TreeRow>>,
-    pub selected: BTreeSet<usize>,
-    expanded: HashSet<usize>,
-    search_collapsed: HashSet<usize>,
-    task: Option<tokio::task::AbortHandle>,
+    pub selected: BTreeSet<TreeKey>,
+    pub totals: Option<Totals>,
+    pub scanned_at: Option<i64>,
+    pub dirty: bool,
+    pub query_error: String,
+    scope: Option<TreeScope>,
+    task: Option<TreeTask>,
+    query: Option<TreeTask>,
     revision: u64,
+    query_revision: u64,
 }
 
 impl TreeBrowser {
     fn new() -> Self {
         Self {
             status: TreeStatus::Idle,
-            sort: TreeSort::Size,
-            ascending: false,
+            options: TreeOptions::default(),
             rows: Rc::default(),
             selected: BTreeSet::new(),
-            expanded: HashSet::new(),
-            search_collapsed: HashSet::new(),
+            totals: None,
+            scanned_at: None,
+            dirty: false,
+            query_error: String::new(),
+            scope: None,
             task: None,
+            query: None,
             revision: 0,
+            query_revision: 0,
         }
     }
 
-    fn cancel(&mut self) {
-        if let Some(task) = self.task.take() {
-            task.abort();
+    fn cancel_scan(&mut self) {
+        if self.task.take().is_some() {
             self.revision += 1;
             self.status = TreeStatus::Cancelled;
         }
     }
 
-    fn clear(&mut self) {
-        self.cancel();
-        self.status = TreeStatus::Idle;
-        self.rows = Rc::default();
-        self.selected.clear();
-        self.expanded.clear();
-        self.search_collapsed.clear();
-    }
-
-    pub fn snapshot(&self) -> Option<&ObjectTree> {
-        match &self.status {
-            TreeStatus::Ready(tree) => Some(tree),
-            _ => None,
+    fn cancel_query(&mut self) {
+        if self.query.take().is_some() {
+            self.query_revision += 1;
         }
     }
-}
 
-impl Drop for TreeBrowser {
-    fn drop(&mut self) {
-        self.cancel();
+    fn clear(&mut self) {
+        self.cancel_scan();
+        self.cancel_query();
+        self.status = TreeStatus::Idle;
+        self.scope = None;
+        self.clear_result();
+        self.options = TreeOptions {
+            sort: self.options.sort,
+            ascending: self.options.ascending,
+            ..Default::default()
+        };
+    }
+
+    fn clear_result(&mut self) {
+        self.rows = Rc::default();
+        self.selected.clear();
+        self.totals = None;
+        self.scanned_at = None;
+        self.dirty = false;
+        self.query_error.clear();
+    }
+
+    pub fn querying(&self) -> bool {
+        self.query.is_some()
+    }
+
+    pub fn entry(&self, key: &TreeKey) -> Option<&TreeEntry> {
+        self.rows
+            .iter()
+            .filter_map(TreeRow::entry)
+            .find(|entry| &entry.key == key)
     }
 }
 
@@ -272,13 +299,14 @@ impl Workspace {
     }
     pub fn chosen(&self) -> Vec<S3Object> {
         if self.object_view == ObjectView::Tree {
-            return self.tree.snapshot().map_or_else(Vec::new, |tree| {
-                self.tree
-                    .selected
-                    .iter()
-                    .map(|&id| tree.node(id).object())
-                    .collect()
-            });
+            return self
+                .tree
+                .rows
+                .iter()
+                .filter_map(TreeRow::entry)
+                .filter(|entry| self.tree.selected.contains(&entry.key))
+                .map(TreeEntry::object)
+                .collect();
         }
         self.objects
             .iter()
@@ -363,24 +391,37 @@ impl Workspace {
         self.object_revision += 1;
         self.info_revision += 1;
         if !append {
-            self.objects.clear();
-            self.list_loaded = false;
+            self.clear_list_page();
             self.selected.clear();
-            self.tree.clear();
-            self.next_token = None;
+            self.tree.selected.clear();
             self.info = None;
             self.info_error.clear();
         }
         self.loading = false;
         self.error.clear();
         if self.active_id.is_empty() || self.bucket.is_empty() {
+            self.tree.clear();
             return;
         }
+        let scope = self.tree_scope();
+        if self.tree.scope.as_ref().is_some_and(|old| old != &scope) {
+            self.tree.clear();
+        }
         if self.object_view == ObjectView::Tree {
-            self.start_tree_scan();
+            if self.tree.task.is_none() {
+                self.start_tree_scan(false);
+            } else if self.tree.totals.is_some() {
+                self.update_tree_rows();
+            }
             return;
         }
         self.load_list_page(append);
+    }
+
+    fn clear_list_page(&mut self) {
+        self.objects.clear();
+        self.list_loaded = false;
+        self.next_token = None;
     }
 
     fn load_list_page(&mut self, append: bool) {
@@ -399,6 +440,17 @@ impl Workspace {
         );
     }
 
+    pub fn refresh_objects(&mut self) {
+        if self.object_view == ObjectView::Tree {
+            self.clear_list_page();
+            self.clear_selection();
+            self.error.clear();
+            self.start_tree_scan(true);
+        } else {
+            self.load_objects(false);
+        }
+    }
+
     pub fn set_object_view(&mut self, view: ObjectView) {
         if self.object_view == view {
             return;
@@ -413,37 +465,44 @@ impl Workspace {
         self.error.clear();
         self.clear_selection();
         if view == ObjectView::Tree {
-            if self.tree.snapshot().is_some() {
-                self.update_tree_rows();
-            } else {
-                self.start_tree_scan();
-            }
+            self.start_tree_scan(false);
         } else {
-            self.tree.cancel();
+            self.tree.cancel_scan();
+            self.tree.cancel_query();
             if !self.list_loaded && !self.bucket.is_empty() {
                 self.load_list_page(false);
             }
         }
     }
 
-    fn start_tree_scan(&mut self) {
-        if self.active_id.is_empty() || self.bucket.is_empty() {
-            return;
-        }
-        self.tree.cancel();
-        self.tree.revision += 1;
-        self.tree.status = TreeStatus::Scanning(Totals::default());
-        self.tree.task = Some(self.backend.scan_tree(
-            self.tree.revision,
+    fn tree_scope(&self) -> TreeScope {
+        TreeScope::new(
             self.active_id.clone(),
             self.bucket.clone(),
             self.prefix.clone(),
-            (self.tree.sort, self.tree.ascending),
-        ));
+        )
+    }
+
+    fn start_tree_scan(&mut self, force: bool) {
+        if self.active_id.is_empty() || self.bucket.is_empty() {
+            return;
+        }
+        let scope = self.tree_scope();
+        if self.tree.scope.as_ref() != Some(&scope) {
+            self.tree.clear();
+            self.tree.scope = Some(scope.clone());
+        }
+        self.tree.cancel_scan();
+        if force {
+            self.tree.cancel_query();
+        }
+        self.tree.revision += 1;
+        self.tree.status = TreeStatus::Opening;
+        self.tree.task = Some(self.backend.scan_tree(self.tree.revision, scope, force));
     }
 
     pub fn cancel_tree_scan(&mut self) {
-        self.tree.cancel();
+        self.tree.cancel_scan();
     }
 
     pub fn set_search(&mut self, value: &str) {
@@ -451,71 +510,75 @@ impl Workspace {
             return;
         }
         self.search = value.into();
-        self.tree.search_collapsed.clear();
+        self.tree.options.search_collapsed.clear();
+        self.tree.options.search_pages.clear();
         if self.object_view == ObjectView::Tree {
             self.update_tree_rows();
         }
     }
 
     pub fn sort_tree(&mut self, sort: TreeSort) {
-        let TreeStatus::Ready(tree) = &mut self.tree.status else {
-            return;
-        };
-        self.tree.ascending = if self.tree.sort == sort {
-            !self.tree.ascending
+        let options = &mut self.tree.options;
+        options.ascending = if options.sort == sort {
+            !options.ascending
         } else {
             sort == TreeSort::Name
         };
-        self.tree.sort = sort;
-        tree.sort(sort, self.tree.ascending);
+        options.sort = sort;
+        options.pages.clear();
         self.update_tree_rows();
     }
 
-    pub fn toggle_tree_folder(&mut self, id: usize) {
+    pub fn toggle_tree_folder(&mut self, key: String) {
         let overrides = if self.search.is_empty() {
-            &mut self.tree.expanded
+            &mut self.tree.options.expanded
         } else {
-            &mut self.tree.search_collapsed
+            &mut self.tree.options.search_collapsed
         };
-        if !overrides.remove(&id) {
-            overrides.insert(id);
+        if !overrides.remove(&key) {
+            overrides.insert(key);
         }
         self.update_tree_rows();
     }
 
-    pub fn select_tree_node(&mut self, id: usize) {
-        if !self.tree.selected.remove(&id) {
-            self.tree.selected.insert(id);
+    pub fn page_tree(&mut self, page: TreePage) {
+        self.tree.options.change_page(page);
+        self.update_tree_rows();
+    }
+
+    pub fn select_tree_node(&mut self, key: TreeKey) {
+        if !self.tree.selected.remove(&key) {
+            self.tree.selected.insert(key);
         }
         self.selection_changed();
     }
 
-    pub fn inspect_tree_node(&mut self, id: usize) {
-        self.tree.selected = BTreeSet::from([id]);
+    pub fn inspect_tree_node(&mut self, key: TreeKey) {
+        self.tree.selected = BTreeSet::from([key]);
         self.show_info = true;
         self.selection_changed();
     }
 
     fn update_tree_rows(&mut self) {
-        let Some(tree) = self.tree.snapshot() else {
+        if self.tree.task.is_some() && self.tree.totals.is_none() {
+            return;
+        }
+        let Some(scope) = self.tree.scope.clone() else {
             return;
         };
-        let rows = tree.rows(
-            &self.search,
-            &self.tree.expanded,
-            &self.tree.search_collapsed,
-        );
-        let selected = self.tree.selected.len();
-        if selected != 0 {
-            self.tree.selected = rows
-                .iter()
-                .filter_map(|row| self.tree.selected.contains(&row.id).then_some(row.id))
-                .collect();
-        }
-        self.tree.rows = Rc::new(rows);
-        if self.tree.selected.len() != selected {
-            self.selection_changed();
-        }
+        self.tree.cancel_query();
+        self.tree.query_revision += 1;
+        self.tree.query_error.clear();
+        self.tree.options.search.clone_from(&self.search);
+        self.tree.query = Some(self.backend.query_tree(
+            self.tree.query_revision,
+            scope,
+            self.tree.options.clone(),
+        ));
+    }
+
+    fn receive_tree_scanning(&mut self, revision: u64) {
+        self.receive_tree_progress(revision, Totals::default());
     }
 
     fn receive_tree_progress(&mut self, revision: u64, totals: Totals) {
@@ -524,17 +587,68 @@ impl Workspace {
         }
     }
 
-    fn receive_tree_snapshot(&mut self, revision: u64, result: Result<ObjectTree, String>) {
+    fn receive_tree_ready(&mut self, revision: u64, result: Result<(), String>) {
         if self.tree.revision != revision {
             return;
         }
         self.tree.task = None;
-        self.tree.status = match result {
-            Ok(tree) => TreeStatus::Ready(tree),
-            Err(error) => TreeStatus::Failed(error),
-        };
-        self.update_tree_rows();
+        match result {
+            Ok(()) => {
+                self.tree.status = TreeStatus::Idle;
+                self.update_tree_rows();
+            }
+            Err(error) => self.tree.status = TreeStatus::Failed(error),
+        }
     }
+
+    fn receive_tree_rows(&mut self, revision: u64, result: Result<Option<TreeListing>, String>) {
+        if self.tree.query_revision != revision {
+            return;
+        }
+        self.tree.query = None;
+        match result {
+            Ok(Some(listing)) => {
+                let selected = self.tree.selected.len();
+                if selected != 0 {
+                    self.tree.selected = listing
+                        .rows
+                        .iter()
+                        .filter_map(TreeRow::entry)
+                        .filter(|entry| self.tree.selected.contains(&entry.key))
+                        .map(|entry| entry.key.clone())
+                        .collect();
+                }
+                self.tree.rows = Rc::new(listing.rows);
+                self.tree.totals = Some(listing.totals);
+                self.tree.scanned_at = Some(listing.scanned_at);
+                self.tree.dirty = listing.dirty;
+                if selected != self.tree.selected.len() {
+                    self.selection_changed();
+                }
+            }
+            Ok(None) => {
+                self.tree.clear_result();
+                if self.tree.task.is_none() {
+                    self.start_tree_scan(false);
+                }
+            }
+            Err(error) => self.tree.query_error = error,
+        }
+    }
+
+    fn receive_tree_upload(&mut self, scope: TreeScope, key: &str) {
+        if scope.account != self.active_id
+            || scope.bucket != self.bucket
+            || !key.starts_with(&self.prefix)
+        {
+            return;
+        }
+        if self.object_view == ObjectView::Tree && self.tree.totals.is_some() {
+            self.clear_list_page();
+            self.update_tree_rows();
+        }
+    }
+
     pub fn selection_changed(&mut self) {
         self.info_revision += 1;
         self.info = None;
@@ -926,7 +1040,11 @@ impl Workspace {
             && t.bucket == self.bucket
             && (self.object_view != ObjectView::Tree || t.key.starts_with(&self.prefix));
         if refresh {
-            self.load_objects(false);
+            if self.object_view == ObjectView::Tree {
+                self.clear_list_page();
+            } else {
+                self.load_objects(false);
+            }
         }
         if let Some(old) = self.transfers.iter_mut().find(|old| old.id == t.id) {
             *old = t;
@@ -1078,6 +1196,7 @@ impl Workspace {
                             }
                             self.prefix.clear();
                             self.search.clear();
+                            self.tree.clear();
                             self.load_objects(false);
                             crate::i18n::t("设置保存成功").into()
                         }
@@ -1246,11 +1365,38 @@ impl Store {
                 }
             }
             Message::Update(status) => self.change(|workspace| workspace.accept_update(status)),
+            Message::TreeScanning(revision) => {
+                self.change(|workspace| workspace.receive_tree_scanning(revision))
+            }
             Message::TreeProgress(revision, totals) => {
                 self.change(|workspace| workspace.receive_tree_progress(revision, totals))
             }
             Message::TreeReady(revision, result) => {
-                self.change(|workspace| workspace.receive_tree_snapshot(revision, result))
+                self.change(|workspace| workspace.receive_tree_ready(revision, result))
+            }
+            Message::TreeRows(revision, result) => {
+                let scan_time = self.write(|workspace| {
+                    let previous = workspace.tree.scanned_at;
+                    workspace.receive_tree_rows(revision, result);
+                    workspace
+                        .tree
+                        .scanned_at
+                        .filter(|time| Some(*time) != previous)
+                });
+                self.revision.update(|revision| *revision += 1);
+                if let Some(time) = scan_time {
+                    let delay = time
+                        .saturating_add(CACHE_LIFETIME_MS)
+                        .saturating_sub(chrono::Utc::now().timestamp_millis());
+                    if delay > 0 {
+                        set_timeout(Duration::from_millis(delay as u64), move || {
+                            self.revision.update(|revision| *revision += 1);
+                        });
+                    }
+                }
+            }
+            Message::TreeUpload(scope, key) => {
+                self.change(|workspace| workspace.receive_tree_upload(scope, &key))
             }
             Message::Restart(guard) => crate::restart_after_update(guard),
         }

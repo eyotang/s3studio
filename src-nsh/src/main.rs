@@ -8,6 +8,7 @@ mod backend;
 mod i18n;
 mod model;
 mod object_tree;
+mod tree_cache;
 mod ui;
 mod updater;
 mod workspace;

@@ -57,6 +57,7 @@ fn tree_view_expands_levels_and_displays_parent_size_shares() {
     let mut app = preview();
     app.press("id:tree-view").unwrap();
     app.wait_for("id:tree-totals").unwrap();
+    app.wait_for("id:tree-cache-time").unwrap();
     let folder = "id:tree-folder-Brand assets/";
     let guides = "id:tree-folder-Brand assets/Guides/";
     let file = "id:tree-file-Brand assets/Guides/Usage.pdf";
@@ -76,11 +77,15 @@ fn tree_view_expands_levels_and_displays_parent_size_shares() {
     app.wait_for(file).unwrap();
     assert_eq!(app.screen().accessibility_level(file).unwrap(), Some(3));
     app.press("id:tree-sort-count").unwrap();
+    app.wait_for_gone("id:tree-querying", WAIT).unwrap();
     app.wait_for(file).unwrap();
     app.press(guides).unwrap();
     app.wait_for_gone(file, WAIT).unwrap();
     app.press("id:list-view").unwrap();
     app.wait_for("id:object-Brand assets/").unwrap();
+    app.press("id:tree-view").unwrap();
+    app.wait_for("id:tree-cache-time").unwrap();
+    app.wait_for(folder).unwrap();
 }
 
 #[test]
@@ -107,6 +112,7 @@ fn tree_search_reveals_matches_and_clears_hidden_selections() {
     app.wait_for_gone(file, WAIT).unwrap();
     app.wait_for_gone("id:delete-selection", WAIT).unwrap();
     app.press(guides).unwrap();
+    app.wait_for(file).unwrap();
     app.press(file).unwrap();
     app.wait_for("application/octet-stream").unwrap();
     assert!(app.screen().enabled("id:inspector-download").unwrap());
