@@ -168,8 +168,16 @@ impl Workspace {
             );
         match &dialog{
             Dialog::Account(id)=>{
-                modal=modal.child(self.field("name",crate::i18n::t("账户名称"))).child(row().gap(px(13.)).items_start().child(self.field("accessKey","Access Key ID")).child(self.field("region","Region")))
-                    .child(self.field("secretKey","Secret Access Key")).child(self.field("sessionToken",crate::i18n::t("Session Token  可选 · 临时凭据"))).child(self.field("endpoint",crate::i18n::t("Endpoint  可选 · S3 兼容服务")))
+                modal = modal
+                    .child(self.field("name", crate::i18n::t("账户名称")))
+                    .child(self.field("endpoint", crate::i18n::t("Endpoint  可选 · S3 兼容服务")))
+                    .child(self.field("region", "Region"))
+                    .child(
+                        row().gap(px(13.)).items_start()
+                            .child(self.field("accessKey", "Access Key ID"))
+                            .child(self.field("secretKey", "Secret Access Key")),
+                    )
+                    .child(self.field("sessionToken", crate::i18n::t("Session Token  可选 · 临时凭据")))
                     .child(row().gap(px(5.)).mb(px(16.)).child(Checkbox::new("pathStyle").accessibility_label(crate::i18n::t("使用路径风格访问")).checked(self.form.path_style).xsmall().on_click(cx.listener(|this,checked,_,cx|{this.form.path_style = *checked;cx.notify();}))).child(label(crate::i18n::t("使用路径风格访问"),10.,0x778294)).child(label(crate::i18n::t("MinIO 等服务推荐开启"),9.,0xadb5c3)))
                     .when(id.is_some(),|s|s.child(button("remove-account",crate::i18n::t("移除账户")).text_size(px(10.)).text_color(rgb(0xd18282)).justify_start().child(icon("trash-2",14.)).child(crate::i18n::t("移除账户")).on_click(cx.listener(|this,_,window,cx|this.open_dialog(Dialog::RemoveAccount,window,cx)))));
             },
@@ -177,13 +185,26 @@ impl Workspace {
             Dialog::S3Defaults => {
                 modal = modal.child(self.field("endpoint", "Endpoint")).child(self.field("region", "Region"));
             }
-            Dialog::TransferSettings=>modal=modal.child(self.preferences(cx))
-                .when(self.s3_defaults.is_some(), |modal| modal.child(
-                    button("s3-defaults", crate::i18n::t("S3 全局默认值"))
-                        .child(crate::i18n::t("S3 全局默认值"))
-                        .mb(px(16.))
-                        .on_click(cx.listener(|this, _, window, cx| this.open_dialog(Dialog::S3Defaults, window, cx))),
-                )).child(self.field("concurrency",crate::i18n::t("并发数量"))).child(label(crate::i18n::t("支持 1–32 路。点击保存设置后生效；降低上限时，已开始的分片会先完成。"),12.,0x99a2b1).line_height(relative(1.8)).mb(px(23.))),
+            Dialog::TransferSettings => {
+                modal = modal
+                    .when(self.s3_defaults.is_some(), |modal| {
+                        modal.child(
+                            button("s3-defaults", crate::i18n::t("S3 全局默认值"))
+                                .child(crate::i18n::t("S3 全局默认值"))
+                                .mb(px(16.))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_dialog(Dialog::S3Defaults, window, cx)
+                                })),
+                        )
+                    })
+                    .child(self.preferences(cx))
+                    .child(self.field("concurrency", crate::i18n::t("并发数量")))
+                    .child(
+                        label(crate::i18n::t("支持 1–32 路。点击保存设置后生效；降低上限时，已开始的分片会先完成。"), 12., 0x99a2b1)
+                            .line_height(relative(1.8))
+                            .mb(px(23.)),
+                    );
+            }
             Dialog::Delete=>modal=modal.child(col().id("delete-list").max_h(px(160.)).overflow_y_scroll().px(px(14.)).py(px(10.)).rounded(px(8.)).bg(rgb(0xfafbfd)).children(self.chosen().iter().map(|o|row().py(px(7.)).gap(px(7.)).child(file_icon(o,20.)).child(label(model::object_name(&o.key,&self.prefix).to_owned(),11.,0x808d9f))))),
             Dialog::Help=>modal=modal.children([
                 crate::i18n::t("① 添加账户：填写 Access Key 和 Secret Key。MinIO 等服务可以配置 Endpoint 和路径风格。"),

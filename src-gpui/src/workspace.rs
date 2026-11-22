@@ -430,19 +430,19 @@ impl Workspace {
                     window,
                     cx,
                 );
+                let defaults = self.s3_defaults.clone().unwrap_or_default();
                 self.add_input(
-                    "accessKey",
-                    "",
-                    if account.is_some() {
-                        crate::i18n::t("留空保留现有凭据")
+                    "endpoint",
+                    account.as_ref().map(|a| a.endpoint.as_str()).unwrap_or(""),
+                    if defaults.endpoint.is_empty() {
+                        "https://s3.example.com"
                     } else {
-                        "AKIA…"
+                        &defaults.endpoint
                     },
                     false,
                     window,
                     cx,
                 );
-                let defaults = self.s3_defaults.clone().unwrap_or_default();
                 self.add_input(
                     "region",
                     account.as_ref().map(|a| a.region.as_str()).unwrap_or(""),
@@ -450,6 +450,18 @@ impl Workspace {
                         "us-east-1"
                     } else {
                         &defaults.region
+                    },
+                    false,
+                    window,
+                    cx,
+                );
+                self.add_input(
+                    "accessKey",
+                    "",
+                    if account.is_some() {
+                        crate::i18n::t("留空保留现有凭据")
+                    } else {
+                        "AKIA…"
                     },
                     false,
                     window,
@@ -472,18 +484,6 @@ impl Workspace {
                     "",
                     crate::i18n::t("使用临时凭据时填写；更新凭据时留空可清除"),
                     true,
-                    window,
-                    cx,
-                );
-                self.add_input(
-                    "endpoint",
-                    account.as_ref().map(|a| a.endpoint.as_str()).unwrap_or(""),
-                    if defaults.endpoint.is_empty() {
-                        "https://s3.example.com"
-                    } else {
-                        &defaults.endpoint
-                    },
-                    false,
                     window,
                     cx,
                 );

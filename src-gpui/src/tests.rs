@@ -107,6 +107,9 @@ async fn new_account_defaults_to_path_style_and_edit_preserves_false(cx: &mut Te
     let (window, view) = setup(cx).await;
     cx.update_window(window, |_, window, cx| {
         window.click("add-account", cx);
+        let field_positions =
+            ["name", "endpoint", "region", "accessKey"].map(|id| window.find(id).bounds().origin.y);
+        assert!(field_positions.windows(2).all(|pair| pair[0] < pair[1]));
         assert_eq!(window.find("pathStyle").checked(), Some(true));
         window.click("pathStyle", cx);
         assert!(!view.read(cx).form.path_style);
@@ -311,12 +314,21 @@ async fn active_transfers_block_update_install_and_pending_blocks_close(cx: &mut
 #[gpui::test]
 async fn settings_menu_and_sidebar_share_global_preferences(cx: &mut TestAppContext) {
     let (window, view) = setup(cx).await;
+    let workspace = view.clone();
+    cx.wait_for(window, Duration::from_secs(10), move |_, cx| {
+        workspace.read(cx).s3_defaults.is_some()
+    })
+    .await;
     cx.update_window(window, |_, window, cx| {
         window.dispatch_action(Box::new(crate::OpenSettings), cx);
     })
     .unwrap();
     cx.update_window(window, |_, window, cx| {
         assert_eq!(view.read(cx).dialog, Some(Dialog::TransferSettings));
+        assert!(
+            window.find("s3-defaults").bounds().origin.y
+                < window.find("settings-language-system").bounds().origin.y
+        );
         for id in [
             "settings-language-system",
             "settings-language-zh",

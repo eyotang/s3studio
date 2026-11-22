@@ -1207,6 +1207,14 @@ export default function App() {
               <form key={dialog.type} onSubmit={submit}>
                 {dialog.type === "transferSettings" && (
                   <>
+                    <button
+                      className="secondary-button s3-defaults-button"
+                      type="button"
+                      disabled={!s3Defaults || busy}
+                      onClick={() => openDialog({ type: "s3Defaults" })}
+                    >
+                      S3 全局默认值
+                    </button>
                     <label>
                       并发数量
                       <input
@@ -1225,14 +1233,6 @@ export default function App() {
                       支持 1–32
                       路。设置自动保存；降低上限时，已开始的分片会先完成，后续分片按新上限执行。
                     </p>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={!s3Defaults || busy}
-                      onClick={() => openDialog({ type: "s3Defaults" })}
-                    >
-                      S3 全局默认值
-                    </button>
                   </>
                 )}
                 {dialog.type === "s3Defaults" && (
@@ -1272,6 +1272,27 @@ export default function App() {
                         maxLength={80}
                       />
                     </label>
+                    <label>
+                      Endpoint <span>可选 · S3 兼容服务</span>
+                      <input
+                        autoCapitalize="none"
+                        name="endpoint"
+                        type="url"
+                        defaultValue={dialog.account?.endpoint}
+                        placeholder={
+                          s3Defaults?.endpoint || "https://s3.example.com"
+                        }
+                      />
+                    </label>
+                    <label>
+                      Region
+                      <input
+                        autoCapitalize="none"
+                        name="region"
+                        defaultValue={dialog.account?.region}
+                        placeholder={s3Defaults?.region || "us-east-1"}
+                      />
+                    </label>
                     <div className="form-grid">
                       <label>
                         Access Key ID
@@ -1286,30 +1307,21 @@ export default function App() {
                         />
                       </label>
                       <label>
-                        Region
+                        Secret Access Key
                         <input
                           autoCapitalize="none"
-                          name="region"
-                          defaultValue={dialog.account?.region}
-                          placeholder={s3Defaults?.region || "us-east-1"}
+                          name="secretKey"
+                          type="password"
+                          autoComplete="new-password"
+                          placeholder={
+                            dialog.account
+                              ? "留空保留现有凭据"
+                              : "你的 Secret Access Key"
+                          }
+                          required={!dialog.account}
                         />
                       </label>
                     </div>
-                    <label>
-                      Secret Access Key
-                      <input
-                        autoCapitalize="none"
-                        name="secretKey"
-                        type="password"
-                        autoComplete="new-password"
-                        placeholder={
-                          dialog.account
-                            ? "留空保留现有凭据"
-                            : "你的 Secret Access Key"
-                        }
-                        required={!dialog.account}
-                      />
-                    </label>
                     <label>
                       Session Token <span>可选 · 临时凭据</span>
                       <input
@@ -1318,18 +1330,6 @@ export default function App() {
                         type="password"
                         autoComplete="new-password"
                         placeholder="使用临时凭据时填写；更新凭据时留空可清除"
-                      />
-                    </label>
-                    <label>
-                      Endpoint <span>可选 · S3 兼容服务</span>
-                      <input
-                        autoCapitalize="none"
-                        name="endpoint"
-                        type="url"
-                        defaultValue={dialog.account?.endpoint}
-                        placeholder={
-                          s3Defaults?.endpoint || "https://s3.example.com"
-                        }
                       />
                     </label>
                     <label className="checkbox-label">

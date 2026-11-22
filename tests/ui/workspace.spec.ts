@@ -115,6 +115,9 @@ test("global S3 defaults appear in blank account fields and preserve input case"
   await page.goto("/");
   await page.getByLabel("传输设置", { exact: true }).click();
   const modal = page.getByRole("dialog");
+  await expect(modal.locator("form > :first-child")).toHaveText(
+    "S3 全局默认值",
+  );
   await modal.getByRole("button", { name: "S3 全局默认值" }).click();
   const endpoint = modal.getByLabel("Endpoint", { exact: true });
   const region = modal.getByLabel("Region", { exact: true });
@@ -128,6 +131,15 @@ test("global S3 defaults appear in blank account fields and preserve input case"
   await page.getByLabel("添加账户", { exact: true }).click();
   const accountEndpoint = modal.locator('[name="endpoint"]');
   const accountRegion = modal.locator('[name="region"]');
+  await expect(modal.locator('[name="name"]')).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(accountEndpoint).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(accountRegion).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    modal.getByLabel("Access Key ID", { exact: true }),
+  ).toBeFocused();
   await expect(accountEndpoint).toHaveValue("");
   await expect(accountEndpoint).toHaveAttribute(
     "placeholder",
