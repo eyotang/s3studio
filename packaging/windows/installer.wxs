@@ -4,7 +4,7 @@
   <Product Id="*" Name="S3 Studio" Language="1033" Manufacturer="s3studio"
            Version="$(var.AppVersion)" UpgradeCode="9F440433-9579-5F8C-AA0B-1188DB213F0C">
     <Package InstallerVersion="450" Compressed="yes" InstallScope="perMachine" Platform="x64"/>
-    <MajorUpgrade Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes"
+    <MajorUpgrade Schedule="afterInstallInitialize"
                   DowngradeErrorMessage="A newer version of S3 Studio is already installed."/>
     <MediaTemplate EmbedCab="yes"/>
     <Icon Id="ProductIcon" SourceFile="$(var.AppIcon)"/>
@@ -26,27 +26,22 @@
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLDIR" Name="S3 Studio">
           <Component Id="Application" Guid="*" Win64="yes">
-            <File Id="StudioExe" Name="s3-studio.exe" Source="$(var.AppBinary)" KeyPath="yes"/>
+            <File Id="StudioExe" Name="s3-studio.exe" Source="$(var.AppBinary)" KeyPath="yes">
+              <Shortcut Id="StudioShortcut" Directory="ProgramMenuFolder" Name="S3 Studio"
+                        Advertise="yes" WorkingDirectory="INSTALLDIR" Icon="ProductIcon">
+                <ShortcutProperty Key="System.AppUserModel.ID" Value="com.s3studio.desktop"/>
+              </Shortcut>
+            </File>
             <File Id="InstallMarker" Name="s3-studio.install" Source="$(var.InstallMarker)"/>
+            <RegistryValue Root="HKLM" Key="Software\s3studio\S3 Studio"
+                           Name="InstallDir" Type="string" Value="[INSTALLDIR]"/>
           </Component>
         </Directory>
       </Directory>
-      <Directory Id="ProgramMenuFolder">
-        <Component Id="StartMenuEntry" Guid="*" Win64="yes">
-          <Shortcut Id="StudioShortcut" Name="S3 Studio" Target="[#StudioExe]"
-                    WorkingDirectory="INSTALLDIR" Icon="ProductIcon">
-            <ShortcutProperty Key="System.AppUserModel.ID" Value="com.s3studio.desktop"/>
-          </Shortcut>
-          <RegistryValue Root="HKLM" Key="Software\s3studio\S3 Studio"
-                         Name="Start Menu Shortcut" Type="integer" Value="1" KeyPath="yes"/>
-          <RegistryValue Root="HKLM" Key="Software\s3studio\S3 Studio"
-                         Name="InstallDir" Type="string" Value="[INSTALLDIR]"/>
-        </Component>
-      </Directory>
+      <Directory Id="ProgramMenuFolder"/>
     </Directory>
     <Feature Id="Main" Level="1" Title="S3 Studio" ConfigurableDirectory="INSTALLDIR">
       <ComponentRef Id="Application"/>
-      <ComponentRef Id="StartMenuEntry"/>
     </Feature>
     <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLDIR]" After="CostFinalize"/>
     <CustomAction Id="LaunchApplication" FileKey="StudioExe" ExeCommand="" Impersonate="yes" Return="asyncNoWait"/>
