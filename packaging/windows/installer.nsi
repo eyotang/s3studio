@@ -8,7 +8,7 @@ UninstallIcon "${APP_ICON}"
 SetCompressor /SOLID lzma
 VIProductVersion "${APP_VERSION}.0"
 VIAddVersionKey "ProductName" "S3 Studio"
-VIAddVersionKey "CompanyName" "S3 Studio"
+VIAddVersionKey "CompanyName" "s3studio"
 VIAddVersionKey "FileDescription" "S3 Studio Installer"
 VIAddVersionKey "FileVersion" "${APP_VERSION}"
 VIAddVersionKey "LegalCopyright" "S3 Studio"
@@ -18,7 +18,7 @@ VIAddVersionKey "LegalCopyright" "S3 Studio"
 !include "MUI2.nsh"
 
 ; Keep the install location and uninstall entry used by existing NSIS releases.
-!define PRODUCT_KEY "Software\S3 Studio\S3 Studio"
+!define PRODUCT_KEY "Software\s3studio\S3 Studio"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\S3 Studio"
 Var Passive
 
@@ -67,7 +67,7 @@ Section "S3 Studio"
 
     WriteRegStr HKCU "${PRODUCT_KEY}" "" "$INSTDIR"
     WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "S3 Studio"
-    WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "S3 Studio"
+    WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "s3studio"
     WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${APP_VERSION}"
     WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\s3-studio.exe"
     WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$\"$INSTDIR$\""

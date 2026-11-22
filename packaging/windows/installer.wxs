@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <!-- Keep this UpgradeCode to replace existing x64 MSI installations. -->
-  <Product Id="*" Name="S3 Studio" Language="1033" Manufacturer="S3 Studio"
+  <Product Id="*" Name="S3 Studio" Language="1033" Manufacturer="s3studio"
            Version="$(var.AppVersion)" UpgradeCode="9F440433-9579-5F8C-AA0B-1188DB213F0C">
     <Package InstallerVersion="450" Compressed="yes" InstallScope="perMachine" Platform="x64"/>
     <MajorUpgrade Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes"
@@ -11,11 +11,9 @@
     <Property Id="ARPPRODUCTICON" Value="ProductIcon"/>
     <Property Id="AUTOLAUNCHAPP" Secure="yes"/>
     <Property Id="INSTALLDIR" Secure="yes">
-      <RegistrySearch Id="PreviousDirectory" Root="HKCU" Key="Software\S3 Studio\S3 Studio"
-                      Name="InstallDir" Type="raw" Win64="no"/>
-      <RegistrySearch Id="PreviousDirectory64" Root="HKCU" Key="Software\S3 Studio\S3 Studio"
+      <RegistrySearch Id="PreviousDirectory" Root="HKCU" Key="Software\s3studio\S3 Studio"
                       Name="InstallDir" Type="raw" Win64="yes"/>
-      <RegistrySearch Id="MachineDirectory" Root="HKLM" Key="Software\S3 Studio\S3 Studio"
+      <RegistrySearch Id="MachineDirectory" Root="HKLM" Key="Software\s3studio\S3 Studio"
                       Name="InstallDir" Type="raw" Win64="yes"/>
     </Property>
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR"/>
@@ -39,9 +37,9 @@
                     WorkingDirectory="INSTALLDIR" Icon="ProductIcon">
             <ShortcutProperty Key="System.AppUserModel.ID" Value="com.s3studio.desktop"/>
           </Shortcut>
-          <RegistryValue Root="HKLM" Key="Software\S3 Studio\S3 Studio"
+          <RegistryValue Root="HKLM" Key="Software\s3studio\S3 Studio"
                          Name="Start Menu Shortcut" Type="integer" Value="1" KeyPath="yes"/>
-          <RegistryValue Root="HKLM" Key="Software\S3 Studio\S3 Studio"
+          <RegistryValue Root="HKLM" Key="Software\s3studio\S3 Studio"
                          Name="InstallDir" Type="string" Value="[INSTALLDIR]"/>
         </Component>
       </Directory>
