@@ -76,7 +76,7 @@ pub(super) fn objects(store: Store) -> View {
 
 pub(super) fn summary(state: &Workspace) -> Option<View> {
     let Some(totals) = state.tree.totals else {
-        return (!state.search.is_empty() && !state.bucket.is_empty()).then(|| {
+        return (!state.search_query().is_empty() && !state.bucket.is_empty()).then(|| {
             row()
                 .min_w_0()
                 .child(label(t("统计完成前，搜索范围为已加载的目录页。"), 11.0, MUTED).truncate())

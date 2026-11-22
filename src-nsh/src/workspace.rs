@@ -26,6 +26,7 @@ enum Pending {
     Buckets(u64, Option<String>),
     Objects(u64, bool),
     LocatePath(String),
+    AutoLocatePath { revision: u64, bucket: String },
     TreeLevel(u64, String),
     Info(u64),
     Transfers,
@@ -173,6 +174,8 @@ pub struct Workspace {
     pub located: Option<(String, u64)>,
     pub next_token: Option<String>,
     pub search: String,
+    search_revision: u64,
+    search_is_location: bool,
     pub bucket_search: String,
     pub sort: Sort,
     pub ascending: bool,
@@ -224,6 +227,8 @@ impl Workspace {
             located: None,
             next_token: None,
             search: String::new(),
+            search_revision: 0,
+            search_is_location: false,
             bucket_search: String::new(),
             sort: Sort::Name,
             ascending: true,
@@ -315,7 +320,12 @@ impl Workspace {
             .find(|bucket| bucket.name == self.bucket)
     }
     pub fn visible(&self) -> Vec<S3Object> {
-        let mut rows = model::visible(&self.objects, &self.search, self.sort, self.ascending);
+        let mut rows = model::visible(
+            &self.objects,
+            self.search_query(),
+            self.sort,
+            self.ascending,
+        );
         if let Some((key, _)) = &self.located
             && let Some(position) = rows.iter().position(|object| &object.key == key)
         {
@@ -356,6 +366,7 @@ impl Workspace {
         }
     }
     pub fn clear_selection(&mut self) {
+        self.cancel_auto_location();
         self.selected.clear();
         self.tree.selected.clear();
         self.selection_changed();
@@ -391,7 +402,7 @@ impl Workspace {
         self.prefix.clear();
         self.error.clear();
         self.info = None;
-        self.search.clear();
+        self.clear_search();
         self.loading = false;
         self.bucket_loading = !self.active_id.is_empty();
         if self.bucket_loading {
@@ -408,10 +419,13 @@ impl Workspace {
         }
         self.bucket = bucket;
         self.prefix = prefix;
-        self.search.clear();
+        self.clear_search();
         self.load_objects(false);
     }
     pub fn load_objects(&mut self, append: bool) {
+        if append {
+            self.cancel_auto_location();
+        }
         self.object_revision += 1;
         self.info_revision += 1;
         if !append {
@@ -471,6 +485,7 @@ impl Workspace {
     }
 
     pub fn refresh_objects(&mut self) {
+        self.cancel_auto_location();
         if self.object_view == ObjectView::Tree {
             self.clear_list_page();
             self.clear_selection();
@@ -488,6 +503,7 @@ impl Workspace {
         if self.object_view == view {
             return;
         }
+        self.cancel_auto_location();
         let tree_changed = self.object_view == ObjectView::Tree || view == ObjectView::Tree;
         self.object_view = view;
         if !tree_changed {
@@ -555,19 +571,41 @@ impl Workspace {
         self.tree.cancel_scan();
     }
 
-    pub fn set_search(&mut self, value: &str) {
+    pub fn search_query(&self) -> &str {
+        if self.search_is_location {
+            ""
+        } else {
+            &self.search
+        }
+    }
+
+    fn cancel_auto_location(&mut self) {
+        self.search_revision += 1;
+    }
+
+    fn clear_search(&mut self) {
+        self.search.clear();
+        self.search_is_location = false;
+        self.cancel_auto_location();
+    }
+
+    fn set_search(&mut self, value: &str) -> bool {
         if self.search == value {
-            return;
+            return false;
         }
         self.search = value.into();
+        self.search_is_location = false;
+        self.cancel_auto_location();
         self.tree.options.search_collapsed.clear();
         self.tree.options.search_pages.clear();
         if self.object_view == ObjectView::Tree {
             self.update_tree_rows();
         }
+        true
     }
 
     pub fn sort_tree(&mut self, sort: TreeSort) {
+        self.cancel_auto_location();
         let options = &mut self.tree.options;
         options.ascending = if options.sort == sort {
             !options.ascending
@@ -580,10 +618,11 @@ impl Workspace {
     }
 
     pub fn toggle_tree_folder(&mut self, key: String) {
+        self.cancel_auto_location();
         let is_open = self.tree.rows.iter().any(|row| {
             matches!(row, TreeRow::Entry { item, expanded: true, .. } if item.key.key == key && item.key.folder)
         });
-        if self.search.is_empty() {
+        if self.search_query().is_empty() {
             if is_open {
                 self.tree.options.expanded.remove(&key);
             } else {
@@ -601,6 +640,7 @@ impl Workspace {
     }
 
     pub fn page_tree(&mut self, page: TreePage) {
+        self.cancel_auto_location();
         if !self.tree.cache_available {
             if let TreePage::Directory { parent, page } = page {
                 self.request_tree_level(parent, page, false);
@@ -680,6 +720,7 @@ impl Workspace {
     }
 
     pub fn select_tree_node(&mut self, key: TreeKey) {
+        self.cancel_auto_location();
         if !self.tree.selected.remove(&key) {
             self.tree.selected.insert(key);
         }
@@ -687,6 +728,7 @@ impl Workspace {
     }
 
     pub fn inspect_tree_node(&mut self, key: TreeKey) {
+        self.cancel_auto_location();
         self.tree.selected = BTreeSet::from([key]);
         self.show_info = true;
         self.selection_changed();
@@ -701,7 +743,7 @@ impl Workspace {
         };
         self.tree.cancel_query();
         self.tree.query_error.clear();
-        self.tree.options.search.clone_from(&self.search);
+        self.tree.options.search = self.search_query().to_owned();
         if !self.tree.cache_available {
             self.set_tree_rows(self.tree.live.rows(&scope.prefix, &self.tree.options));
             return;
@@ -828,17 +870,20 @@ impl Workspace {
         }
     }
     pub fn toggle(&mut self, key: &str) {
+        self.cancel_auto_location();
         if !self.selected.remove(key) {
             self.selected.insert(key.into());
         }
         self.selection_changed();
     }
     pub fn inspect(&mut self, key: String) {
+        self.cancel_auto_location();
         self.selected = HashSet::from([key]);
         self.show_info = true;
         self.selection_changed();
     }
     pub fn sort_by(&mut self, sort: Sort) {
+        self.cancel_auto_location();
         if self.sort == sort {
             self.ascending = !self.ascending;
         } else {
@@ -864,10 +909,22 @@ impl Workspace {
     }
 
     fn locate_path(&mut self) {
-        let path = self.input("path");
+        let (bucket, args) =
+            match self.path_request(self.input("path"), self.form.locate_object_only) {
+                Ok(request) => request,
+                Err(error) => {
+                    self.dialog_error = error.into();
+                    return;
+                }
+            };
+        self.busy = true;
+        self.dialog_error.clear();
+        self.request("locate_path", args, Pending::LocatePath(bucket));
+    }
+
+    fn path_request(&self, path: &str, object_only: bool) -> Result<(String, Value), &'static str> {
         if path.is_empty() {
-            self.dialog_error = crate::i18n::t("请填写此字段。").into();
-            return;
+            return Err(crate::i18n::t("请填写此字段。"));
         }
         let (bucket, key) = match path.strip_prefix("s3://") {
             Some(uri) => uri.split_once('/').unwrap_or((uri, "")),
@@ -878,24 +935,54 @@ impl Workspace {
             .iter()
             .any(|candidate| candidate.name == bucket)
         {
-            self.dialog_error = crate::i18n::t("路径中的存储桶不在当前账户的列表中。").into();
-            return;
+            return Err(crate::i18n::t("路径中的存储桶不在当前账户的列表中。"));
         }
-        let object_only = self.form.locate_object_only;
         if key.len() > 1024 || (object_only && key.is_empty()) {
-            self.dialog_error = crate::i18n::t("对象键无效。").into();
-            return;
+            return Err(crate::i18n::t("对象键无效。"));
         }
         let args = json!({
             "accountId": self.active_id, "bucket": bucket, "key": key, "objectOnly": object_only,
         });
-        let bucket = bucket.to_owned();
-        self.busy = true;
-        self.dialog_error.clear();
-        self.request("locate_path", args, Pending::LocatePath(bucket));
+        Ok((bucket.to_owned(), args))
     }
 
-    fn reveal_path(&mut self, bucket: String, target: PathTarget) {
+    fn automatic_path(&self) -> Option<(String, Value)> {
+        let query = self.search_query();
+        let object_only = if query.starts_with("s3://") {
+            false
+        } else if query.contains("://") {
+            return None;
+        } else if query.contains('/') {
+            false
+        } else if self.prefix.is_empty()
+            && query.rsplit_once('.').is_some_and(|(name, extension)| {
+                !name.is_empty()
+                    && !extension.is_empty()
+                    && !extension.contains(char::is_whitespace)
+            })
+        {
+            true
+        } else {
+            return None;
+        };
+        self.path_request(query, object_only).ok()
+    }
+
+    fn can_auto_locate(&self, revision: u64) -> bool {
+        self.search_revision == revision && self.dialog.is_none() && !self.is_busy()
+    }
+
+    fn start_auto_location(&mut self, revision: u64, bucket: String, args: Value) {
+        if self.can_auto_locate(revision) {
+            self.request(
+                "locate_path",
+                args,
+                Pending::AutoLocatePath { revision, bucket },
+            );
+        }
+    }
+
+    fn reveal_path(&mut self, bucket: String, target: PathTarget, preserve_search: bool) {
         let (prefix, located) = match target {
             PathTarget::Directory { prefix } => (prefix, None),
             PathTarget::Object { object, info } => {
@@ -910,7 +997,12 @@ impl Workspace {
         self.tree.cancel_query();
         self.bucket = bucket;
         self.prefix = prefix;
-        self.search.clear();
+        if preserve_search {
+            self.search_is_location = true;
+            self.cancel_auto_location();
+        } else {
+            self.clear_search();
+        }
         self.load_objects(false);
         if let Some((object, info)) = located {
             self.selected.insert(object.key.clone());
@@ -925,6 +1017,7 @@ impl Workspace {
         if self.is_busy() {
             return;
         }
+        self.cancel_auto_location();
         self.dialog_revision += 1;
         self.dialog_error.clear();
         self.form.inputs.clear();
@@ -1314,6 +1407,15 @@ impl Workspace {
             self.receive_tree_level(revision, prefix, result);
             return;
         }
+        if let Pending::AutoLocatePath { revision, bucket } = pending {
+            if self.can_auto_locate(revision)
+                && let Ok(data) = result
+                && let Ok(target) = serde_json::from_value(data)
+            {
+                self.reveal_path(bucket, target, true);
+            }
+            return;
+        }
         if matches!(pending,Pending::Buckets(rev,_) if rev!=self.bucket_revision)
             || matches!(pending,Pending::Objects(rev,_) if rev!=self.object_revision)
             || matches!(pending,Pending::Info(rev) if rev!=self.info_revision)
@@ -1423,7 +1525,7 @@ impl Workspace {
                     let target: PathTarget =
                         serde_json::from_value(data).map_err(|e| e.to_string())?;
                     self.close_dialog();
-                    self.reveal_path(bucket, target);
+                    self.reveal_path(bucket, target, false);
                 }
                 Pending::Transfers => {
                     let list: Vec<Transfer> =
@@ -1480,7 +1582,7 @@ impl Workspace {
                                 bucket.connection = connection;
                             }
                             self.prefix.clear();
-                            self.search.clear();
+                            self.clear_search();
                             self.tree.clear();
                             self.load_objects(false);
                             crate::i18n::t("设置保存成功").into()
@@ -1551,7 +1653,7 @@ impl Workspace {
                     .transfers
                     .retain(|t| !matches!(t.status.as_str(), "done" | "cancelled")),
                 Pending::Control(_) | Pending::Download | Pending::Update => {}
-                Pending::TreeLevel(..) => unreachable!(),
+                Pending::TreeLevel(..) | Pending::AutoLocatePath { .. } => unreachable!(),
             }
             Ok(())
         })();
@@ -1605,6 +1707,22 @@ impl Store {
     pub fn edit(self, key: &str, value: &str) {
         self.write(|workspace| workspace.set_input(key, value));
         self.draft_revision.update(|revision| *revision += 1);
+    }
+
+    pub fn set_search(self, value: &str) {
+        let Some((revision, location)) = self.write(|workspace| {
+            workspace
+                .set_search(value)
+                .then(|| (workspace.search_revision, workspace.automatic_path()))
+        }) else {
+            return;
+        };
+        self.revision.update(|revision| *revision += 1);
+        if let Some((bucket, args)) = location {
+            set_timeout(Duration::from_millis(550), move || {
+                self.write(|workspace| workspace.start_auto_location(revision, bucket, args));
+            });
+        }
     }
 
     pub fn change(self, f: impl FnOnce(&mut Workspace)) {
@@ -1692,5 +1810,39 @@ impl Store {
             }
             Message::Restart(guard) => crate::restart_after_update(guard),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn automatic_location_ignores_a_response_after_search_text_changes() {
+        let (backend, _receiver) = Backend::open(true).unwrap();
+        let mut workspace = Workspace::new(backend);
+        workspace.bucket = "studio-assets".into();
+        workspace.buckets.push(Bucket {
+            name: workspace.bucket.clone(),
+            created: String::new(),
+            connection: S3Connection::default(),
+        });
+        workspace.set_search("Brand assets/");
+        let (bucket, args) = workspace.automatic_path().unwrap();
+        workspace.start_auto_location(workspace.search_revision, bucket, args);
+        let request = workspace.next_request;
+        assert!(matches!(
+            workspace.pending.get(&request),
+            Some(Pending::AutoLocatePath { .. })
+        ));
+        assert!(!workspace.is_busy());
+
+        workspace.set_search("guidelines");
+        workspace.receive_response(
+            request,
+            Ok(json!({"kind": "directory", "prefix": "Brand assets/"})),
+        );
+        assert!(workspace.prefix.is_empty());
+        assert_eq!(workspace.search_query(), "guidelines");
     }
 }

@@ -76,6 +76,61 @@ fn enter_locates_and_selects_an_object_outside_the_first_directory_page() {
 }
 
 #[test]
+fn search_opens_an_exact_directory_and_can_continue_typing_an_object_key() {
+    let mut app = preview();
+    let search = "id:object-search";
+    let directory = "Brand assets/";
+    app.type_text(search, directory).unwrap();
+    app.wait_for("id:breadcrumb-Brand assets/").unwrap();
+    app.wait_for("id:object-Brand assets/Logo.svg").unwrap();
+    assert_eq!(app.screen().input_text(search).unwrap(), Some(directory));
+
+    app.type_text(search, "Guides/Usage.pdf").unwrap();
+    app.wait_for("id:breadcrumb-Brand assets/Guides/").unwrap();
+    app.wait_for("id:object-Brand assets/Guides/Usage.pdf")
+        .unwrap();
+    app.wait_for("id:object-Brand assets/Guides/Typography.txt")
+        .unwrap();
+    app.wait_for("id:object-inspector").unwrap();
+    assert!(app.screen().enabled("id:copy-selection").unwrap());
+    assert!(!app.screen().matches("id:modal").unwrap());
+}
+
+#[test]
+fn search_filters_partial_paths_and_locates_a_pasted_s3_uri() {
+    let mut config = desktop_config(studio_root(true));
+    config.clock = nsh_core::time::Clock::manual(std::time::SystemTime::UNIX_EPOCH);
+    let mut app = Headless::start(config).unwrap();
+    app.wait_for("id:object-Brand assets/").unwrap();
+    app.press("id:tree-view").unwrap();
+    app.wait_for("id:tree-cache-time").unwrap();
+    let search = "id:object-search";
+    app.type_text(search, "Brand assets/Guides/Usage").unwrap();
+    let tree_result = "id:tree-file-Brand assets/Guides/Usage.pdf";
+    app.wait_for(tree_result).unwrap();
+    app.run_for(Duration::from_secs(1)).unwrap();
+    assert!(app.screen().matches(tree_result).unwrap());
+    assert!(!app.screen().matches("id:modal").unwrap());
+
+    let mut paste = nsh_core::PasteEvent::default();
+    paste.text = "s3://application-backups/Brand assets/Guides/Usage.pdf".into();
+    app.clear(search).unwrap();
+    app.paste(search, &paste).unwrap();
+    app.wait_for("id:object-Brand assets/Guides/Usage.pdf")
+        .unwrap();
+    app.wait_for("id:object-inspector").unwrap();
+    assert!(
+        app.screen()
+            .selected("id:bucket-application-backups")
+            .unwrap()
+    );
+    assert_eq!(
+        app.screen().input_text(search).unwrap(),
+        Some(paste.text.as_str())
+    );
+}
+
+#[test]
 fn locator_opens_a_directory_in_another_bucket_and_keeps_location_on_a_miss() {
     let mut app = preview();
     app.press("id:locate-path").unwrap();

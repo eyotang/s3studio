@@ -31,7 +31,7 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                             input_field(
                                 "object-search",
                                 t("搜索当前目录"),
-                                t("搜索当前目录中的文件…"),
+                                t("搜索当前目录，或输入完整路径…"),
                                 move || store.read(|state| state.search.clone()),
                             )
                             .element_ref(&search)
@@ -47,17 +47,15 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                             .placeholder(move || {
                                 store.read(|state| {
                                     if state.object_view == ObjectView::Tree {
-                                        t("搜索目录及其子目录…")
+                                        t("搜索对象树，或输入完整路径…")
                                     } else {
-                                        t("搜索当前目录中的文件…")
+                                        t("搜索当前目录，或输入完整路径…")
                                     }
                                     .to_owned()
                                 })
                             })
                             .flex_1()
-                            .on_change(move |value: &str| {
-                                store.change(|state| state.set_search(value))
-                            })
+                            .on_change(move |value: &str| store.set_search(value))
                             .on_submit(move |value: &str| {
                                 store.change(|state| state.locate_search(value))
                             }),
@@ -66,7 +64,7 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                             move || store.read(|state| !state.search.is_empty()),
                             move || {
                                 icon_button("clear-search", t("清除搜索"), "x")
-                                    .on_press(store.action(|state| state.set_search("")))
+                                    .on_press(move || store.set_search(""))
                             },
                         ))
                         .child(dynamic(move || {
@@ -122,7 +120,7 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                         crate::lf!(
                             "{} 个项目{}{}",
                             visible.with(Vec::len),
-                            if state.search.is_empty() {
+                            if state.search_query().is_empty() {
                                 ""
                             } else {
                                 t(" · 搜索结果")
@@ -393,7 +391,7 @@ fn empty_state(store: Store, state: &Workspace) -> View {
     let loading = state.loading && state.objects.is_empty();
     let title = if loading {
         t("正在加载文件")
-    } else if !state.search.is_empty() {
+    } else if !state.search_query().is_empty() {
         t("没有找到匹配的文件")
     } else if state.account().is_none() {
         t("一切从连接开始")
