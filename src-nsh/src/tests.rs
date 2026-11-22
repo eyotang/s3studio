@@ -322,14 +322,16 @@ fn account_form_preserves_drafts_and_requires_credentials() {
     app.type_text("id:name", " draft").unwrap();
     app.press_key("escape").unwrap();
     app.wait_for_gone("id:name", WAIT).unwrap();
-    app.press("id:account-settings").unwrap();
+    assert!(!app.screen().matches("id:account-settings").unwrap());
+    assert!(!app.screen().matches("id:add-account-bottom").unwrap());
+    app.press("id:account-menu-demo-aws").unwrap();
+    app.press("id:account-edit-demo-aws").unwrap();
     assert_eq!(
         app.screen().input_text("id:name").unwrap(),
         Some("Design workspace")
     );
     assert_eq!(app.screen().input_text("id:accessKey").unwrap(), Some(""));
-    app.press("id:remove-account").unwrap();
-    app.wait_for(i18n::t("删除工作空间配置？")).unwrap();
+    assert!(!app.screen().matches("id:remove-account").unwrap());
     app.press("id:cancel-dialog").unwrap();
 }
 
@@ -369,13 +371,20 @@ fn workspace_menu_opens_the_target_settings_and_confirms_local_removal() {
 #[test]
 fn bucket_options_can_be_added_reused_and_removed() {
     let mut app = preview();
+    assert!(!app.screen().matches("ap-southeast-1").unwrap());
     app.press("id:create-bucket").unwrap();
     app.type_text("id:region", "eu-west-2").unwrap();
     app.press("id:add-s3-option-region").unwrap();
     app.wait_for_gone("id:add-s3-option-region", WAIT).unwrap();
     app.press("id:cancel-dialog").unwrap();
 
-    app.press("id:bucket-settings").unwrap();
+    app.right_click("id:bucket-application-backups").unwrap();
+    app.press("id:bucket-settings-application-backups").unwrap();
+    assert!(
+        app.screen()
+            .selected("id:bucket-application-backups")
+            .unwrap()
+    );
     app.press("id:s3-options-region").unwrap();
     app.wait_for("eu-west-2").unwrap();
     app.press_key("escape").unwrap();
@@ -392,10 +401,10 @@ fn bucket_options_can_be_added_reused_and_removed() {
     assert!(!app.screen().matches("id:transfers-panel").unwrap());
     app.press("id:transfers-toggle").unwrap();
     app.wait_for("id:transfers-panel").unwrap();
+    assert!(!app.screen().matches("id:transfer-settings").unwrap());
     app.press("id:transfers-toggle").unwrap();
     app.wait_for_gone("id:transfers-panel", WAIT).unwrap();
-    app.press("id:transfers-toggle").unwrap();
-    app.press("id:transfer-settings").unwrap();
+    app.press_key("mod+,").unwrap();
     for id in [
         "s3-defaults",
         "settings-language-system",

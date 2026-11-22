@@ -10,8 +10,8 @@ use crate::{
     workspace::{Store, Workspace},
 };
 use controls::*;
-use nsh_base::{menu, menu_item};
-use nsh_core::prelude::*;
+use nsh_base::{MenuItemElement, context_menu, menu, menu_item};
+use nsh_core::{element::StyleRefinement, prelude::*};
 use palette::*;
 
 pub fn workspace(store: Store) -> AnyElement {
@@ -21,6 +21,13 @@ pub fn workspace(store: Store) -> AnyElement {
         if store.read(|state| state.dialog.is_none()) {
             search_shortcut.focus();
         }
+    });
+    on_key("mod+,", move |_| {
+        store.change(|state| {
+            if state.can_open_app_dialog() {
+                state.open_dialog(Dialog::TransferSettings);
+            }
+        });
     });
     #[cfg(target_os = "macos")]
     {
@@ -216,18 +223,6 @@ fn sidebar(store: Store, width: Memo<f32>) -> View {
                 store.read(|state| account_buttons(store, state))
             })),
         ))
-        .child(dynamic(move || {
-            store.read(|state| {
-                button("add-account-bottom", t("添加账户"))
-                    .h(px(34.0))
-                    .justify_start()
-                    .px(px(8.0))
-                    .disabled(state.is_busy())
-                    .child(icon("plus", 15.0, MUTED))
-                    .child(label(t("添加账户"), 12.0, MUTED))
-                    .on_press(store.open(Dialog::Account(None)))
-            })
-        }))
         .child(divider().my(px(10.0)))
         .child(dynamic(move || {
             store.read(|state| {
@@ -273,31 +268,17 @@ fn sidebar(store: Store, width: Memo<f32>) -> View {
             })),
         ))
         .child(
-            column()
-                .gap(px(8.0))
+            row()
+                .gap(px(6.0))
                 .pt(px(10.0))
-                .child(transfers::activity(store))
-                .child(divider())
+                .border_t_1()
+                .border_color(LINE)
+                .child(view().flex_1().min_w_0().child(transfers::activity(store)))
                 .child(dynamic(move || {
                     store.read(|state| {
-                        row()
-                            .justify_between()
-                            .child(
-                                button("account-settings", t("账户设置"))
-                                    .h(px(32.0))
-                                    .px(px(7.0))
-                                    .child(icon("settings-2", 15.0, MUTED))
-                                    .child(label(t("账户设置"), 11.0, TEXT))
-                                    .disabled(state.account().is_none() || state.is_busy())
-                                    .on_press(
-                                        store.open(Dialog::Account(Some(state.active_id.clone()))),
-                                    ),
-                            )
-                            .child(
-                                icon_button("help", t("使用帮助"), "circle-question-mark")
-                                    .disabled(state.is_busy())
-                                    .on_press(store.open(Dialog::Help)),
-                            )
+                        icon_button("help", t("使用帮助"), "circle-question-mark")
+                            .disabled(state.is_busy())
+                            .on_press(store.open(Dialog::Help))
                     })
                 })),
         )
@@ -366,35 +347,14 @@ fn account_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {
 
 fn account_menu(store: Store, id: &str, name: &str, disabled: bool) -> View {
     let action = |key, title: &'static str, image, ink, dialog| {
-        menu_item()
-            .test_id(&format!("account-{key}-{id}"))
-            .accessibility_label(title)
-            .h(px(32.0))
-            .px(px(8.0))
-            .rounded(px(5.0))
-            .flex_row()
-            .items_center()
-            .gap(px(7.0))
-            .hover(|style| style.bg(SUBTLE))
-            .focus(|style| style.bg(SUBTLE))
-            .child(icon(image, 14.0, ink))
-            .child(label(title, 12.0, ink))
+        sidebar_menu_item(&format!("account-{key}-{id}"), title, image, ink)
             .on_select(store.open(dialog))
     };
     view().absolute().top(px(3.0)).right(px(4.0)).child(
         menu()
             .align(Align::End)
             .offset(px(4.0))
-            .popup_style(|style| {
-                style
-                    .min_w(px(120.0))
-                    .p(px(4.0))
-                    .rounded(px(7.0))
-                    .border_1()
-                    .border_color(LINE)
-                    .bg(SURFACE)
-                    .shadow_md()
-            })
+            .popup_style(sidebar_menu_style)
             .trigger(
                 icon_button(
                     &format!("account-menu-{id}"),
@@ -421,6 +381,38 @@ fn account_menu(store: Store, id: &str, name: &str, disabled: bool) -> View {
     )
 }
 
+fn sidebar_menu_style(style: StyleRefinement) -> StyleRefinement {
+    style
+        .min_w(px(120.0))
+        .p(px(4.0))
+        .rounded(px(7.0))
+        .border_1()
+        .border_color(LINE)
+        .bg(SURFACE)
+        .shadow_md()
+}
+
+fn sidebar_menu_item(
+    id: &str,
+    title: &'static str,
+    image: &'static str,
+    ink: AdaptiveColor,
+) -> MenuItemElement {
+    menu_item()
+        .test_id(id)
+        .accessibility_label(title)
+        .h(px(32.0))
+        .px(px(8.0))
+        .rounded(px(5.0))
+        .flex_row()
+        .items_center()
+        .gap(px(7.0))
+        .hover(|style| style.bg(SUBTLE))
+        .focus(|style| style.bg(SUBTLE))
+        .child(icon(image, 14.0, ink))
+        .child(label(title, 12.0, ink))
+}
+
 fn bucket_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {
     if state.bucket_loading || state.buckets.is_empty() {
         let message = if state.bucket_loading {
@@ -438,10 +430,10 @@ fn bucket_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {
         .filter(|bucket| bucket.name.contains(&state.bucket_search))
         .map(|bucket| {
             let name = bucket.name.clone();
+            let selection = name.clone();
             let selected = name == state.bucket;
             let ink = if selected { ACCENT } else { MUTED };
-            button(&format!("bucket-{name}"), name.clone())
-                .key(name.clone())
+            let trigger = button(&format!("bucket-{name}"), name.clone())
                 .h(px(36.0))
                 .px(px(8.0))
                 .justify_start()
@@ -451,7 +443,28 @@ fn bucket_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {
                 .child(icon("database", 16.0, ink))
                 .child(label(name.clone(), 12.0, ink).truncate().flex_1().min_w_0())
                 .when(selected, |b| b.child(icon("chevron-right", 13.0, ink)))
-                .on_press(store.action(move |state| state.navigate(name.clone(), String::new())))
+                .on_press(
+                    store.action(move |state| state.navigate(selection.clone(), String::new())),
+                );
+            context_menu()
+                .key(name.clone())
+                .disabled(state.is_busy())
+                .popup_style(sidebar_menu_style)
+                .trigger(trigger)
+                .child(
+                    sidebar_menu_item(
+                        &format!("bucket-settings-{name}"),
+                        t("存储桶设置"),
+                        "settings-2",
+                        TEXT,
+                    )
+                    .on_select(store.action(move |state| {
+                        if state.bucket != name {
+                            state.navigate(name.clone(), String::new());
+                        }
+                        state.open_dialog(Dialog::BucketSettings);
+                    })),
+                )
                 .into_element()
         })
         .collect()
@@ -504,66 +517,20 @@ fn bucket_heading(store: Store, state: &Workspace) -> View {
     } else {
         state.bucket.clone()
     };
-    let region = state
-        .current_bucket()
-        .filter(|bucket| !bucket.connection.region.is_empty())
-        .map(|bucket| bucket.connection.region.clone())
-        .or_else(|| {
-            state.account().map(|account| {
-                state
-                    .s3_defaults
-                    .as_ref()
-                    .unwrap_or(&s3_studio_core::accounts::S3Defaults::default())
-                    .region_for(account)
-                    .to_owned()
-            })
-        })
-        .unwrap_or_else(|| t("未连接").into());
-    column()
-        .gap(px(5.0))
+    row()
+        .justify_between()
+        .gap(px(12.0))
         .child(
-            row()
-                .justify_between()
-                .gap(px(12.0))
-                .child(
-                    label(title, 26.0, INK)
-                        .truncate()
-                        .flex_1()
-                        .min_w_0()
-                        .font_weight(FontWeight::SEMIBOLD),
-                )
-                .child(
-                    primary("upload", t("上传文件"), false)
-                        .disabled(state.disabled())
-                        .on_press(store.open(Dialog::Upload)),
-                ),
+            label(title, 26.0, INK)
+                .truncate()
+                .flex_1()
+                .min_w_0()
+                .font_weight(FontWeight::SEMIBOLD),
         )
         .child(
-            row()
-                .gap(px(8.0))
-                .child(icon("database", 15.0, MUTED))
-                .child(
-                    label(
-                        if state.bucket.is_empty() {
-                            t("尚未选择存储桶")
-                        } else {
-                            &state.bucket
-                        }
-                        .to_owned(),
-                        11.0,
-                        MUTED,
-                    )
-                    .truncate(),
-                )
-                .child(dot())
-                .child(label(region, 11.0, MUTED))
-                .when(state.current_bucket().is_some(), |r| {
-                    r.child(
-                        icon_button("bucket-settings", t("存储桶设置"), "settings-2")
-                            .disabled(state.is_busy())
-                            .on_press(store.open(Dialog::BucketSettings)),
-                    )
-                }),
+            primary("upload", t("上传文件"), false)
+                .disabled(state.disabled())
+                .on_press(store.open(Dialog::Upload)),
         )
 }
 

@@ -56,9 +56,11 @@ Omarchy 包尚未加入 AUR 或 Omarchy 软件仓库，目前支持 x86_64。升
 
 ### 连接账户
 
-点击侧栏「添加账户」，输入名称、Access Key ID、Secret Access Key 和 Region。
+点击侧栏「工作空间」标题旁的 `+`，输入名称、Access Key ID、Secret Access Key 和 Region。
 
 工作空间卡片右上角的竖向省略号菜单提供「更新」和「删除」。删除前，弹窗会显示选中的工作空间名称。确认后只移除该工作空间在本机保存的连接配置和凭据。
+
+在侧栏右键点击存储桶，选择「存储桶设置」可编辑对应桶的连接配置。
 
 AWS 一般不填 Endpoint；访问桶时自动探测实际区域。临时凭据需同时输入 Session Token；更新 Access Key / Secret Key 时可以留空 Token 来清除原有 Token。编辑账户时两个密钥同时留空，会保留完整原有凭据。
 
@@ -78,7 +80,7 @@ MinIO 例子：Endpoint 为 `http://localhost:9000`，Region 为 `us-east-1`，�
 
 ### 语言、主题与并发设置
 
-从左下角打开「传输活动」，再点击面板里的设置图标。macOS 也可使用「S3 Studio → 设置…」或 ⌘,。
+macOS 使用「S3 Studio → 设置…」或 `⌘+,`。Windows 和 Linux 使用 `Ctrl+,`。
 
 - 语言：跟随系统、简体中文、English、한국어、日本語、Français、Deutsch 或 Русский。
 - 主题：跟随系统、亮色或暗色，默认跟随系统并响应外观变化。

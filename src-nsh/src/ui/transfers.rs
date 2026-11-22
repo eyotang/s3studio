@@ -40,11 +40,11 @@ fn panel(store: Store, state: &Workspace) -> View {
         .filter(|transfer| transfer.status == "paused")
         .count();
     let summary = if active > 0 {
-        crate::lf!("{active} 项正在传输", active = active)
+        Some(crate::lf!("{active} 项正在传输", active = active))
     } else if paused > 0 {
-        crate::lf!("{paused} 项已暂停", paused = paused)
+        Some(crate::lf!("{paused} 项已暂停", paused = paused))
     } else {
-        t("一切已就绪").into()
+        None
     };
     controls::panel()
         .test_id("transfers-panel")
@@ -59,7 +59,7 @@ fn panel(store: Store, state: &Workspace) -> View {
                         .min_w_0()
                         .font_weight(FontWeight::MEDIUM),
                 )
-                .child(label(summary, 10.0, MUTED))
+                .child(summary.map(|summary| label(summary, 10.0, MUTED)))
                 .child(
                     label(
                         crate::lf!("{} 路并发", state.settings.concurrency),
@@ -70,11 +70,6 @@ fn panel(store: Store, state: &Workspace) -> View {
                     .py(px(3.0))
                     .rounded(px(5.0))
                     .bg(SELECTED),
-                )
-                .child(
-                    icon_button("transfer-settings", t("传输设置"), "settings-2")
-                        .disabled(!state.can_open_app_dialog())
-                        .on_press(store.open(Dialog::TransferSettings)),
                 ),
         )
         .when(!state.transfer_error.is_empty(), |panel| {

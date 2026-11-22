@@ -174,7 +174,7 @@ fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
 
 fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> {
     let body = match dialog {
-        Dialog::Account(id) => column().gap(px(11.0))
+        Dialog::Account(_) => column().gap(px(11.0))
             .child(field(store, state, "name", t("账户名称"), true))
             .child(connection(store, state, S3Option::Endpoint, "Endpoint", false))
             .child(connection(store, state, S3Option::Region, "Region", false))
@@ -187,13 +187,7 @@ fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> 
                     .disabled(state.is_busy()).gap(px(7.0)).items_center()
                     .child(label(t("使用路径风格访问"), 11.0, TEXT))
                     .on_change(move |checked: &bool| store.change(|state| state.form.path_style = *checked)))
-                .child(label(t("MinIO 等服务推荐开启"), 10.0, MUTED)))
-            .child(id.as_ref().map(|id| {
-                button("remove-account", t("移除账户"))
-                    .h(px(32.0)).justify_start().px(px(4.0))
-                    .child(icon("trash", 15.0, DANGER)).child(label(t("移除账户"), 11.0, DANGER))
-                    .disabled(state.is_busy()).on_press(store.open(Dialog::RemoveAccount(id.clone())))
-            })),
+                .child(label(t("MinIO 等服务推荐开启"), 10.0, MUTED))),
         Dialog::Folder => field(store, state, "name", t("文件夹名称"), true),
         Dialog::LocatePath => column().gap(px(10.0))
             .child(field(store, state, "path", t("完整路径"), true))
@@ -225,7 +219,10 @@ fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> 
             t("③ 使用 ⌘ / Ctrl + F 搜索，Escape 关闭弹窗或取消选择。"),
             t("删除目录会同时删除其中所有文件和子目录。分享链接有效期 1 小时。传输活动支持暂停、继续和失败重试；关闭应用后，再次打开可从断点继续。"),
             t("首次使用需具备相应的 S3 权限；Ubuntu 需启动支持 Secret Service 的密钥库。"),
-        ].map(|message| label(message, 12.0, TEXT))),
+        ].map(|message| label(message, 12.0, TEXT)))
+            .child(row().gap(px(8.0))
+                .child(label(t("设置"), 12.0, TEXT))
+                .child(label(nsh_core::element::key_label("mod+,"), 12.0, MUTED))),
         Dialog::About => column().gap(px(6.0))
             .child(label(crate::lf!("版本 {}", env!("CARGO_PKG_VERSION")), 14.0, TEXT).test_id("about-version"))
             .child(label(t("跨平台 S3 文件工作空间"), 12.0, MUTED)),
