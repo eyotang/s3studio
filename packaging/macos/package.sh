@@ -7,7 +7,7 @@ version=${S3_STUDIO_VERSION:?}
 name=${S3_STUDIO_NAME:?}
 app="$work/${name}.app"
 
-lipo -verify_arch arm64 x86_64 "$binary"
+lipo "$binary" -verify_arch arm64 x86_64
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 install -m755 "$binary" "$app/Contents/MacOS/s3-studio"
 install -m644 src-nsh/icons/icon.icns "$app/Contents/Resources/s3-studio.icns"
