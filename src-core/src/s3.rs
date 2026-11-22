@@ -193,6 +193,8 @@ pub struct ObjectPage {
     pub next_token: Option<String>,
 }
 
+pub const TREE_PAGE_SIZE: usize = 200;
+
 pub async fn list_buckets(store: &AccountStore, account_id: String) -> Result<Vec<Bucket>, String> {
     let account = store.account(&account_id).await?;
     let defaults = get_s3_defaults(store).await;
@@ -290,6 +292,16 @@ fn listed_object(item: &Object, key: String, folder: bool) -> S3Object {
     }
 }
 
+fn directory_entry(key: String) -> S3Object {
+    S3Object {
+        key,
+        size: 0,
+        modified: String::new(),
+        storage_class: String::new(),
+        folder: true,
+    }
+}
+
 async fn fetch_objects(
     client: &Client,
     bucket: &str,
@@ -304,13 +316,7 @@ async fn fetch_objects(
     let mut objects = Vec::new();
     for item in response.common_prefixes() {
         if let Some(key) = item.prefix() {
-            objects.push(S3Object {
-                key: key.into(),
-                size: 0,
-                modified: "".into(),
-                storage_class: "".into(),
-                folder: true,
-            });
+            objects.push(directory_entry(key.into()));
         }
     }
     for item in response.contents() {
@@ -324,6 +330,92 @@ async fn fetch_objects(
         objects,
         next_token: response.next_continuation_token().map(str::to_owned),
     })
+}
+
+pub async fn list_tree_level(
+    store: &AccountStore,
+    account_id: String,
+    bucket: String,
+    prefix: String,
+    token: Option<String>,
+) -> Result<ObjectPage, String> {
+    let client = bucket_client(store, &account_id, &bucket).await?;
+    fetch_tree_level(&client, &bucket, &prefix, token).await
+}
+
+async fn fetch_tree_level(
+    client: &Client,
+    bucket: &str,
+    prefix: &str,
+    token: Option<String>,
+) -> Result<ObjectPage, String> {
+    let page = object_listing(client, bucket, prefix, token)
+        .max_keys(TREE_PAGE_SIZE as i32)
+        .delimiter("/")
+        .encoding_type(EncodingType::Url)
+        .send()
+        .await
+        .map_err(failure)?;
+    let encoded = page.encoding_type() == Some(&EncodingType::Url);
+    let invalid_key = || crate::i18n::t("服务端返回了无效的对象键或大小。");
+    let mut folders = BTreeSet::new();
+    for item in page.common_prefixes() {
+        let key = decode_listed_key(item.prefix().ok_or_else(invalid_key)?, encoded)?;
+        let offset = key
+            .strip_prefix(prefix)
+            .and_then(|suffix| suffix.find('/'))
+            .ok_or_else(invalid_key)?;
+        folders.insert(key[..prefix.len() + offset + 1].to_owned());
+    }
+    let mut objects = Vec::new();
+    let mut files = BTreeSet::new();
+    for item in page.contents() {
+        let object = scanned_object(item, prefix, encoded)?;
+        if let Some(offset) = object.key[prefix.len()..].find('/') {
+            folders.insert(object.key[..prefix.len() + offset + 1].to_owned());
+        } else if !object.folder && files.insert(object.key.clone()) {
+            // A nonempty object whose key equals this prefix is a file in it.
+            objects.push(object);
+        }
+    }
+    objects.extend(folders.into_iter().map(directory_entry));
+    let next = page.next_continuation_token();
+    let next_token = if page.is_truncated().unwrap_or(next.is_some()) {
+        Some(
+            next.filter(|token| !token.is_empty())
+                .ok_or_else(|| crate::i18n::t("服务端未返回有效的分页标记。"))?
+                .to_owned(),
+        )
+    } else {
+        None
+    };
+    Ok(ObjectPage {
+        objects,
+        next_token,
+    })
+}
+
+fn decode_listed_key(key: &str, encoded: bool) -> Result<String, String> {
+    if encoded {
+        Ok(percent_encoding::percent_decode_str(key)
+            .decode_utf8()
+            .map_err(|_| crate::i18n::t("服务端返回了无法解码的对象键。"))?
+            .into_owned())
+    } else {
+        Ok(key.to_owned())
+    }
+}
+
+fn scanned_object(item: &Object, prefix: &str, encoded: bool) -> Result<S3Object, String> {
+    let key = item
+        .key()
+        .ok_or_else(|| crate::i18n::t("服务端列出的对象缺少键名。"))?;
+    let key = decode_listed_key(key, encoded)?;
+    if !key.starts_with(prefix) || key.is_empty() || item.size().is_none_or(|size| size < 0) {
+        return Err(crate::i18n::t("服务端返回了无效的对象键或大小。").into());
+    }
+    let folder = key.ends_with('/') && item.size() == Some(0);
+    Ok(listed_object(item, key, folder))
 }
 
 /// Enumerates current objects beneath a prefix using one flat, paginated listing.
@@ -355,23 +447,7 @@ async fn scan_listing(
         let encoded = page.encoding_type() == Some(&EncodingType::Url);
         let mut objects = Vec::with_capacity(page.contents().len());
         for item in page.contents() {
-            let key = item
-                .key()
-                .ok_or_else(|| crate::i18n::t("服务端列出的对象缺少键名。"))?;
-            let key = if encoded {
-                percent_encoding::percent_decode_str(key)
-                    .decode_utf8()
-                    .map_err(|_| crate::i18n::t("服务端返回了无法解码的对象键。"))?
-                    .into_owned()
-            } else {
-                key.to_owned()
-            };
-            if !key.starts_with(prefix) || key.is_empty() || item.size().is_none_or(|size| size < 0)
-            {
-                return Err(crate::i18n::t("服务端返回了无效的对象键或大小。").into());
-            }
-            let folder = key.ends_with('/') && item.size() == Some(0);
-            objects.push(listed_object(item, key, folder));
+            objects.push(scanned_object(item, prefix, encoded)?);
         }
         let next = page.next_continuation_token();
         if !page.is_truncated().unwrap_or(next.is_some()) {
@@ -984,6 +1060,35 @@ mod tests {
         assert!(pages[1][0].folder);
         assert_eq!(pages[1][1].key, "design/photos/a%2Fb/");
         assert!(!pages[1][1].folder);
+    }
+
+    #[tokio::test]
+    async fn tree_level_lists_only_one_layer_and_preserves_slash_ending_files() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let client = test_client(format!("http://{}", server.server_addr()));
+        let thread = std::thread::spawn(move || {
+            let request = server
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+                .unwrap();
+            assert!(request.url().contains("prefix=design%2F"));
+            assert!(request.url().contains("delimiter=%2F"));
+            assert!(request.url().contains("max-keys=200"));
+            assert!(request.url().contains("encoding-type=url"));
+            request.respond(tiny_http::Response::from_string(r#"<ListBucketResult><EncodingType>url</EncodingType><IsTruncated>true</IsTruncated><NextContinuationToken>next</NextContinuationToken><CommonPrefixes><Prefix>design%2Fphotos%2F</Prefix></CommonPrefixes><Contents><Key>design%2F</Key><Size>12</Size></Contents><Contents><Key>design%2Fphotos%2Fdeep%2Ffile.png</Key><Size>9</Size></Contents><Contents><Key>design%2Fnotes%252F.txt</Key><Size>2</Size></Contents></ListBucketResult>"#)).unwrap();
+        });
+        let page = fetch_tree_level(&client, "test-bucket", "design/", None)
+            .await
+            .unwrap();
+        thread.join().unwrap();
+        assert_eq!(page.next_token.as_deref(), Some("next"));
+        assert_eq!(page.objects.len(), 3);
+        assert_eq!(page.objects[0].key, "design/");
+        assert!(!page.objects[0].folder);
+        assert_eq!(page.objects[0].size, 12);
+        assert_eq!(page.objects[1].key, "design/notes%2F.txt");
+        assert_eq!(page.objects[2].key, "design/photos/");
+        assert!(page.objects[2].folder);
     }
 
     #[tokio::test]

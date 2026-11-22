@@ -325,5 +325,8 @@
   "缓存待刷新": "Cache needs refresh",
   "正在读取目录缓存…": "Reading directory cache…",
   "上一页": "Previous page",
-  "下一页": "Next page"
+  "下一页": "Next page",
+  "计算大小中…": "Calculating size…",
+  "统计完成前，搜索范围为已加载的目录页。": "Search covers loaded directory pages until the scan finishes.",
+  "服务端未返回有效的分页标记。": "The server did not return a valid continuation token."
 }

@@ -45,6 +45,8 @@ pub struct Backend {
     pub preview: bool,
     preview_defaults: Arc<Mutex<accounts::S3Defaults>>,
     updater: Arc<crate::updater::UpdaterState>,
+    #[cfg(test)]
+    preview_scan_gate: Option<Arc<tokio::sync::Semaphore>>,
 }
 
 pub struct TreeTask {
@@ -127,6 +129,8 @@ impl Backend {
                 preview,
                 preview_defaults: Default::default(),
                 updater,
+                #[cfg(test)]
+                preview_scan_gate: None,
             },
             receiver,
         ))
@@ -134,6 +138,11 @@ impl Backend {
     #[cfg(test)]
     pub fn event_sender(&self) -> UnboundedSender<Message> {
         self.sender.clone()
+    }
+
+    #[cfg(test)]
+    pub fn hold_preview_scan(&mut self, gate: Arc<tokio::sync::Semaphore>) {
+        self.preview_scan_gate = Some(gate);
     }
     pub fn request(&self, id: u64, command: &'static str, args: Value) {
         let services = self.services.clone();
@@ -181,6 +190,8 @@ impl Backend {
         let sender = self.sender.clone();
         let cancel = Arc::new(AtomicBool::new(false));
         let scan_cancel = cancel.clone();
+        #[cfg(test)]
+        let preview_gate = self.preview_scan_gate.clone();
         let task = self
             .runtime
             .spawn(async move {
@@ -223,6 +234,10 @@ impl Backend {
                         )
                         .await?;
                     } else {
+                        #[cfg(test)]
+                        if let Some(gate) = preview_gate {
+                            gate.acquire().await.map_err(cache_error)?.forget();
+                        }
                         tokio::task::block_in_place(|| {
                             scan.append(&preview_objects(&scope.prefix, true))
                         })
@@ -392,6 +407,16 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             )
             .await,
         ),
+        "list_tree_level" => value(
+            s3::list_tree_level(
+                store,
+                account,
+                bucket,
+                text("prefix"),
+                args["token"].as_str().map(str::to_owned),
+            )
+            .await,
+        ),
         "create_bucket" => {
             let _changes = cache.mutations.lock().await;
             let name = text("name");
@@ -552,7 +577,7 @@ fn preview(
             {"name":"application-backups","created":"2026-07-10T08:00:00Z"},
             {"name":"team-documents","created":"2026-06-12T08:00:00Z"}
         ])),
-        "list_objects" => {
+        "list_objects" | "list_tree_level" => {
             let prefix = args["prefix"].as_str().unwrap_or_default();
             value(Ok(s3::ObjectPage {
                 objects: preview_objects(prefix, false),

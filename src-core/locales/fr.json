@@ -325,5 +325,8 @@
   "缓存待刷新": "Cache à actualiser",
   "正在读取目录缓存…": "Lecture du cache des dossiers…",
   "上一页": "Page précédente",
-  "下一页": "Page suivante"
+  "下一页": "Page suivante",
+  "计算大小中…": "Calcul de la taille…",
+  "统计完成前，搜索范围为已加载的目录页。": "La recherche couvre les pages déjà chargées jusqu’à la fin de l’analyse.",
+  "服务端未返回有效的分页标记。": "Le serveur n’a pas renvoyé de jeton de continuation valide."
 }

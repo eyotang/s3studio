@@ -15,7 +15,7 @@ use std::{
     time::Duration,
 };
 
-const PAGE_SIZE: usize = 200;
+const PAGE_SIZE: usize = s3_studio_core::s3::TREE_PAGE_SIZE;
 const ROOT_ID: i64 = 1;
 const ENTRY_FIELDS: &str =
     "n.id, n.parent, n.key, n.folder, n.bytes, n.objects, n.modified, n.storage_class";
@@ -433,7 +433,7 @@ fn browse(conn: &Connection, root: Record, options: &TreeOptions) -> Result<Vec<
             }
             pending.push(Visit::Row(TreeRow::Entry {
                 item: child.item,
-                parent_bytes: branch.item.totals.bytes,
+                parent_bytes: Some(branch.item.totals.bytes),
                 depth,
                 expandable,
                 expanded,
@@ -532,7 +532,7 @@ fn search(conn: &Connection, root: Record, options: &TreeOptions) -> Result<Vec<
         let bytes = record.item.totals.bytes;
         rows.push(TreeRow::Entry {
             item: record.item,
-            parent_bytes,
+            parent_bytes: Some(parent_bytes),
             depth,
             expandable,
             expanded,

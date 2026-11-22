@@ -91,7 +91,7 @@ pub enum TreePage {
 pub enum TreeRow {
     Entry {
         item: TreeEntry,
-        parent_bytes: u128,
+        parent_bytes: Option<u128>,
         depth: usize,
         expandable: bool,
         expanded: bool,
@@ -102,13 +102,25 @@ pub enum TreeRow {
         previous: Option<TreePage>,
         next: Option<TreePage>,
     },
+    Level {
+        parent: String,
+        depth: usize,
+        status: LevelStatus,
+    },
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum LevelStatus {
+    Loading,
+    Empty,
+    Failed { error: String, page: usize },
 }
 
 impl TreeRow {
     pub fn entry(&self) -> Option<&TreeEntry> {
         match self {
             Self::Entry { item, .. } => Some(item),
-            Self::Pager { .. } => None,
+            Self::Pager { .. } | Self::Level { .. } => None,
         }
     }
 }
@@ -158,3 +170,6 @@ pub struct TreeListing {
     pub scanned_at: i64,
     pub dirty: bool,
 }
+mod live;
+
+pub use live::LiveTree;

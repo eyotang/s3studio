@@ -325,5 +325,8 @@
   "缓存待刷新": "Cache aktualisieren",
   "正在读取目录缓存…": "Ordnercache wird gelesen…",
   "上一页": "Vorherige Seite",
-  "下一页": "Nächste Seite"
+  "下一页": "Nächste Seite",
+  "计算大小中…": "Größe wird berechnet…",
+  "统计完成前，搜索范围为已加载的目录页。": "Bis zum Ende des Scans werden die geladenen Verzeichnisseiten durchsucht.",
+  "服务端未返回有效的分页标记。": "Der Server hat kein gültiges Fortsetzungstoken zurückgegeben."
 }

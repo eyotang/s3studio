@@ -210,16 +210,83 @@ fn bucket_options_can_be_added_reused_and_removed() {
 }
 
 struct Events(mpsc::Sender<UnboundedSender<Message>>);
+struct ScanGate(std::sync::Arc<tokio::sync::Semaphore>);
 
 #[component]
 fn TestWorkspace() -> impl IntoElement {
-    let (backend, receiver) = Backend::open(true).unwrap();
-    engine_context::<Events>()
-        .unwrap()
-        .0
-        .send(backend.event_sender())
-        .unwrap();
+    let (mut backend, receiver) = Backend::open(true).unwrap();
+    if let Some(events) = engine_context::<Events>() {
+        events.0.send(backend.event_sender()).unwrap();
+    }
+    if let Some(gate) = engine_context::<ScanGate>() {
+        backend.hold_preview_scan(gate.0.clone());
+    }
     ui::workspace(Store::new(backend, receiver))
+}
+
+fn paused_scan() -> (Headless, std::sync::Arc<tokio::sync::Semaphore>) {
+    let gate = std::sync::Arc::new(tokio::sync::Semaphore::new(0));
+    let mut config = desktop_config(Root::of::<TestWorkspace>());
+    config.context = config.context.with(ScanGate(gate.clone()));
+    let mut app = Headless::start(config).unwrap();
+    app.wait_for("id:object-Brand assets/").unwrap();
+    app.press("id:tree-view").unwrap();
+    app.wait_for("id:tree-scanning").unwrap();
+    (app, gate)
+}
+
+#[test]
+fn lists_and_expands_a_cold_tree_before_the_size_scan_finishes() {
+    let (mut app, gate) = paused_scan();
+    let folder = "id:tree-folder-Brand assets/";
+    let guides = "id:tree-folder-Brand assets/Guides/";
+    let file = "id:tree-file-Brand assets/Guides/Usage.pdf";
+    let pending = "id:tree-size-pending-Brand assets/";
+
+    app.wait_for(pending).unwrap();
+    assert!(!app.screen().matches("id:tree-totals").unwrap());
+    app.press(folder).unwrap();
+    app.wait_for(guides).unwrap();
+    app.press(guides).unwrap();
+    app.wait_for(file).unwrap();
+    app.press("id:tree-check-file-Brand assets/Guides/Usage.pdf")
+        .unwrap();
+    assert!(app.screen().enabled("id:download-selection").unwrap());
+
+    app.press("id:list-view").unwrap();
+    app.wait_for("id:object-Brand assets/").unwrap();
+    app.press("id:tree-view").unwrap();
+    app.wait_for(file).unwrap();
+    app.wait_for(pending).unwrap();
+    gate.add_permits(1);
+    app.wait_for("id:tree-totals").unwrap();
+    app.wait_for_gone(pending, WAIT).unwrap();
+    app.wait_for(file).unwrap();
+    app.wait_for("97.5%").unwrap();
+
+    app.press("id:refresh").unwrap();
+    app.wait_for("id:tree-scanning").unwrap();
+    assert!(app.screen().matches("id:tree-totals").unwrap());
+    assert!(!app.screen().matches(pending).unwrap());
+    app.press("id:tree-cancel-scan").unwrap();
+    app.wait_for_gone("id:tree-scanning", WAIT).unwrap();
+    app.wait_for("id:tree-totals").unwrap();
+}
+
+#[test]
+fn canceled_size_scan_keeps_browsing_available() {
+    let (mut app, gate) = paused_scan();
+    app.press("id:bucket-application-backups").unwrap();
+    app.wait_for("id:tree-size-pending-Brand assets/").unwrap();
+    app.press("id:tree-cancel-scan").unwrap();
+    app.wait_for_gone("id:tree-size-pending-Brand assets/", WAIT)
+        .unwrap();
+    app.press("id:tree-folder-Brand assets/").unwrap();
+    app.wait_for("id:tree-file-Brand assets/Logo.svg").unwrap();
+    app.press("id:tree-rescan").unwrap();
+    app.wait_for("id:tree-size-pending-Brand assets/").unwrap();
+    gate.add_permits(1);
+    app.wait_for("id:tree-totals").unwrap();
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    object_tree::{Totals, TreeRow, TreeSort},
+    object_tree::{LevelStatus, Totals, TreePage, TreeRow, TreeSort},
     tree_cache,
     workspace::TreeStatus,
 };
@@ -45,8 +45,9 @@ pub(super) fn objects(store: Store) -> View {
         rows.with(|rows| {
             rows.iter()
                 .map(|entry| match entry {
-                    TreeRow::Entry { item, .. } => (false, item.key.key.clone(), item.key.folder),
-                    TreeRow::Pager { parent, .. } => (true, parent.clone(), false),
+                    TreeRow::Entry { item, .. } => (0, item.key.key.clone(), item.key.folder),
+                    TreeRow::Pager { parent, .. } => (1, parent.clone(), false),
+                    TreeRow::Level { parent, .. } => (2, parent.clone(), false),
                 })
                 .collect::<Vec<_>>()
         })
@@ -74,7 +75,13 @@ pub(super) fn objects(store: Store) -> View {
 }
 
 pub(super) fn summary(state: &Workspace) -> Option<View> {
-    let totals = state.tree.totals?;
+    let Some(totals) = state.tree.totals else {
+        return (!state.search.is_empty() && !state.bucket.is_empty()).then(|| {
+            row()
+                .min_w_0()
+                .child(label(t("统计完成前，搜索范围为已加载的目录页。"), 11.0, MUTED).truncate())
+        });
+    };
     let scanned_at = state.tree.scanned_at?;
     let scan_time = chrono::DateTime::from_timestamp_millis(scanned_at)?
         .with_timezone(&chrono::Local)
@@ -127,10 +134,18 @@ fn progress_label(totals: Totals) -> String {
 }
 
 fn activity(store: Store, state: &Workspace) -> Option<View> {
-    state.tree.totals?;
     let bar = row().px(px(12.0)).py(px(4.0)).gap(px(8.0));
+    let retry = || {
+        button("tree-rescan", t("重新扫描"))
+            .disabled(state.is_busy())
+            .px(px(6.0))
+            .h(px(26.0))
+            .child(label(t("重新扫描"), 11.0, ACCENT))
+            .on_press(store.action(Workspace::refresh_objects))
+    };
     Some(match &state.tree.status {
         TreeStatus::Scanning(totals) => bar
+            .test_id("tree-scanning")
             .child(icon("loader-circle", 15.0, ACCENT))
             .child(label(progress_label(*totals), 11.0, MUTED))
             .child(
@@ -140,8 +155,13 @@ fn activity(store: Store, state: &Workspace) -> Option<View> {
                     .child(label(t("取消扫描"), 11.0, ACCENT))
                     .on_press(store.action(Workspace::cancel_tree_scan)),
             ),
-        TreeStatus::Failed(error) => bar.child(error_notice(error)),
-        _ if !state.tree.query_error.is_empty() => bar.child(error_notice(&state.tree.query_error)),
+        TreeStatus::Cancelled if state.tree.totals.is_none() => bar
+            .child(label(t("已取消扫描"), 11.0, MUTED))
+            .child(retry()),
+        TreeStatus::Failed(error) => bar.child(error_notice(error)).child(retry()),
+        _ if !state.tree.query_error.is_empty() => bar
+            .child(error_notice(&state.tree.query_error))
+            .child(retry()),
         _ if state.tree.querying() || matches!(state.tree.status, TreeStatus::Opening) => {
             bar.child(label(t("正在读取目录缓存…"), 11.0, MUTED).test_id("tree-querying"))
         }
@@ -150,42 +170,14 @@ fn activity(store: Store, state: &Workspace) -> Option<View> {
 }
 
 fn scan_state(store: Store, state: &Workspace) -> View {
-    let panel = column()
-        .min_h(px(175.0))
-        .items_center()
-        .justify_center()
-        .gap(px(10.0))
-        .p(px(16.0));
-    let retry = || {
-        secondary("tree-rescan", t("重新扫描"))
-            .disabled(state.is_busy())
-            .on_press(store.action(Workspace::refresh_objects))
-    };
-    match &state.tree.status {
-        TreeStatus::Scanning(totals) if state.tree.totals.is_none() => panel
-            .test_id("tree-scanning")
-            .child(icon("loader-circle", 25.0, ACCENT))
-            .child(label(t("正在扫描目录及其子目录"), 15.0, TEXT).font_weight(FontWeight::MEDIUM))
-            .child(label(progress_label(*totals), 11.0, MUTED))
-            .child(
-                secondary("tree-cancel-scan", t("取消扫描"))
-                    .on_press(store.action(Workspace::cancel_tree_scan)),
-            ),
-        TreeStatus::Cancelled if state.tree.totals.is_none() => panel
-            .child(label(t("已取消扫描"), 15.0, TEXT))
-            .child(retry()),
-        TreeStatus::Failed(error) if state.tree.totals.is_none() => {
-            panel.child(error_notice(error)).child(retry())
-        }
-        _ if !state.tree.query_error.is_empty() && state.tree.totals.is_none() => panel
-            .child(error_notice(&state.tree.query_error))
-            .child(retry()),
-        _ if state.tree.totals.is_none()
-            && (state.tree.querying() || matches!(state.tree.status, TreeStatus::Opening)) =>
-        {
-            panel.child(label(t("正在读取目录缓存…"), 15.0, TEXT))
-        }
-        _ => empty_state(store, state),
+    if state.tree.querying() || matches!(state.tree.status, TreeStatus::Opening) {
+        column()
+            .min_h(px(175.0))
+            .justify_center()
+            .items_center()
+            .child(label(t("正在加载文件"), 15.0, MUTED))
+    } else {
+        empty_state(store, state)
     }
 }
 
@@ -265,36 +257,7 @@ fn item(store: Store, state: &Workspace, entry: &TreeRow) -> View {
         expanded,
     } = entry
     else {
-        let TreeRow::Pager {
-            parent,
-            depth,
-            previous,
-            next,
-        } = entry
-        else {
-            unreachable!()
-        };
-        let mut bar = row()
-            .h(px(ROW_HEIGHT))
-            .gap(px(6.0))
-            .pl(px(CHECK_WIDTH + (*depth).min(8) as f32 * 14.0))
-            .border_b_1()
-            .border_color(LINE)
-            .bg(SUBTLE);
-        for (id, title, page) in [("prev", t("上一页"), previous), ("next", t("下一页"), next)]
-        {
-            if let Some(page) = page.clone() {
-                bar = bar.child(
-                    button(&format!("tree-{id}-{parent}"), title.to_owned())
-                        .disabled(disabled)
-                        .px(px(8.0))
-                        .h(px(30.0))
-                        .child(label(title, 11.0, ACCENT))
-                        .on_press(store.action(move |state| state.page_tree(page.clone()))),
-                );
-            }
-        }
-        return bar;
+        return level_controls(store, entry, disabled);
     };
     let (depth, expandable, expanded) = (*depth, *expandable, *expanded);
     let selected = state.tree.selected.contains(&item.key);
@@ -303,15 +266,31 @@ fn item(store: Store, state: &Workspace, entry: &TreeRow) -> View {
     let name = item.key.name();
     let check_key = item.key.clone();
     let press_key = item.key.clone();
-    let fraction = if *parent_bytes == 0 {
-        0.0
+    let fraction = parent_bytes.map(|parent| {
+        if parent == 0 {
+            0.0
+        } else {
+            item.totals.bytes as f64 / parent as f64
+        }
+    });
+    let share = fraction.map_or_else(
+        || "—".into(),
+        |fraction| {
+            if fraction > 0.0 && fraction < 0.001 {
+                "<0.1%".into()
+            } else {
+                format!("{:.1}%", fraction * 100.0)
+            }
+        },
+    );
+    let unknown = folder && parent_bytes.is_none();
+    let calculating = unknown && state.tree.calculating();
+    let size = if calculating {
+        t("计算大小中…").into()
+    } else if unknown {
+        "—".into()
     } else {
-        item.totals.bytes as f64 / *parent_bytes as f64
-    };
-    let share = if fraction > 0.0 && fraction < 0.001 {
-        "<0.1%".into()
-    } else {
-        format!("{:.1}%", fraction * 100.0)
+        model::bytes(item.totals.bytes)
     };
     row()
         .h(px(ROW_HEIGHT))
@@ -378,8 +357,17 @@ fn item(store: Store, state: &Workspace, entry: &TreeRow) -> View {
                     }
                 })),
         )
-        .child(stat_column(SIZE_WIDTH, model::bytes(item.totals.bytes)))
-        .child(stat_column(COUNT_WIDTH, item.totals.objects.to_string()))
+        .child(stat_column(SIZE_WIDTH, size).when(calculating, |cell| {
+            cell.test_id(&format!("tree-size-pending-{}", item.key.key))
+        }))
+        .child(stat_column(
+            COUNT_WIDTH,
+            if unknown {
+                "—".into()
+            } else {
+                item.totals.objects.to_string()
+            },
+        ))
         .child(
             row()
                 .w(px(SHARE_WIDTH))
@@ -387,7 +375,15 @@ fn item(store: Store, state: &Workspace, entry: &TreeRow) -> View {
                 .justify_end()
                 .pr(px(12.0))
                 .gap(px(6.0))
-                .child(progress(fraction as f32, if folder { FOLDER } else { ACCENT }).w(px(49.0)))
+                .when(fraction.is_some(), |cell| {
+                    cell.child(
+                        progress(
+                            fraction.unwrap_or_default() as f32,
+                            if folder { FOLDER } else { ACCENT },
+                        )
+                        .w(px(49.0)),
+                    )
+                })
                 .child(
                     row()
                         .w(px(44.0))
@@ -395,6 +391,75 @@ fn item(store: Store, state: &Workspace, entry: &TreeRow) -> View {
                         .child(label(share, 11.0, MUTED)),
                 ),
         )
+}
+
+fn level_controls(store: Store, entry: &TreeRow, disabled: bool) -> View {
+    let bar = |depth: usize| {
+        row()
+            .h(px(ROW_HEIGHT))
+            .gap(px(6.0))
+            .pl(px(CHECK_WIDTH + depth.min(8) as f32 * 14.0))
+            .pr(px(12.0))
+            .border_b_1()
+            .border_color(LINE)
+            .bg(SUBTLE)
+    };
+    match entry {
+        TreeRow::Pager {
+            parent,
+            depth,
+            previous,
+            next,
+        } => {
+            let mut controls = bar(*depth);
+            for (id, title, page) in [("prev", t("上一页"), previous), ("next", t("下一页"), next)]
+            {
+                if let Some(page) = page.clone() {
+                    controls = controls.child(
+                        button(&format!("tree-{id}-{parent}"), title.to_owned())
+                            .disabled(disabled)
+                            .px(px(8.0))
+                            .h(px(30.0))
+                            .child(label(title, 11.0, ACCENT))
+                            .on_press(store.action(move |state| state.page_tree(page.clone()))),
+                    );
+                }
+            }
+            controls
+        }
+        TreeRow::Level {
+            parent,
+            depth,
+            status,
+        } => match status {
+            LevelStatus::Loading => bar(*depth)
+                .child(icon("loader-circle", 13.0, MUTED))
+                .child(label(t("正在加载文件"), 11.0, MUTED)),
+            LevelStatus::Empty => bar(*depth).child(label(t("这里还没有文件"), 11.0, MUTED)),
+            LevelStatus::Failed { error, page } => {
+                let retry = TreePage::Directory {
+                    parent: parent.clone(),
+                    page: *page,
+                };
+                bar(*depth)
+                    .child(
+                        label(error.clone(), 11.0, DANGER)
+                            .truncate()
+                            .min_w_0()
+                            .flex_1(),
+                    )
+                    .child(
+                        button(&format!("tree-retry-{parent}"), t("重试"))
+                            .disabled(disabled)
+                            .px(px(6.0))
+                            .h(px(26.0))
+                            .child(label(t("重试"), 11.0, ACCENT))
+                            .on_press(store.action(move |state| state.page_tree(retry.clone()))),
+                    )
+            }
+        },
+        TreeRow::Entry { .. } => unreachable!(),
+    }
 }
 
 fn stat_column(width: f32, value: String) -> View {

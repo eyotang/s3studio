@@ -680,23 +680,32 @@ fn inspector(store: Store, state: &Workspace) -> View {
         return panel.child(label(t("选择一个对象以查看详情。"), 11.0, MUTED));
     };
     let info = state.info.as_ref();
-    let folder_totals = if object.folder && state.object_view == ObjectView::Tree {
-        state
-            .tree
-            .selected
-            .first()
-            .and_then(|key| state.tree.entry(key))
-            .map(|item| item.totals)
-    } else {
-        None
-    };
+    let folder_totals =
+        if object.folder && state.object_view == ObjectView::Tree && state.tree.totals.is_some() {
+            state
+                .tree
+                .selected
+                .first()
+                .and_then(|key| state.tree.entry(key))
+                .map(|item| item.totals)
+        } else {
+            None
+        };
     let mut entries = vec![
         (t("对象键").into(), object.key.clone()),
         (
             t("大小").into(),
             if object.folder {
-                folder_totals
-                    .map_or_else(|| t("文件夹").into(), |totals| model::bytes(totals.bytes))
+                folder_totals.map_or_else(
+                    || {
+                        if state.object_view == ObjectView::Tree && state.tree.calculating() {
+                            t("计算大小中…").into()
+                        } else {
+                            t("文件夹").into()
+                        }
+                    },
+                    |totals| model::bytes(totals.bytes),
+                )
             } else {
                 model::bytes(info.map_or(object.size, |info| info.size).max(0) as u128)
             },
