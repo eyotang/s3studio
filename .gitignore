@@ -22,4 +22,4 @@ transfers.json
 src-core/target/
 src-gpui/target/
 
-src-gpui/bundle/
+src-nsh/target/

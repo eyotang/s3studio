@@ -20,13 +20,13 @@ S3 Studio는 클라우드 파일을 하나의 깔끔한 작업 공간에서 관�
 
 [GitHub Releases](https://github.com/eyotang/s3studio/releases/latest)에서 최신 버전을 다운로드하세요. 설치 전에 해당 릴리스의 `SHA256SUMS.txt`로 파일을 확인하세요.
 
-| 플랫폼                      | 패키지           | 설치 방법                             |
-| --------------------------- | ---------------- | ------------------------------------- |
-| macOS Apple Silicon / Intel | Universal `.dmg` | S3 Studio를 응용 프로그램으로 드래그  |
-| Windows x64                 | `.exe` / `.msi`  | 설치 프로그램 실행                    |
-| Ubuntu 22.04+ amd64         | `.deb`           | 시스템 패키지 설치기로 열기           |
-| Linux x86_64                | `.AppImage`      | 실행 권한을 부여한 뒤 실행            |
-| Omarchy / Arch Linux x86_64 | `.pkg.tar.zst`   | `sudo pacman -U`와 패키지 경로로 설치 |
+| 플랫폼                          | 패키지           | 설치 방법                             |
+| ------------------------------- | ---------------- | ------------------------------------- |
+| macOS 14+ Apple Silicon / Intel | Universal `.dmg` | S3 Studio를 응용 프로그램으로 드래그  |
+| Windows x64                     | `.exe` / `.msi`  | 설치 프로그램 실행                    |
+| Ubuntu 22.04+ amd64             | `.deb`           | 시스템 패키지 설치기로 열기           |
+| Linux x86_64                    | `.AppImage`      | 실행 권한을 부여한 뒤 실행            |
+| Omarchy / Arch Linux x86_64     | `.pkg.tar.zst`   | `sudo pacman -U`와 패키지 경로로 설치 |
 
 ### macOS에서 앱을 열 수 없는 경우
 
@@ -60,7 +60,7 @@ macOS 앱 메뉴나 버전 표시를 눌러 업데이트를 확인하세요. 정
 
 ## 개발 및 기여
 
-GPUI, GPUI Kit, Rust 및 AWS SDK for Rust를 사용합니다. `src-gpui`는 기본 UI, `src-core`는 공유 백엔드이며 `src`/`src-tauri`에는 원래 React/Tauri 참조 구현이 있습니다. Node.js 22.12+와 안정 버전 Rust가 필요합니다. macOS는 Xcode Command Line Tools, Windows는 MSVC C++ Build Tools와 WebView2가 필요합니다. Linux 기본 라이브러리는 [개발 참조](README.md#开发与贡献)를 확인하세요.
+Native Shell, Rust 및 AWS SDK for Rust를 사용합니다. `src-nsh`는 기본 UI, `src-core`는 공유 백엔드이며 `src`/`src-tauri`에는 원래 React/Tauri 참조 구현이 있습니다. Node.js 22.12+와 안정 버전 Rust가 필요합니다. macOS는 Xcode Command Line Tools, Windows에는 MSVC C++ Build Tools가 필요합니다. 기존 Tauri 참조 구현을 실행하려면 WebView2가 필요합니다. Linux 기본 라이브러리는 [개발 참조](README.md#开发与贡献)를 확인하세요.
 
 ```bash
 npm ci
@@ -76,7 +76,7 @@ npm test
 npm run test:ui
 npm run build
 cargo test --locked --manifest-path src-core/Cargo.toml
-cargo test --locked --manifest-path src-gpui/Cargo.toml
+cargo test --locked --manifest-path src-nsh/Cargo.toml
 ```
 
 `npm run build:native`로 실행 파일을 빌드하고 `npm run tauri bundle -- --ci`로 패키징합니다. 각 플랫폼의 패키지는 해당 운영체제에서 빌드합니다. Linux 의존성, Universal 빌드, 저장 경로 및 릴리스 서명은 [개발 참조](README.md#开发与贡献)를 확인하세요. `src-core/locales`의 번역을 수정한 뒤 `node scripts/sync-i18n.mjs`를 실행하고 Rust 형식을 정리한 다음 테스트하세요.

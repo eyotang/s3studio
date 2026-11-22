@@ -1,7 +1,7 @@
 {
   "name": "s3-studio",
   "private": true,
-  "version": "0.4.7",
+  "version": "0.4.8",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -12,8 +12,8 @@
     "test:ui": "playwright test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dev:native": "cargo run --manifest-path src-gpui/Cargo.toml",
-    "preview:native": "cargo run --manifest-path src-gpui/Cargo.toml -- --preview",
+    "dev:native": "cargo run --manifest-path src-nsh/Cargo.toml",
+    "preview:native": "cargo run --manifest-path src-nsh/Cargo.toml -- --preview",
     "build:native": "node scripts/build-native.mjs"
   },
   "dependencies": {

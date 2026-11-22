@@ -6,10 +6,10 @@ After editing a catalog, run from the repository root:
 
 ```bash
 node scripts/sync-i18n.mjs
-cargo fmt --manifest-path src-gpui/Cargo.toml
+cargo fmt --manifest-path src-nsh/Cargo.toml
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-core/Cargo.toml multilingual_runtime_smoke -- --ignored --test-threads=1
-cargo test --locked --manifest-path src-gpui/Cargo.toml
+cargo test --locked --manifest-path src-nsh/Cargo.toml
 ```
 
 The synchronization script validates catalog keys and placeholders and updates the compile-time format macros in `src-core/src/i18n.rs`. `src-core/build.rs` embeds the static translations at build time. Keep the generated macros in sync in the same commit as catalog edits. Run the runtime smoke test separately because the production language is shared by UI and worker threads.

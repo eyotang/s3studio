@@ -1,0 +1,62 @@
+[package]
+name = "s3-studio-nsh"
+version = "0.4.8"
+edition = "2024"
+rust-version = "1.97"
+
+[[bin]]
+name = "s3-studio"
+path = "src/main.rs"
+
+[dependencies]
+nsh-base = { git = "https://github.com/longbridge/nsh", tag = "v0.6.1", default-features = false }
+nsh-core = { git = "https://github.com/longbridge/nsh", tag = "v0.6.1", features = ["svg"] }
+s3-studio-core = { path = "../src-core" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+futures = "0.3"
+dirs = "6"
+chrono = "0.4"
+icu_collator = "2.4"
+icu_locale = "2.4"
+env_logger = { version = "0.11", default-features = false }
+semver = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream"] }
+tauri = { version = "2", default-features = false }
+tauri-plugin-updater = "=2.13.2"
+open = "5"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# NSH's GTK host needs GTK 4.14. Its GPUI renderer supports Ubuntu 22.04.
+nsh-platform-gpui = { git = "https://github.com/longbridge/nsh", tag = "v0.6.1", default-features = false }
+gpui-platform = { package = "gpui-fast-platform", version = "0.1.16", default-features = false }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nsh-platform-macos = { git = "https://github.com/longbridge/nsh", tag = "v0.6.1", default-features = false }
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSMenu", "NSMenuItem"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSString"] }
+
+[target.'cfg(windows)'.dependencies]
+nsh-platform-windows = { git = "https://github.com/longbridge/nsh", tag = "v0.6.1", default-features = false }
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[dev-dependencies]
+nsh-engine = { git = "https://github.com/longbridge/nsh", tag = "v0.6.1", default-features = false }
+nsh-testing = { git = "https://github.com/longbridge/nsh", tag = "v0.6.1", default-features = false, features = ["live"] }
+
+[profile.dev]
+debug = 0
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 8
+
+[patch.crates-io]
+tauri-plugin-updater = { path = "vendor/tauri-plugin-updater" }

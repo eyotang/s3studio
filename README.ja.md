@@ -20,13 +20,13 @@ S3 Studioは、クラウド上のファイルをひとつの見やすいワー�
 
 [GitHub Releases](https://github.com/eyotang/s3studio/releases/latest)から最新版をダウンロードし、インストール前にリリース付属の `SHA256SUMS.txt` で検証してください。
 
-| プラットフォーム            | パッケージ       | インストール方法                                  |
-| --------------------------- | ---------------- | ------------------------------------------------- |
-| macOS Apple Silicon / Intel | Universal `.dmg` | S3 Studioをアプリケーションへドラッグ             |
-| Windows x64                 | `.exe` / `.msi`  | インストーラーを実行                              |
-| Ubuntu 22.04+ amd64         | `.deb`           | システムのパッケージインストーラーで開く          |
-| Linux x86_64                | `.AppImage`      | 実行権限を付与して起動                            |
-| Omarchy / Arch Linux x86_64 | `.pkg.tar.zst`   | `sudo pacman -U` とパッケージのパスでインストール |
+| プラットフォーム                | パッケージ       | インストール方法                                  |
+| ------------------------------- | ---------------- | ------------------------------------------------- |
+| macOS 14+ Apple Silicon / Intel | Universal `.dmg` | S3 Studioをアプリケーションへドラッグ             |
+| Windows x64                     | `.exe` / `.msi`  | インストーラーを実行                              |
+| Ubuntu 22.04+ amd64             | `.deb`           | システムのパッケージインストーラーで開く          |
+| Linux x86_64                    | `.AppImage`      | 実行権限を付与して起動                            |
+| Omarchy / Arch Linux x86_64     | `.pkg.tar.zst`   | `sudo pacman -U` とパッケージのパスでインストール |
 
 ### macOSでアプリを開けない場合
 
@@ -60,7 +60,7 @@ macOSのアプリメニューまたはバージョン表示から更新を確認
 
 ## 開発とコントリビュート
 
-GPUI、GPUI Kit、Rust、AWS SDK for Rustを使用しています。`src-gpui` はネイティブUI、`src-core` は共有バックエンド、`src`/`src-tauri` は従来のReact/Tauri参照実装です。Node.js 22.12以降と安定版Rustが必要です。macOSはXcode Command Line Tools、WindowsはMSVC C++ Build ToolsとWebView2が必要です。Linuxのネイティブ依存関係は[開発リファレンス](README.md#开发与贡献)を参照してください。
+Native Shell、Rust、AWS SDK for Rustを使用しています。`src-nsh` はネイティブUI、`src-core` は共有バックエンド、`src`/`src-tauri` は従来のReact/Tauri参照実装です。Node.js 22.12以降と安定版Rustが必要です。macOSはXcode Command Line Tools、WindowsにはMSVC C++ Build Toolsが必要です。WebView2は従来のTauri参照実装を起動する場合に必要です。Linuxのネイティブ依存関係は[開発リファレンス](README.md#开发与贡献)を参照してください。
 
 ```bash
 npm ci
@@ -76,7 +76,7 @@ npm test
 npm run test:ui
 npm run build
 cargo test --locked --manifest-path src-core/Cargo.toml
-cargo test --locked --manifest-path src-gpui/Cargo.toml
+cargo test --locked --manifest-path src-nsh/Cargo.toml
 ```
 
 `npm run build:native` で実行ファイルをビルドし、`npm run tauri bundle -- --ci` でパッケージ化します。各OS用パッケージは対象OSでビルドします。Linux依存関係、Universalビルド、保存先、更新署名は[開発リファレンス](README.md#开发与贡献)を参照してください。翻訳は `src-core/locales` を編集し、`node scripts/sync-i18n.mjs` を実行してRustを整形後、テストしてください。

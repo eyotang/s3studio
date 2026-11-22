@@ -1,0 +1,747 @@
+use super::*;
+use crate::model;
+use s3_studio_core::s3::S3Object;
+
+pub(super) fn browser(store: Store, search: ElementRef) -> View {
+    let visible = computed(move || store.read(Workspace::visible));
+    let grid = computed(move || store.read(|state| state.grid));
+    let show_info = computed(move || store.read(|state| state.show_info));
+    let narrow = computed(move || window().width.0 <= 1050.0);
+    let compact = computed(move || narrow.get() || show_info.get());
+    let table = objects(store, visible, grid, compact);
+
+    controls::panel()
+        .child(dynamic(move || store.read(|state| toolbar(store, state))))
+        .child(divider())
+        .child(
+            row()
+                .px(px(15.0))
+                .py(px(9.0))
+                .gap(px(10.0))
+                .justify_between()
+                .child(
+                    row()
+                        .flex_1()
+                        .min_w_0()
+                        .max_w(px(365.0))
+                        .gap(px(5.0))
+                        .child(
+                            input_field(
+                                "object-search",
+                                t("搜索当前目录"),
+                                t("搜索当前目录中的文件…"),
+                                move || store.read(|state| state.search.clone()),
+                            )
+                            .element_ref(&search)
+                            .label(move || store.read(|_| SharedString::from(t("搜索当前目录"))))
+                            .placeholder(move || {
+                                store.read(|_| t("搜索当前目录中的文件…").to_owned())
+                            })
+                            .flex_1()
+                            .on_change(move |value: &str| {
+                                store.change(|state| state.search = value.into())
+                            }),
+                        )
+                        .child(when(
+                            move || store.read(|state| !state.search.is_empty()),
+                            move || {
+                                icon_button("clear-search", t("清除搜索"), "x")
+                                    .on_press(store.action(|state| state.search.clear()))
+                            },
+                        )),
+                )
+                .child(dynamic(move || {
+                    store.read(|state| selection_actions(store, state))
+                })),
+        )
+        .child(dynamic(move || {
+            store.read(|state| {
+                (!state.error.is_empty()).then(|| {
+                    error_notice(&state.error).mx(px(10.0)).mb(px(8.0)).child(
+                        icon_button("close-error", t("关闭错误"), "x")
+                            .on_press(store.action(|state| state.error.clear())),
+                    )
+                })
+            })
+        }))
+        .child(
+            row()
+                .items_stretch()
+                .child(table)
+                .child(when(show_info, move || {
+                    scroll()
+                        .test_id("object-inspector")
+                        .w(move || px(if narrow.get() { 198.0 } else { 224.0 }))
+                        .flex_shrink_0()
+                        .border_l_1()
+                        .border_color(LINE)
+                        .bg(SUBTLE)
+                        .child(dynamic(move || store.read(|state| inspector(store, state))))
+                })),
+        )
+        .child(divider())
+        .child(dynamic(move || {
+            let count = visible.with(Vec::len);
+            store.read(|state| {
+                row()
+                    .justify_between()
+                    .px(px(15.0))
+                    .h(px(33.0))
+                    .bg(SUBTLE)
+                    .child(label(
+                        crate::lf!(
+                            "{} 个项目{}{}",
+                            count,
+                            if state.search.is_empty() {
+                                ""
+                            } else {
+                                t(" · 搜索结果")
+                            },
+                            if state.selected.is_empty() {
+                                String::new()
+                            } else {
+                                crate::lf!(" · 已选择 {} 项", state.selected.len())
+                            },
+                        ),
+                        11.0,
+                        MUTED,
+                    ))
+                    .child(label(
+                        crate::lf!(
+                            "{} · 当前已加载",
+                            model::bytes(state.objects.iter().map(|o| o.size.max(0) as u64).sum())
+                        ),
+                        11.0,
+                        MUTED,
+                    ))
+            })
+        }))
+}
+
+fn toolbar(store: Store, state: &Workspace) -> View {
+    let mut crumbs = row().gap(px(3.0)).flex_1().min_w_0().child(
+        button("root-directory", t("根目录"))
+            .h(px(30.0))
+            .px(px(5.0))
+            .disabled(state.bucket.is_empty() || state.is_busy())
+            .child(icon("hard-drive", 15.0, MUTED))
+            .child(label(t("根目录"), 11.0, MUTED))
+            .on_press(store.action(|state| state.navigate(state.bucket.clone(), String::new()))),
+    );
+    // Preserve empty components in keys such as a//b/ for breadcrumb targets.
+    let mut prefix = String::new();
+    for part in state.prefix.split_inclusive('/') {
+        prefix.push_str(part);
+        let target = prefix.clone();
+        let title = part.trim_end_matches('/');
+        crumbs = crumbs.child(icon("chevron-right", 12.0, MUTED)).child(
+            button(&format!("breadcrumb-{target}"), title.to_owned())
+                .h(px(30.0))
+                .px(px(4.0))
+                .max_w(px(145.0))
+                .disabled(state.is_busy())
+                .child(label(title.to_owned(), 11.0, TEXT).truncate())
+                .on_press(
+                    store.action(move |state| state.navigate(state.bucket.clone(), target.clone())),
+                ),
+        );
+    }
+    row()
+        .h(px(48.0))
+        .px(px(12.0))
+        .gap(px(8.0))
+        .child(scroll().horizontal().flex_1().min_w_0().child(crumbs))
+        .child(
+            row()
+                .gap(px(4.0))
+                .flex_shrink_0()
+                .child(
+                    icon_button("new-folder", t("新建文件夹"), "folder-plus")
+                        .disabled(state.disabled())
+                        .on_press(store.open(Dialog::Folder)),
+                )
+                .child(
+                    icon_button("refresh", t("刷新"), "refresh-cw")
+                        .disabled(state.disabled())
+                        .on_press(store.action(|state| state.load_objects(false))),
+                )
+                .child(
+                    icon_button("list-view", t("列表视图"), "list")
+                        .selected(!state.grid)
+                        .selected_style(|s| s.bg(SELECTED))
+                        .on_press(store.action(|state| state.grid = false)),
+                )
+                .child(
+                    icon_button("grid-view", t("网格视图"), "layout-grid")
+                        .selected(state.grid)
+                        .selected_style(|s| s.bg(SELECTED))
+                        .on_press(store.action(|state| state.grid = true)),
+                )
+                .child(
+                    icon_button("toggle-info", t("对象详情"), "info")
+                        .selected(state.show_info)
+                        .selected_style(|s| s.bg(SELECTED))
+                        .on_press(store.action(|state| {
+                            state.show_info = !state.show_info;
+                            state.selection_changed();
+                        })),
+                ),
+        )
+}
+
+fn selection_actions(store: Store, state: &Workspace) -> Option<View> {
+    if state.selected.is_empty() {
+        return None;
+    }
+    let single_file = state.first().is_some_and(|first| !first.folder);
+    let disabled = state.is_busy() || !single_file;
+    Some(
+        row()
+            .gap(px(4.0))
+            .flex_shrink_0()
+            .child(label(crate::lf!("已选 {} 项", state.selected.len()), 11.0, MUTED).mr(px(4.0)))
+            .child(
+                icon_button(
+                    "download-selection",
+                    t("下载所选文件"),
+                    "arrow-down-to-line",
+                )
+                .disabled(disabled)
+                .on_press(store.action(Workspace::download)),
+            )
+            .child(
+                icon_button("copy-selection", t("复制所选对象"), "copy")
+                    .disabled(disabled)
+                    .on_press(store.open(Dialog::Copy)),
+            )
+            .child(
+                icon_button("share-selection", t("复制分享链接"), "link")
+                    .disabled(disabled)
+                    .on_press(store.action(Workspace::share)),
+            )
+            .child(
+                icon_button("delete-selection", t("删除所选项目"), "trash")
+                    .disabled(state.is_busy())
+                    .on_press(store.open(Dialog::Delete)),
+            ),
+    )
+}
+
+fn objects(
+    store: Store,
+    visible: Memo<Vec<S3Object>>,
+    grid: Memo<bool>,
+    compact: Memo<bool>,
+) -> View {
+    let root = element_ref();
+    let location = computed(move || {
+        store.read(|state| {
+            (
+                state.active_id.clone(),
+                state.bucket.clone(),
+                state.prefix.clone(),
+            )
+        })
+    });
+    let list_ref = root.clone();
+    effect(move || {
+        let _ = location.get();
+        list_ref.scroll_to(nsh_core::element::point(px(0.0), px(0.0)), false);
+    });
+    let list = virtual_list(
+        move || visible.with(Vec::len),
+        move |position| {
+            dynamic(move || {
+                let index = position.index();
+                let grid = grid.get();
+                let compact = compact.get();
+                visible.with(|objects| {
+                    let object = objects.get(index)?;
+                    Some(store.read(|state| {
+                        if grid {
+                            card(store, state, object)
+                        } else {
+                            object_row(store, state, object, compact)
+                        }
+                    }))
+                })
+            })
+        },
+    )
+    .keys(move || {
+        visible.with(|objects| {
+            objects
+                .iter()
+                .map(|object| object.key.clone())
+                .collect::<Vec<_>>()
+        })
+    })
+    .estimated_item_size(move || px(if grid.get() { 135.0 } else { 43.0 }))
+    .columns(move || {
+        if !grid.get() {
+            return 1;
+        }
+        let width = window().width.0;
+        let sidebar = if width <= 1050.0 {
+            215.0
+        } else if width >= 1450.0 {
+            268.0
+        } else {
+            248.0
+        };
+        let inspector = store.read(|state| if state.show_info { 224.0 } else { 0.0 });
+        ((width - sidebar - inspector - 75.0) / 150.0)
+            .floor()
+            .max(1.0) as u32
+    })
+    .content_padding_x(move || px(if grid.get() { 9.0 } else { 0.0 }))
+    .element_ref(&root)
+    .test_id("objects")
+    .flex_1()
+    .min_h_0()
+    .empty(dynamic(move || {
+        store.read(|state| empty_state(store, state))
+    }))
+    .footer(dynamic(move || {
+        store.read(|state| {
+            state.next_token.as_ref().map(|_| {
+                column()
+                    .items_center()
+                    .gap(px(5.0))
+                    .py(px(10.0))
+                    .child(
+                        secondary(
+                            "load-more",
+                            if state.loading {
+                                t("加载中…")
+                            } else {
+                                t("加载更多对象")
+                            },
+                        )
+                        .disabled(state.loading || state.is_busy())
+                        .on_press(store.action(|state| state.load_objects(true))),
+                    )
+                    .child(label(t("搜索和排序适用于已加载的对象"), 10.0, MUTED))
+            })
+        })
+    }));
+    column()
+        .flex_1()
+        .min_w_0()
+        .h(move || px((window().height.0 - 478.0).clamp(250.0, 620.0)))
+        .child(when(
+            move || !grid.get() && visible.with(|objects| !objects.is_empty()),
+            move || {
+                dynamic(move || {
+                    visible.with(|objects| {
+                        store.read(|state| table_header(store, state, objects, compact.get()))
+                    })
+                })
+            },
+        ))
+        .child(list)
+}
+
+fn empty_state(store: Store, state: &Workspace) -> View {
+    let loading = state.loading && state.objects.is_empty();
+    let title = if loading {
+        t("正在加载文件")
+    } else if !state.search.is_empty() {
+        t("没有找到匹配的文件")
+    } else if state.account().is_none() {
+        t("一切从连接开始")
+    } else if state.bucket.is_empty() {
+        t("创建你的第一个存储桶")
+    } else {
+        t("这里还没有文件")
+    };
+    column()
+        .min_h(px(215.0))
+        .items_center()
+        .justify_center()
+        .gap(px(12.0))
+        .p(px(16.0))
+        .child(
+            row()
+                .size(px(57.0))
+                .justify_center()
+                .rounded(px(15.0))
+                .bg(SELECTED)
+                .child(icon(
+                    if loading { "loader-circle" } else { "cloud" },
+                    28.0,
+                    ACCENT,
+                )),
+        )
+        .child(label(title, 15.0, TEXT).font_weight(FontWeight::MEDIUM))
+        .when(state.account().is_none() && !loading, |empty| {
+            empty.child(
+                primary("first-account", t("连接第一个账户"), false)
+                    .disabled(state.is_busy())
+                    .on_press(store.open(Dialog::Account(None))),
+            )
+        })
+}
+
+fn table_header(store: Store, state: &Workspace, visible: &[S3Object], compact: bool) -> View {
+    let count = visible
+        .iter()
+        .filter(|object| state.selected.contains(&object.key))
+        .count();
+    let all = count == visible.len();
+    row()
+        .h(px(37.0))
+        .bg(SUBTLE)
+        .border_y(px(1.0))
+        .border_color(LINE)
+        .child(
+            row().w(px(42.0)).justify_center().flex_shrink_0().child(
+                checkbox("select-all", t("选择当前可见对象"), all, count > 0 && !all)
+                    .disabled(state.is_busy())
+                    .on_change(move |next: &bool| {
+                        store.change(|state| {
+                            state.selected = if *next {
+                                state
+                                    .visible()
+                                    .into_iter()
+                                    .map(|object| object.key)
+                                    .collect()
+                            } else {
+                                Default::default()
+                            };
+                            state.selection_changed();
+                        })
+                    }),
+            ),
+        )
+        .child(
+            row()
+                .flex_1()
+                .min_w_0()
+                .child(
+                    sort_button(store, state, Sort::Name, "sort-name", t("名称"))
+                        .flex_1()
+                        .min_w_0(),
+                )
+                .child(sort_button(store, state, Sort::Size, "sort-size", t("大小")).w(px(87.0)))
+                .child(
+                    sort_button(store, state, Sort::Modified, "sort-modified", t("修改时间"))
+                        .w(px(104.0)),
+                )
+                .when(!compact, |r| {
+                    r.child(label(t("存储类型"), 11.0, MUTED).w(px(106.0)))
+                }),
+        )
+        .child(view().w(px(42.0)).flex_shrink_0())
+}
+
+fn sort_button(
+    store: Store,
+    state: &Workspace,
+    sort: Sort,
+    id: &str,
+    title: &str,
+) -> nsh_base::ButtonElement {
+    button(id, title.to_owned())
+        .h(px(32.0))
+        .justify_start()
+        .child(label(title.to_owned(), 11.0, MUTED).truncate())
+        .when(state.sort == sort, |b| {
+            b.child(icon(
+                if state.ascending {
+                    "arrow-up"
+                } else {
+                    "arrow-down"
+                },
+                11.0,
+                ACCENT,
+            ))
+        })
+        .on_press(store.action(move |state| state.sort_by(sort)))
+}
+
+fn object_row(store: Store, state: &Workspace, object: &S3Object, compact: bool) -> AnyElement {
+    let key = object.key.clone();
+    let check_key = key.clone();
+    let info_key = key.clone();
+    let name = model::object_name(&key, &state.prefix).to_owned();
+    let selected = state.selected.contains(&key);
+    let disabled = state.is_busy();
+    row()
+        .h(px(43.0))
+        .border_b_1()
+        .border_color(LINE)
+        .bg(if selected { SELECTED } else { SURFACE })
+        .child(
+            row().w(px(42.0)).justify_center().flex_shrink_0().child(
+                checkbox(
+                    &format!("object-check-{key}"),
+                    crate::lf!("选择 {}", name),
+                    selected,
+                    false,
+                )
+                .disabled(disabled)
+                .on_change(move |_: &bool| store.change(|state| state.toggle(&check_key))),
+            ),
+        )
+        .child(
+            row()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .gap(px(7.0))
+                .test_id(&format!("object-{key}"))
+                .role(AccessibilityRole::Button)
+                .label(name.clone())
+                .disabled(disabled)
+                .cursor(Cursor::Pointer)
+                .hover(|s| s.bg(SUBTLE))
+                .focus_visible(|s| s.outline(px(2.0)).outline_color(ACCENT))
+                .on_press(object_press(store, key.clone(), object.folder))
+                .child(
+                    row()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(9.0))
+                        .child(file_icon(object, 18.0))
+                        .child(
+                            label(name.clone(), 12.0, TEXT)
+                                .truncate()
+                                .flex_1()
+                                .min_w_0(),
+                        ),
+                )
+                .child(
+                    label(
+                        if object.folder {
+                            "—".into()
+                        } else {
+                            model::bytes(object.size.max(0) as u64)
+                        },
+                        11.0,
+                        MUTED,
+                    )
+                    .w(px(80.0)),
+                )
+                .child(
+                    label(
+                        if object.folder {
+                            "—".into()
+                        } else {
+                            model::date(&object.modified)
+                        },
+                        11.0,
+                        MUTED,
+                    )
+                    .w(px(97.0)),
+                )
+                .when(!compact, |r| {
+                    let storage_class = if object.folder {
+                        t("文件夹")
+                    } else if object.storage_class.is_empty() {
+                        "STANDARD"
+                    } else {
+                        &object.storage_class
+                    };
+                    r.child(
+                        label(storage_class.to_owned(), 10.0, MUTED)
+                            .w(px(99.0))
+                            .truncate(),
+                    )
+                }),
+        )
+        .child(
+            icon_button(
+                &format!("more-{key}"),
+                crate::lf!("查看 {}", name),
+                "ellipsis",
+            )
+            .mx(px(6.0))
+            .disabled(disabled)
+            .on_press(store.action(move |state| state.inspect(info_key.clone()))),
+        )
+        .into_element()
+}
+
+fn card(store: Store, state: &Workspace, object: &S3Object) -> AnyElement {
+    let key = object.key.clone();
+    let name = model::object_name(&key, &state.prefix).to_owned();
+    let selected = state.selected.contains(&key);
+    column()
+        .p(px(5.0))
+        .h(px(135.0))
+        .child(
+            column()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .gap(px(7.0))
+                .min_w_0()
+                .px(px(8.0))
+                .rounded(px(8.0))
+                .border_1()
+                .border_color(LINE)
+                .bg(if selected { SELECTED } else { SUBTLE })
+                .hover(|s| s.border_color(ACCENT))
+                .focus_visible(|s| s.outline(px(2.0)).outline_color(ACCENT))
+                .role(AccessibilityRole::Button)
+                .label(name.clone())
+                .disabled(state.is_busy())
+                .test_id(&format!("card-{key}"))
+                .on_press(object_press(store, key, object.folder))
+                .child(file_icon(object, 34.0))
+                .child(label(name, 12.0, TEXT).max_w(percentage(1.0)).truncate())
+                .child(label(
+                    if object.folder {
+                        t("文件夹").into()
+                    } else {
+                        model::bytes(object.size.max(0) as u64)
+                    },
+                    10.0,
+                    MUTED,
+                ))
+                .when(selected, |card| {
+                    card.child(
+                        view()
+                            .absolute()
+                            .top(px(8.0))
+                            .right(px(8.0))
+                            .child(icon("check", 14.0, ACCENT)),
+                    )
+                }),
+        )
+        .into_element()
+}
+
+fn object_press(store: Store, key: String, folder: bool) -> impl Fn(&PressEvent) {
+    move |event| {
+        store.change(|state| {
+            if event.clicks >= 2 {
+                if folder {
+                    state.navigate(state.bucket.clone(), key.clone());
+                } else {
+                    state.inspect(key.clone());
+                }
+            } else {
+                state.toggle(&key);
+            }
+        })
+    }
+}
+
+fn inspector(store: Store, state: &Workspace) -> View {
+    let mut panel = column().p(px(12.0)).gap(px(10.0)).child(
+        row()
+            .justify_between()
+            .child(label(t("对象详情"), 12.0, TEXT).font_weight(FontWeight::MEDIUM))
+            .child(
+                icon_button("close-info", t("关闭详情"), "x").on_press(store.action(|state| {
+                    state.show_info = false;
+                    state.selection_changed();
+                })),
+            ),
+    );
+    let Some(object) = state.first() else {
+        return panel.child(label(t("选择一个对象以查看详情。"), 11.0, MUTED));
+    };
+    let info = state.info.as_ref();
+    let mut entries = vec![
+        (t("对象键").into(), object.key.clone()),
+        (
+            t("大小").into(),
+            if object.folder {
+                t("文件夹").into()
+            } else {
+                model::bytes(info.map_or(object.size, |info| info.size).max(0) as u64)
+            },
+        ),
+        (
+            t("最后修改").into(),
+            model::date(
+                info.map(|info| info.modified.as_str())
+                    .filter(|time| !time.is_empty())
+                    .unwrap_or(&object.modified),
+            ),
+        ),
+        (
+            t("存储类型").into(),
+            if object.storage_class.is_empty() {
+                "—".into()
+            } else {
+                object.storage_class.clone()
+            },
+        ),
+    ];
+    if let Some(info) = info {
+        entries.push(("Content-Type".into(), info.content_type.clone()));
+        entries.push(("ETag".into(), info.etag.clone()));
+        let mut metadata: Vec<_> = info.metadata.iter().collect();
+        metadata.sort_by_key(|(key, _)| *key);
+        entries.extend(
+            metadata
+                .into_iter()
+                .map(|(key, value)| (key.clone(), value.clone())),
+        );
+    }
+    panel = panel
+        .child(
+            column()
+                .items_center()
+                .gap(px(8.0))
+                .py(px(8.0))
+                .child(file_icon(&object, 35.0))
+                .child(
+                    label(
+                        model::object_name(&object.key, &state.prefix).to_owned(),
+                        12.0,
+                        TEXT,
+                    )
+                    .max_w(percentage(1.0))
+                    .truncate(),
+                ),
+        )
+        .child(
+            entries
+                .into_iter()
+                .map(|(key, value)| {
+                    column()
+                        .gap(px(2.0))
+                        .min_w_0()
+                        .child(label(key, 10.0, MUTED).truncate())
+                        .child(label(value, 11.0, TEXT).selectable(true))
+                })
+                .collect::<Vec<_>>(),
+        )
+        .when(!state.info_error.is_empty(), |panel| {
+            panel.child(label(state.info_error.clone(), 11.0, DANGER))
+        });
+    panel.when(!object.folder, |panel| {
+        panel.child(
+            secondary("inspector-download", t("下载文件"))
+                .disabled(state.is_busy())
+                .on_press(store.action(Workspace::download)),
+        )
+    })
+}
+
+fn file_icon(object: &S3Object, size: f32) -> impl IntoElement {
+    let (name, ink) = if object.folder {
+        ("folder", FOLDER)
+    } else {
+        match object
+            .key
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "png" | "jpg" | "jpeg" | "webp" | "svg" => ("file-image", IMAGE),
+            "zip" | "gz" | "tar" => ("file-archive", ARCHIVE),
+            "json" | "js" | "ts" | "html" => ("file-code-corner", CODE),
+            "pdf" | "md" | "txt" => ("file-text", MUTED),
+            _ => ("file", MUTED),
+        }
+    };
+    icon(name, size, ink)
+}

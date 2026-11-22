@@ -8,6 +8,21 @@ const { version } = JSON.parse(await readFile("package.json", "utf8"));
 const tag = `v${version}`;
 if (process.env.GITHUB_REF_NAME !== tag)
   throw new Error("Release tag mismatch");
+const notesFile = `docs/releases/${version}.md`;
+const notes = await readFile(notesFile, "utf8");
+const english = notes.indexOf("\n## English\n");
+const chinese = notes.indexOf("\n## 中文\n");
+const quarantine =
+  'sudo xattr -d com.apple.quarantine "/Applications/S3 Studio.app"';
+if (
+  english < 0 ||
+  chinese <= english ||
+  !notes.slice(english, chinese).includes("### If macOS cannot open the app") ||
+  !notes.slice(chinese).includes("### macOS 无法打开应用") ||
+  !notes.slice(english, chinese).includes(`\n${quarantine}\n`) ||
+  !notes.slice(chinese).includes(`\n${quarantine}\n`)
+)
+  throw new Error("Release notes need English and Chinese macOS instructions");
 const files = (await readdir(directory)).sort();
 if (
   files.length !== 11 ||
@@ -43,6 +58,7 @@ if (current.status === 0) {
     throw new Error(
       "Published release already exists; refusing to overwrite it",
     );
+  gh(["release", "edit", tag, "--notes-file", notesFile]);
 } else {
   gh([
     "release",
@@ -53,7 +69,7 @@ if (current.status === 0) {
     "--title",
     `S3 Studio ${version}`,
     "--notes-file",
-    `docs/releases/${version}.md`,
+    notesFile,
   ]);
 }
 gh([
@@ -63,14 +79,16 @@ gh([
   ...files.map((file) => path.join(directory, file)),
   "--clobber",
 ]);
-const remote = JSON.parse(
-  gh(["release", "view", tag, "--json", "assets"]).stdout,
-).assets;
+const draft = JSON.parse(
+  gh(["release", "view", tag, "--json", "assets,body"]).stdout,
+);
 if (
-  remote.length !== expected.size ||
-  remote.some((asset) => expected.get(asset.name) !== asset.size)
+  draft.assets.length !== expected.size ||
+  draft.assets.some((asset) => expected.get(asset.name) !== asset.size)
 )
   throw new Error("Remote release assets do not match the verified installers");
+if (draft.body.trimEnd() !== notes.trimEnd())
+  throw new Error("Draft release description does not match the release notes");
 const latest = gh(["release", "view", "--json", "tagName"], true);
 const previous =
   latest.status === 0
@@ -95,15 +113,14 @@ gh([
   "--draft=false",
   newer ? "--latest" : "--latest=false",
 ]);
-const url = gh([
-  "release",
-  "view",
-  tag,
-  "--json",
-  "url",
-  "--jq",
-  ".url",
-]).stdout.trim();
+const published = JSON.parse(
+  gh(["release", "view", tag, "--json", "url,body,isDraft"]).stdout,
+);
+if (published.isDraft || published.body.trimEnd() !== notes.trimEnd())
+  throw new Error(
+    "Published release description does not match the release notes",
+  );
+const { url } = published;
 console.log(url);
 if (process.env.GITHUB_STEP_SUMMARY)
   await appendFile(

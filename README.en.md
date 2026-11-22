@@ -20,13 +20,13 @@ S3 Studio is a cross-platform desktop S3 client for managing cloud files in one 
 
 Download the latest version from [GitHub Releases](https://github.com/eyotang/s3studio/releases/latest). Verify downloads against the release’s `SHA256SUMS.txt` before installing.
 
-| Platform                    | Package          | Installation                                        |
-| --------------------------- | ---------------- | --------------------------------------------------- |
-| macOS Apple Silicon / Intel | Universal `.dmg` | Drag S3 Studio into Applications                    |
-| Windows x64                 | `.exe` / `.msi`  | Run the installer                                   |
-| Ubuntu 22.04+ amd64         | `.deb`           | Open with the system package installer              |
-| Linux x86_64                | `.AppImage`      | Make executable, then run                           |
-| Omarchy / Arch Linux x86_64 | `.pkg.tar.zst`   | Install using `sudo pacman -U` and the package path |
+| Platform                        | Package          | Installation                                        |
+| ------------------------------- | ---------------- | --------------------------------------------------- |
+| macOS 14+ Apple Silicon / Intel | Universal `.dmg` | Drag S3 Studio into Applications                    |
+| Windows x64                     | `.exe` / `.msi`  | Run the installer                                   |
+| Ubuntu 22.04+ amd64             | `.deb`           | Open with the system package installer              |
+| Linux x86_64                    | `.AppImage`      | Make executable, then run                           |
+| Omarchy / Arch Linux x86_64     | `.pkg.tar.zst`   | Install using `sudo pacman -U` and the package path |
 
 ### If macOS cannot open the app
 
@@ -60,7 +60,7 @@ Uploads are limited to 5 TiB per file; server-side single-object copying uses S3
 
 ## Development and contribution
 
-Built with GPUI, GPUI Kit, Rust, and AWS SDK for Rust. `src-gpui` is the native UI, `src-core` the shared backend, and `src`/`src-tauri` retain the original React/Tauri reference. Install Node.js 22.12+ and stable Rust. macOS needs Xcode Command Line Tools; Windows needs MSVC C++ Build Tools and WebView2. Linux needs the native libraries listed in the [development reference](README.md#开发与贡献).
+Built with Native Shell, Rust, and AWS SDK for Rust. `src-nsh` is the native UI, `src-core` the shared backend, and `src`/`src-tauri` retain the original React/Tauri reference. Install Node.js 22.12+ and stable Rust. macOS needs Xcode Command Line Tools; Windows needs MSVC C++ Build Tools. WebView2 is needed to run the original Tauri reference. Linux needs the native libraries listed in the [development reference](README.md#开发与贡献).
 
 ```bash
 npm ci
@@ -76,7 +76,7 @@ npm test
 npm run test:ui
 npm run build
 cargo test --locked --manifest-path src-core/Cargo.toml
-cargo test --locked --manifest-path src-gpui/Cargo.toml
+cargo test --locked --manifest-path src-nsh/Cargo.toml
 ```
 
 Build the native executable with `npm run build:native` and package it with `npm run tauri bundle -- --ci`. Platform packages are built on their target operating systems. See the [development reference](README.md#开发与贡献) for Linux dependencies, Universal builds, storage paths, and release signing. Update language catalogs in `src-core/locales`, then run `node scripts/sync-i18n.mjs` and format Rust before testing.

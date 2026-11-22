@@ -20,13 +20,13 @@ S3 Studio est un client S3 de bureau multiplateforme pour gérer vos fichiers cl
 
 Téléchargez la dernière version sur [GitHub Releases](https://github.com/eyotang/s3studio/releases/latest). Vérifiez les fichiers avec le `SHA256SUMS.txt` de la version avant l’installation.
 
-| Plateforme                  | Paquet           | Installation                                        |
-| --------------------------- | ---------------- | --------------------------------------------------- |
-| macOS Apple Silicon / Intel | Universal `.dmg` | Glisser S3 Studio dans Applications                 |
-| Windows x64                 | `.exe` / `.msi`  | Exécuter le programme d’installation                |
-| Ubuntu 22.04+ amd64         | `.deb`           | Ouvrir avec l’installateur du système               |
-| Linux x86_64                | `.AppImage`      | Autoriser l’exécution puis lancer                   |
-| Omarchy / Arch Linux x86_64 | `.pkg.tar.zst`   | Utiliser `sudo pacman -U` suivi du chemin du paquet |
+| Plateforme                      | Paquet           | Installation                                        |
+| ------------------------------- | ---------------- | --------------------------------------------------- |
+| macOS 14+ Apple Silicon / Intel | Universal `.dmg` | Glisser S3 Studio dans Applications                 |
+| Windows x64                     | `.exe` / `.msi`  | Exécuter le programme d’installation                |
+| Ubuntu 22.04+ amd64             | `.deb`           | Ouvrir avec l’installateur du système               |
+| Linux x86_64                    | `.AppImage`      | Autoriser l’exécution puis lancer                   |
+| Omarchy / Arch Linux x86_64     | `.pkg.tar.zst`   | Utiliser `sudo pacman -U` suivi du chemin du paquet |
 
 ### Si macOS refuse d’ouvrir l’application
 
@@ -60,7 +60,7 @@ La limite de téléversement est de 5 TiB par fichier ; la copie serveur d’un 
 
 ## Développement et contribution
 
-L’application utilise GPUI, GPUI Kit, Rust et AWS SDK for Rust. `src-gpui` contient l’interface native, `src-core` le backend partagé et `src`/`src-tauri` la référence React/Tauri d’origine. Installez Node.js 22.12+ et Rust stable. macOS nécessite Xcode Command Line Tools ; Windows, MSVC C++ Build Tools et WebView2. Les bibliothèques Linux figurent dans la [référence de développement](README.md#开发与贡献).
+L’application utilise Native Shell, Rust et AWS SDK for Rust. `src-nsh` contient l’interface native, `src-core` le backend partagé et `src`/`src-tauri` la référence React/Tauri d’origine. Installez Node.js 22.12+ et Rust stable. macOS nécessite Xcode Command Line Tools ; Windows nécessite MSVC C++ Build Tools. WebView2 est nécessaire pour lancer la référence Tauri. Les bibliothèques Linux figurent dans la [référence de développement](README.md#开发与贡献).
 
 ```bash
 npm ci
@@ -76,7 +76,7 @@ npm test
 npm run test:ui
 npm run build
 cargo test --locked --manifest-path src-core/Cargo.toml
-cargo test --locked --manifest-path src-gpui/Cargo.toml
+cargo test --locked --manifest-path src-nsh/Cargo.toml
 ```
 
 Compilez avec `npm run build:native` puis créez les paquets avec `npm run tauri bundle -- --ci`, sur le système cible. Consultez la [référence de développement](README.md#开发与贡献) pour les dépendances Linux, les builds Universal, les chemins de données et les signatures. Modifiez les traductions dans `src-core/locales`, exécutez `node scripts/sync-i18n.mjs`, formatez Rust puis testez.

@@ -1,0 +1,24 @@
+use nsh_core::prelude::AdaptiveColor;
+
+pub const BACKGROUND: AdaptiveColor = AdaptiveColor::rgb(0xfafafb, 0x191b21);
+pub const SIDEBAR: AdaptiveColor = AdaptiveColor::rgb(0xeef0f5, 0x22252e);
+pub const SURFACE: AdaptiveColor = AdaptiveColor::rgb(0xffffff, 0x22252d);
+pub const SUBTLE: AdaptiveColor = AdaptiveColor::rgb(0xf7f9fc, 0x2a2e38);
+pub const LINE: AdaptiveColor = AdaptiveColor::rgb(0xe5e8ee, 0x393e49);
+pub const INK: AdaptiveColor = AdaptiveColor::rgb(0x252731, 0xe9edf4);
+pub const TEXT: AdaptiveColor = AdaptiveColor::rgb(0x4b5362, 0xc8d1e0);
+pub const MUTED: AdaptiveColor = AdaptiveColor::rgb(0x69768a, 0xa4b0c4);
+pub const BLUE: AdaptiveColor = AdaptiveColor::rgb(0x0877ed, 0x0865c5);
+pub const BLUE_HOVER: AdaptiveColor = AdaptiveColor::rgb(0x0068d8, 0x0a72dc);
+pub const ON_BLUE: AdaptiveColor = AdaptiveColor::rgb(0xffffff, 0xffffff);
+pub const ACCENT: AdaptiveColor = AdaptiveColor::rgb(0x2166b7, 0x97c7ff);
+pub const SELECTED: AdaptiveColor = AdaptiveColor::rgb(0xe7f1ff, 0x233d5a);
+pub const DANGER: AdaptiveColor = AdaptiveColor::rgb(0xac4242, 0xffa6a3);
+pub const DANGER_FILL: AdaptiveColor = AdaptiveColor::rgb(0xb73737, 0xa32428);
+pub const DANGER_TINT: AdaptiveColor = AdaptiveColor::rgb(0xfff1f0, 0x472626);
+pub const OK: AdaptiveColor = AdaptiveColor::rgb(0x287e62, 0x8fd4b9);
+pub const FOLDER: AdaptiveColor = AdaptiveColor::rgb(0x70a9ee, 0x85b9f7);
+pub const IMAGE: AdaptiveColor = AdaptiveColor::rgb(0x8e68b2, 0xc2a0e2);
+pub const ARCHIVE: AdaptiveColor = AdaptiveColor::rgb(0x9c6a34, 0xe7b982);
+pub const CODE: AdaptiveColor = AdaptiveColor::rgb(0x428279, 0x90ceca);
+pub const SCRIM: AdaptiveColor = AdaptiveColor::rgb(0x172036, 0x080b12);

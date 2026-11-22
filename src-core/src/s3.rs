@@ -149,7 +149,7 @@ pub struct Bucket {
     #[serde(flatten)]
     pub connection: S3Connection,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct S3Object {
     pub key: String,
