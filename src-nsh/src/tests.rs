@@ -818,3 +818,21 @@ fn version_history_restores_selected_data_versions_and_opens_from_recycle_bin() 
     app.press("id:versions-back").unwrap();
     app.wait_for("id:trash-check-deleted/report.pdf").unwrap();
 }
+
+#[test]
+fn application_menu_exposes_settings_about_and_updates_on_every_platform() {
+    let mut app = preview();
+    app.press("id:application-menu").unwrap();
+    app.press("id:application-settings").unwrap();
+    app.wait_for("id:settings-language-system").unwrap();
+    app.press("id:cancel-dialog").unwrap();
+    app.press("id:application-menu").unwrap();
+    app.press("id:application-about").unwrap();
+    app.wait_for("id:about-check-update").unwrap();
+    app.press("id:about-check-update").unwrap();
+    app.wait_for("id:check-update").unwrap();
+    app.press_key("escape").unwrap();
+    app.press("id:application-menu").unwrap();
+    app.press("id:application-update").unwrap();
+    app.wait_for("id:check-update").unwrap();
+}

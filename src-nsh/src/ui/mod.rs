@@ -177,6 +177,35 @@ fn app_menu(store: Store, enabled: bool) {
     });
 }
 
+fn application_menu(store: Store, state: &Workspace) -> impl IntoElement + use<> {
+    menu()
+        .offset(px(4.0))
+        .popup_style(sidebar_menu_style)
+        .trigger(
+            button("application-menu", "S3 Studio")
+                .w_full()
+                .justify_start()
+                .gap(px(8.0))
+                .pl(px(8.0))
+                .disabled(!state.can_open_app_dialog())
+                .child(brand(36.0))
+                .child(label("S3 Studio", 18.0, INK).font_weight(FontWeight::SEMIBOLD))
+                .child(icon("chevron-down", 14.0, MUTED)),
+        )
+        .child(
+            sidebar_menu_item("application-settings", t("设置…"), "settings-2", TEXT)
+                .on_select(store.open(Dialog::TransferSettings)),
+        )
+        .child(
+            sidebar_menu_item("application-update", t("检查更新…"), "refresh-cw", TEXT)
+                .on_select(store.action(Workspace::check_for_updates)),
+        )
+        .child(
+            sidebar_menu_item("application-about", t("关于 S3 Studio"), "info", TEXT)
+                .on_select(store.open(Dialog::About)),
+        )
+}
+
 fn sidebar(store: Store, width: Memo<f32>) -> View {
     let bucket_query = move || store.read(|state| state.bucket_search.clone());
     column()
@@ -196,14 +225,9 @@ fn sidebar(store: Store, width: Memo<f32>) -> View {
         .border_r_1()
         .border_color(LINE)
         .bg(SIDEBAR)
-        .child(
-            row()
-                .gap(px(10.0))
-                .pl(px(8.0))
-                .mb(px(30.0))
-                .child(brand(42.0))
-                .child(label("S3 Studio", 20.0, INK).font_weight(FontWeight::SEMIBOLD)),
-        )
+        .child(view().mb(px(30.0)).child(dynamic(move || {
+            store.read(|state| application_menu(store, state))
+        })))
         .child(
             row()
                 .justify_between()
