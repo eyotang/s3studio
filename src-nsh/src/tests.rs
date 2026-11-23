@@ -373,6 +373,8 @@ fn bucket_options_can_be_added_reused_and_removed() {
     let mut app = preview();
     assert!(!app.screen().matches("ap-southeast-1").unwrap());
     app.press("id:create-bucket").unwrap();
+    app.press("id:region").unwrap();
+    app.wait_for(i18n::t("使用默认值")).unwrap();
     app.type_text("id:region", "eu-west-2").unwrap();
     app.press("id:add-s3-option-region").unwrap();
     app.wait_for_gone("id:add-s3-option-region", WAIT).unwrap();

@@ -1,6 +1,6 @@
 use super::*;
 use crate::{appearance, i18n, model};
-use nsh_base::{SelectEntry, SelectItem, dialog, select};
+use nsh_base::{SelectItem, combobox, dialog};
 use s3_studio_core::accounts::S3Option;
 
 pub(super) fn active(store: Store) -> AnyElement {
@@ -287,64 +287,69 @@ fn connection(
             .normalize(value.to_owned())
             .unwrap_or_else(|_| value.trim().to_owned())
     };
-    let options = std::iter::once(SelectItem::new("", t("使用默认值")))
-        .chain(
-            saved
-                .iter()
-                .map(|item| SelectItem::new(item.clone(), item.clone())),
-        )
-        .collect::<Vec<_>>();
-    let choose = format!("{title} · {}", t("选择已保存的值"));
+    let options = move || {
+        store.read_draft(|state| {
+            let mut values = state.form.s3_options.options(option).to_vec();
+            let current = normalized(state);
+            if !current.is_empty() && !values.contains(&current) {
+                values.push(current);
+            }
+            std::iter::once(SelectItem::new("", t("使用默认值")))
+                .chain(
+                    values
+                        .into_iter()
+                        .map(|item| SelectItem::new(item.clone(), item)),
+                )
+                .collect::<Vec<_>>()
+        })
+    };
+    let _ = focus;
     column()
         .gap(px(4.0))
         .child(label(title, 12.0, TEXT))
         .child(
-            row()
-                .gap(px(5.0))
-                .child(form_input(store, state, key, title, focus).flex_1())
-                .child(
-                    select()
-                        .test_id(&format!("s3-options-{key}"))
-                        .items(options)
-                        .value(move || Some(SharedString::from(store.read_draft(normalized))))
-                        .disabled(state.is_busy())
-                        .accessibility_label(choose)
-                        .offset(px(4.0))
-                        .popup_style(|s| {
-                            s.bg(SURFACE)
-                                .rounded(px(7.0))
-                                .border_1()
-                                .border_color(LINE)
-                                .p(px(4.0))
-                                .shadow_md()
-                                .max_w(px(350.0))
-                        })
-                        .item_class("rounded-md")
-                        .render_item(|entry: &SelectEntry| {
-                            row()
-                                .p(px(7.0))
-                                .min_w_0()
-                                .child(label(entry.title.clone(), 12.0, TEXT).truncate())
-                        })
-                        .trigger(
-                            row()
-                                .size(px(36.0))
-                                .justify_center()
-                                .rounded(px(7.0))
-                                .border_1()
-                                .border_color(LINE)
-                                .bg(SUBTLE)
-                                .child(icon("chevron-down", 15.0, MUTED)),
-                        )
-                        .on_change(move |value: &Option<SharedString>| {
-                            if let Some(value) = value {
-                                store.change(|state| {
-                                    state.set_connection_value(option, value.as_str())
-                                });
-                            }
-                        }),
+            combobox()
+                .test_id(&format!("s3-options-{key}"))
+                .input_test_id(key)
+                .items(options)
+                .value(move || Some(vec![SharedString::from(store.read_draft(normalized))]))
+                .placeholder(i18n::translate_placeholder(
+                    &state.form.inputs[key].placeholder,
+                ))
+                .disabled(state.is_busy())
+                .accessibility_label(title)
+                .w_full()
+                .rounded(px(7.0))
+                .border_1()
+                .border_color(LINE)
+                .bg(SUBTLE)
+                .input_style(|s| {
+                    s.h(px(36.0))
+                        .px(px(10.0))
+                        .text_size(px(12.0))
+                        .text_color(TEXT)
+                })
+                .trigger_button(icon("chevron-down", 15.0, MUTED))
+                .offset(px(4.0))
+                .popup_style(|s| {
+                    s.bg(SURFACE)
+                        .rounded(px(7.0))
+                        .border_1()
+                        .border_color(LINE)
+                        .p(px(4.0))
+                        .shadow_md()
+                })
+                .item_class(
+                    "rounded-md selected:bg-violet-100 selected:text-violet-700 focus:bg-gray-100",
                 )
-                .child(when(
+                .item_style(|s| s.p(px(7.0)).text_size(px(12.0)).text_color(TEXT))
+                .on_query_change(move |value: &SharedString| store.edit(key, value.as_str()))
+                .on_change(move |values: &Vec<SharedString>| {
+                    if let Some(value) = values.first() {
+                        store.change(|state| state.set_connection_value(option, value.as_str()));
+                    }
+                })
+                .footer(when(
                     move || {
                         store.read_draft(|state| {
                             let value = normalized(state);
