@@ -351,5 +351,16 @@
   "显示已删除对象，还原后回到原路径。未启用版本控制或历史数据已清理的对象无法恢复。": "Gelöschte Objekte werden am ursprünglichen Pfad wiederhergestellt. Ohne Versionierung oder nach dem Entfernen historischer Daten ist eine Wiederherstellung nicht möglich.",
   "对象状态已变化，请刷新回收站后重试。": "Der Objektstatus hat sich geändert. Aktualisieren Sie den Papierkorb und versuchen Sie es erneut.",
   "历史数据版本已不存在，无法还原此对象。": "Es ist keine historische Datenversion mehr vorhanden; dieses Objekt kann nicht wiederhergestellt werden.",
-  "服务器返回了重复的分页标记。": "Der Server hat einen wiederholten Seitenmarker zurückgegeben."
+  "服务器返回了重复的分页标记。": "Der Server hat einen wiederholten Seitenmarker zurückgegeben.",
+  "版本历史": "Versionsverlauf",
+  "还原所选版本": "Ausgewählte Version wiederherstellen",
+  "返回回收站": "Zurück zum Papierkorb",
+  "版本 ID": "Versions-ID",
+  "删除标记": "Löschmarkierung",
+  "当前版本": "Aktuelle Version",
+  "没有可查看的版本。": "Keine Versionen verfügbar.",
+  "已还原为新的当前版本。": "Als neue aktuelle Version wiederhergestellt.",
+  "选择历史数据版本还原为新的当前版本；已有版本保留，当前内容将被替换。": "Stellen Sie eine frühere Datenversion als neue aktuelle Version wieder her. Vorhandene Versionen bleiben erhalten; der aktuelle Inhalt wird ersetzt.",
+  "对象状态已变化，请刷新版本列表后重试。": "Der Objektstatus hat sich geändert. Aktualisieren Sie die Versionsliste und versuchen Sie es erneut.",
+  "请先在存储服务中启用版本控制，再按版本还原。": "Aktivieren Sie die Versionierung im Speicherdienst, bevor Sie eine bestimmte Version wiederherstellen."
 }

@@ -351,5 +351,16 @@
   "显示已删除对象，还原后回到原路径。未启用版本控制或历史数据已清理的对象无法恢复。": "Les objets supprimés sont restaurés à leur chemin d’origine. Sans versionnement ou si les anciennes données ont été supprimées, la récupération est impossible.",
   "对象状态已变化，请刷新回收站后重试。": "L’état de l’objet a changé. Actualisez la corbeille et réessayez.",
   "历史数据版本已不存在，无法还原此对象。": "Aucune ancienne version des données ne subsiste ; cet objet ne peut pas être restauré.",
-  "服务器返回了重复的分页标记。": "Le serveur a renvoyé un marqueur de pagination répété."
+  "服务器返回了重复的分页标记。": "Le serveur a renvoyé un marqueur de pagination répété.",
+  "版本历史": "Historique des versions",
+  "还原所选版本": "Restaurer la version sélectionnée",
+  "返回回收站": "Retour à la corbeille",
+  "版本 ID": "ID de version",
+  "删除标记": "Marqueur de suppression",
+  "当前版本": "Version actuelle",
+  "没有可查看的版本。": "Aucune version disponible.",
+  "已还原为新的当前版本。": "Restauré en tant que nouvelle version actuelle.",
+  "选择历史数据版本还原为新的当前版本；已有版本保留，当前内容将被替换。": "Restaurez une ancienne version des données en tant que nouvelle version actuelle. Les versions existantes sont conservées ; le contenu actuel sera remplacé.",
+  "对象状态已变化，请刷新版本列表后重试。": "L’état de l’objet a changé. Actualisez la liste des versions et réessayez.",
+  "请先在存储服务中启用版本控制，再按版本还原。": "Activez le versionnement dans votre service de stockage avant de restaurer une version spécifique."
 }

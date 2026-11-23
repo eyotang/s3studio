@@ -776,3 +776,25 @@ fn transfer_activity_animates_only_while_tasks_are_active_without_opening_panel(
         }
     }
 }
+
+#[test]
+fn version_history_restores_selected_data_versions_and_opens_from_recycle_bin() {
+    let mut app = preview();
+    app.press("id:object-check-Brand guidelines.pdf").unwrap();
+    app.press("id:versions-selection").unwrap();
+    app.wait_for("id:version-check-older-data").unwrap();
+    assert!(!app.screen().enabled("id:version-check-current").unwrap());
+    assert!(!app.screen().enabled("id:version-check-old-marker").unwrap());
+    assert!(!app.screen().enabled("id:versions-restore").unwrap());
+    app.press("id:version-check-older-data").unwrap();
+    app.press("id:versions-restore").unwrap();
+    app.wait_for(i18n::t("已还原为新的当前版本。")).unwrap();
+    app.press("id:versions-close").unwrap();
+    app.press("id:open-trash").unwrap();
+    app.wait_for("id:trash-versions-deleted/report.pdf")
+        .unwrap();
+    app.press("id:trash-versions-deleted/report.pdf").unwrap();
+    app.wait_for("id:version-check-older-data").unwrap();
+    app.press("id:versions-back").unwrap();
+    app.wait_for("id:trash-check-deleted/report.pdf").unwrap();
+}

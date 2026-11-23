@@ -38,7 +38,7 @@ pub(super) fn active(store: Store) -> AnyElement {
                         .child(
                             scroll()
                                 .test_id("modal")
-                                .w(px(if matches!(current, Dialog::Trash) {
+                                .w(px(if matches!(current, Dialog::Trash | Dialog::Versions) {
                                     700.0
                                 } else if matches!(current, Dialog::Account(_)) {
                                     510.0
@@ -114,6 +114,9 @@ fn body(store: Store, state: &Workspace, dialog: &Dialog) -> View {
 
 fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
     Some(match dialog {
+        Dialog::Versions => {
+            t("选择历史数据版本还原为新的当前版本；已有版本保留，当前内容将被替换。").into()
+        }
         Dialog::Trash => {
             t("显示已删除对象，还原后回到原路径。未启用版本控制或历史数据已清理的对象无法恢复。")
                 .into()
@@ -179,6 +182,7 @@ fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
 fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> {
     let body = match dialog {
         Dialog::Trash => trash_contents(store, state),
+        Dialog::Versions => version_contents(store, state),
         Dialog::Account(_) => column().gap(px(11.0))
             .child(field(store, state, "name", t("账户名称"), true))
             .child(connection(store, state, S3Option::Endpoint, "Endpoint", false))
@@ -484,6 +488,29 @@ fn preferences(store: Store, state: &Workspace) -> View {
 fn actions(store: Store, state: &Workspace, dialog: &Dialog) -> View {
     let actions = row().justify_end().gap(px(7.0)).flex_wrap();
     match dialog {
+        Dialog::Versions => actions
+            .when(state.versions.from_trash, |row| {
+                row.child(
+                    secondary("versions-back", t("返回回收站"))
+                        .disabled(state.is_busy())
+                        .on_press(store.action(Workspace::open_trash)),
+                )
+            })
+            .child(
+                secondary("versions-close", t("关闭"))
+                    .disabled(state.is_busy())
+                    .on_press(store.action(Workspace::close_dialog)),
+            )
+            .child(
+                primary("versions-restore", t("还原所选版本"), false)
+                    .disabled(
+                        state.is_busy()
+                            || state.versions.loading
+                            || state.versions.selected.is_none()
+                            || state.versions.expected.is_empty(),
+                    )
+                    .on_press(store.action(Workspace::restore_version)),
+            ),
         Dialog::Trash => actions
             .child(
                 secondary("trash-close", t("关闭"))
@@ -750,6 +777,18 @@ fn trash_contents(store: Store, state: &Workspace) -> View {
                                             },
                                         ),
                                     )
+                                    .child(
+                                        icon_button(
+                                            &format!("trash-versions-{}", object.key),
+                                            t("版本历史"),
+                                            "history",
+                                        )
+                                        .disabled(state.is_busy())
+                                        .on_press({
+                                            let key = object.key.clone();
+                                            store.action(move |s| s.open_versions(key.clone()))
+                                        }),
+                                    )
                                     .child(icon("file", 16.0, MUTED))
                                     .child(
                                         column()
@@ -791,6 +830,104 @@ fn trash_contents(store: Store, state: &Workspace) -> View {
                 secondary("trash-load-more", t("加载更多对象"))
                     .disabled(state.is_busy() || trash.loading)
                     .on_press(store.action(|s| s.load_trash(true))),
+            )
+        })
+}
+
+fn version_contents(store: Store, state: &Workspace) -> View {
+    let versions = &state.versions;
+    column()
+        .gap(px(10.0))
+        .child(label(versions.key.clone(), 12.0, TEXT))
+        .child(
+            secondary("versions-refresh", t("刷新"))
+                .disabled(state.is_busy() || versions.loading)
+                .on_press(store.action(|s| s.load_versions(false))),
+        )
+        .when(!versions.notice.is_empty(), |body| {
+            body.child(label(versions.notice.clone(), 12.0, OK))
+        })
+        .child(
+            scroll().max_h(px(350.0)).child(
+                column().gap(px(6.0)).child(
+                    versions
+                        .entries
+                        .iter()
+                        .map(|version| {
+                            let id = version.id.clone();
+                            row()
+                                .gap(px(8.0))
+                                .p(px(8.0))
+                                .bg(SUBTLE)
+                                .rounded(px(5.0))
+                                .child(
+                                    checkbox(
+                                        &format!("version-check-{id}"),
+                                        id.clone(),
+                                        versions.selected.as_ref() == Some(&id),
+                                        false,
+                                    )
+                                    .disabled(
+                                        state.is_busy()
+                                            || versions.loading
+                                            || version.deleted
+                                            || version.latest,
+                                    )
+                                    .on_change(
+                                        move |checked: &bool| {
+                                            store.change(|s| {
+                                                s.versions.selected = checked.then(|| id.clone())
+                                            })
+                                        },
+                                    ),
+                                )
+                                .child(
+                                    column()
+                                        .gap(px(4.0))
+                                        .flex_1()
+                                        .min_w_0()
+                                        .child(label(
+                                            format!("{}: {}", t("版本 ID"), version.id),
+                                            11.0,
+                                            TEXT,
+                                        ))
+                                        .child(label(
+                                            format!(
+                                                "{} · {}{}",
+                                                version.modified,
+                                                if version.deleted {
+                                                    t("删除标记").into()
+                                                } else {
+                                                    model::bytes(
+                                                        version.size.unwrap_or(0).max(0) as u128
+                                                    )
+                                                },
+                                                if version.latest {
+                                                    format!(" · {}", t("当前版本"))
+                                                } else {
+                                                    String::new()
+                                                }
+                                            ),
+                                            11.0,
+                                            MUTED,
+                                        )),
+                                )
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            ),
+        )
+        .when(versions.loading, |body| {
+            body.child(label(t("正在加载文件"), 12.0, MUTED))
+        })
+        .when(!versions.loading && versions.entries.is_empty(), |body| {
+            body.child(label(t("没有可查看的版本。"), 12.0, MUTED))
+        })
+        .when(versions.cursor.is_some(), |body| {
+            body.child(
+                secondary("versions-load-more", t("加载更多对象"))
+                    .disabled(state.is_busy() || versions.loading)
+                    .on_press(store.action(|s| s.load_versions(true))),
             )
         })
 }

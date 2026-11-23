@@ -1,4 +1,5 @@
 pub mod trash;
+pub mod versions;
 
 use crate::{
     accounts::{get_s3_defaults, read_secret, Account, AccountStore, S3Connection, S3Defaults},

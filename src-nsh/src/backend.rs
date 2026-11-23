@@ -527,6 +527,30 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             }
             value(Ok(()))
         }
+        "list_versions" => value(
+            s3::versions::list(
+                store,
+                account,
+                bucket,
+                text("key"),
+                serde_json::from_value(args["cursor"].clone()).map_err(|e| e.to_string())?,
+            )
+            .await,
+        ),
+        "restore_version" => {
+            let _changes = cache.mutations.lock().await;
+            let result = s3::versions::restore(
+                store,
+                account.clone(),
+                bucket.clone(),
+                text("key"),
+                text("version"),
+                text("expected"),
+            )
+            .await;
+            invalidate_tree_cache(cache, Some(account), Some(bucket)).await;
+            value(result)
+        }
         "list_trash" => value(
             s3::trash::list(
                 store,
@@ -626,6 +650,12 @@ fn preview(
                 serde_json::from_value(args["connection"].clone()).map_err(|e| e.to_string())?;
             value(connection.normalized())
         }
+        "list_versions" => Ok(json!({"versions":[
+            {"id":"current","modified":"2026-11-23T08:00:00Z","size":1024,"latest":true,"deleted":false},
+            {"id":"older-data","modified":"2026-11-20T08:00:00Z","size":512,"latest":false,"deleted":false},
+            {"id":"old-marker","modified":"2026-11-19T08:00:00Z","size":null,"latest":false,"deleted":true}
+        ],"cursor":null})),
+        "restore_version" => Ok(Value::Null),
         "list_trash" => Ok(json!({"objects":[
             {"key":"deleted/report.pdf","versionId":"preview-delete","deleted":"2026-11-20T08:00:00Z"}
         ],"cursor":null,"versioning":true})),

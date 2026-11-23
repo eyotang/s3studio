@@ -299,6 +299,15 @@ fn selection_actions(store: Store, state: &Workspace) -> Option<View> {
                 .on_press(store.action(Workspace::download)),
             )
             .child(
+                icon_button("versions-selection", t("版本历史"), "history")
+                    .disabled(disabled || count != 1)
+                    .on_press(store.action(|s| {
+                        if let Some(object) = s.first() {
+                            s.open_versions(object.key.clone());
+                        }
+                    })),
+            )
+            .child(
                 icon_button("copy-selection", t("复制所选对象"), "copy")
                     .disabled(disabled)
                     .on_press(store.open(Dialog::Copy)),

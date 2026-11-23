@@ -103,7 +103,7 @@ async fn list_page(
     })
 }
 
-fn next_cursor(
+pub(super) fn next_cursor(
     response: &aws_sdk_s3::operation::list_object_versions::ListObjectVersionsOutput,
 ) -> Result<Option<Cursor>, String> {
     if response.is_truncated() != Some(true) {

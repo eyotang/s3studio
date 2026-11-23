@@ -22,6 +22,8 @@ use std::{
 };
 
 enum Pending {
+    Versions(u64, bool),
+    RestoreVersion,
     Trash(u64, bool),
     RestoreTrash,
     ReorderAccounts(String, String),
@@ -185,7 +187,20 @@ pub struct TrashBrowser {
     pub notice: String,
 }
 
+#[derive(Default)]
+pub struct VersionBrowser {
+    pub key: String,
+    pub entries: Vec<s3_studio_core::s3::versions::ObjectVersion>,
+    pub selected: Option<String>,
+    pub expected: String,
+    pub cursor: Option<s3_studio_core::s3::trash::Cursor>,
+    pub loading: bool,
+    pub notice: String,
+    pub from_trash: bool,
+}
+
 pub struct Workspace {
+    pub versions: VersionBrowser,
     pub trash: TrashBrowser,
     list_cache: crate::list_cache::ListCache,
     pub backend: Backend,
@@ -244,6 +259,7 @@ pub struct Workspace {
 impl Workspace {
     fn new(backend: Backend) -> Self {
         let mut this = Self {
+            versions: VersionBrowser::default(),
             trash: TrashBrowser::default(),
             list_cache: Default::default(),
             backend,
@@ -1027,6 +1043,59 @@ impl Workspace {
             self.ascending = true;
         }
     }
+    pub fn open_versions(&mut self, key: String) {
+        if self.is_busy() || self.bucket.is_empty() || key.is_empty() {
+            return;
+        }
+        let from_trash = self.dialog == Some(Dialog::Trash);
+        self.open_dialog(Dialog::Versions);
+        self.versions = VersionBrowser {
+            key,
+            from_trash,
+            ..Default::default()
+        };
+        self.load_versions(false);
+    }
+    pub fn load_versions(&mut self, append: bool) {
+        if self.versions.loading || self.is_busy() || self.dialog != Some(Dialog::Versions) {
+            return;
+        }
+        self.versions.loading = true;
+        self.dialog_error.clear();
+        let cursor = if append {
+            self.versions.cursor.clone()
+        } else {
+            self.versions.selected = None;
+            None
+        };
+        self.request("list_versions", json!({"accountId":self.active_id,"bucket":self.bucket,"key":self.versions.key,"cursor":cursor}), Pending::Versions(self.dialog_revision, append));
+    }
+    pub fn restore_version(&mut self) {
+        if self.is_busy() || self.versions.loading || self.dialog != Some(Dialog::Versions) {
+            return;
+        }
+        let Some(version) = self.versions.selected.clone().filter(|id| {
+            self.versions
+                .entries
+                .iter()
+                .any(|v| &v.id == id && !v.deleted && !v.latest)
+        }) else {
+            return;
+        };
+        if self.versions.expected.is_empty() {
+            return;
+        }
+        self.busy = true;
+        self.versions.notice.clear();
+        self.dialog_error.clear();
+        self.request(
+            "restore_version",
+            json!({"accountId":self.active_id,"bucket":self.bucket,"key":self.versions.key,
+            "version":version,"expected":self.versions.expected}),
+            Pending::RestoreVersion,
+        );
+    }
+
     pub fn open_trash(&mut self) {
         if self.is_busy() || self.bucket.is_empty() {
             return;
@@ -1497,6 +1566,10 @@ impl Workspace {
                 self.control("cancel_transfer", id);
                 return;
             }
+            Dialog::Versions => {
+                self.restore_version();
+                return;
+            }
             Dialog::Trash => {
                 self.restore_trash();
                 return;
@@ -1594,6 +1667,10 @@ impl Workspace {
             }
             return;
         }
+        if matches!(&pending, Pending::Versions(rev, _) if *rev != self.dialog_revision || self.dialog != Some(Dialog::Versions))
+        {
+            return;
+        }
         if matches!(&pending, Pending::Trash(rev, _) if *rev != self.dialog_revision || self.dialog != Some(Dialog::Trash))
         {
             return;
@@ -1605,6 +1682,8 @@ impl Workspace {
             return;
         }
         match &pending {
+            Pending::Versions(..) => self.versions.loading = false,
+            Pending::RestoreVersion => self.busy = false,
             Pending::Trash(..) => self.trash.loading = false,
             Pending::RestoreTrash => self.busy = false,
             Pending::ReorderAccounts(..) => self.account_reordering = false,
@@ -1634,7 +1713,9 @@ impl Workspace {
                         self.load_objects(false);
                         self.dialog_error = error;
                     }
-                    Pending::Trash(..)
+                    Pending::Versions(..)
+                    | Pending::RestoreVersion
+                    | Pending::Trash(..)
                     | Pending::RestoreTrash
                     | Pending::Submit(_)
                     | Pending::LocatePath(_)
@@ -1651,6 +1732,32 @@ impl Workspace {
         };
         let handled: Result<(), String> = (|| {
             match pending {
+                Pending::Versions(_, append) => {
+                    let page: s3_studio_core::s3::versions::VersionPage =
+                        serde_json::from_value(data).map_err(|e| e.to_string())?;
+                    if !append {
+                        self.versions.entries.clear();
+                        self.versions.expected = page
+                            .versions
+                            .iter()
+                            .find(|v| v.latest)
+                            .map(|v| v.id.clone())
+                            .unwrap_or_default();
+                    }
+                    for version in page.versions {
+                        if !self.versions.entries.iter().any(|v| v.id == version.id) {
+                            self.versions.entries.push(version);
+                        }
+                    }
+                    self.versions.cursor = page.cursor;
+                }
+                Pending::RestoreVersion => {
+                    self.versions.notice = crate::i18n::t("已还原为新的当前版本。").into();
+                    self.list_cache.clear();
+                    self.refresh_objects();
+                    self.load_versions(false);
+                }
+
                 Pending::Trash(_, append) => {
                     let page: s3_studio_core::s3::trash::TrashPage =
                         serde_json::from_value(data).map_err(|e| e.to_string())?;
