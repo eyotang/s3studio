@@ -399,6 +399,32 @@ pub async fn list_accounts(store: &AccountStore) -> Result<Vec<Account>, String>
     Ok(store.accounts.lock().await.clone())
 }
 
+/// Reorder metadata without touching credentials or connection revisions.
+pub async fn reorder_accounts(
+    store: &AccountStore,
+    source: String,
+    target: String,
+) -> Result<(), String> {
+    let mut accounts = store.accounts.lock().await;
+    let from = accounts
+        .iter()
+        .position(|a| a.id == source)
+        .ok_or(crate::i18n::t("账户不存在。"))?;
+    let to = accounts
+        .iter()
+        .position(|a| a.id == target)
+        .ok_or(crate::i18n::t("账户不存在。"))?;
+    if from == to {
+        return Ok(());
+    }
+    let mut ordered = accounts.clone();
+    let moved = ordered.remove(from);
+    ordered.insert(to, moved);
+    store.persist(&ordered).await?;
+    *accounts = ordered;
+    Ok(())
+}
+
 pub async fn save_account(store: &AccountStore, input: AccountInput) -> Result<Account, String> {
     validate(&input)?;
     let _change = store.connection_changes.lock().await;
@@ -523,6 +549,36 @@ pub async fn remove_account(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn workspace_order_survives_reopening_without_changing_connection_metadata() {
+        let dir = std::env::temp_dir().join(format!("s3-order-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("accounts.json");
+        std::fs::write(&path, r#"[{"id":"a","name":"A","pathStyle":true,"endpoint":"https://a.example","cacheRevision":"keep-a"},{"id":"b","name":"B","pathStyle":false},{"id":"c","name":"C","pathStyle":false}]"#).unwrap();
+        let store = AccountStore::open(path.clone()).unwrap();
+        reorder_accounts(&store, "a".into(), "c".into())
+            .await
+            .unwrap();
+        let reopened = AccountStore::open(path.clone()).unwrap();
+        let accounts = list_accounts(&reopened).await.unwrap();
+        assert_eq!(
+            accounts.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+            ["b", "c", "a"]
+        );
+        assert_eq!(accounts[2].endpoint, "https://a.example");
+        assert_eq!(accounts[2].cache_revision, "keep-a");
+        let saved = std::fs::read(&path).unwrap();
+        assert!(reorder_accounts(&store, "missing".into(), "a".into())
+            .await
+            .is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), saved);
+        reorder_accounts(&store, "a".into(), "b".into())
+            .await
+            .unwrap();
+        assert_eq!(list_accounts(&store).await.unwrap()[0].id, "a");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     fn input() -> AccountInput {
         AccountInput {
             id: "".into(),

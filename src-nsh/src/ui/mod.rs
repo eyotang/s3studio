@@ -285,10 +285,20 @@ fn sidebar(store: Store, width: Memo<f32>) -> View {
 
 fn account_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {
     let defaults = state.s3_defaults.as_ref();
+    let drop_target = signal(None::<usize>);
+    let drag_source = signal(None::<usize>);
+    let ids = std::rc::Rc::new(
+        state
+            .accounts
+            .iter()
+            .map(|a| a.id.clone())
+            .collect::<Vec<_>>(),
+    );
     state
         .accounts
         .iter()
-        .map(|account| {
+        .enumerate()
+        .map(|(index, account)| {
             let id = account.id.clone();
             let active = id == state.active_id;
             let aws = defaults
@@ -301,7 +311,8 @@ fn account_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {
                 .border_1()
                 .border_color(AdaptiveColor::TRANSPARENT)
                 .justify_start()
-                .pl(px(8.0))
+                .pl(px(26.0))
+                .h(px(54.0))
                 .pr(px(38.0))
                 .py(px(9.0))
                 .disabled(state.is_busy())
@@ -335,10 +346,93 @@ fn account_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {
                 )
                 .when(active, |b| b.child(dot()))
                 .on_press(store.action(move |state| state.select_account(id.clone())));
+            let dragging = signal(false);
+            let offset = signal(px(0.0));
+            let origin = signal(nsh_core::geometry::point(px(0.0), px(0.0)));
+            let source = account.id.clone();
+            let order = ids.clone();
+            let count = order.len();
+            let target_at = move |delta: f32| {
+                (index as isize + (delta / 58.0).round() as isize)
+                    .clamp(0, count.saturating_sub(1) as isize) as usize
+            };
+            let enabled = !state.is_busy() && !state.account_reordering && count > 1;
+            let handle = view()
+                .test_id(&format!("account-drag-{}", account.id))
+                .absolute()
+                .left(px(2.0))
+                .top(px(13.0))
+                .w(px(24.0))
+                .h(px(28.0))
+                .items_center()
+                .justify_center()
+                .opacity(move || if dragging.get() { 1.0_f32 } else { 0.0 })
+                .group_hover(|s| s.opacity(1.0))
+                .cursor(nsh_core::Cursor::Grab)
+                .label(t("拖动排序"))
+                .child(icon("grip-vertical", 14.0, MUTED))
+                .claim_touches(TouchClaim::on_move().ask(move |request: &ClaimRequest| {
+                    if enabled && request.event.gesture.delta.y.0.abs() >= 4.0 {
+                        origin.set(request.event.gesture.origin);
+                        request.claim();
+                    }
+                }))
+                .keep_touches(true)
+                .on_responder_grant(move |_: &ResponderEvent| {
+                    dragging.set(true);
+                    drag_source.set(Some(index));
+                })
+                .on_responder_move(move |e: &ResponderEvent| {
+                    offset.set(e.page.y - origin.get().y);
+                    drop_target.set(Some(target_at((e.page.y - origin.get().y).0)));
+                })
+                .on_responder_release(move |e: &ResponderEvent| {
+                    dragging.set(false);
+                    offset.set(px(0.0));
+                    drop_target.set(None);
+                    drag_source.set(None);
+                    if enabled && (e.page.x - origin.get().x).0.abs() < 160.0 {
+                        let target = order[target_at((e.page.y - origin.get().y).0)].clone();
+                        store.change(|state| state.reorder_accounts(source.clone(), target));
+                    }
+                })
+                .on_responder_terminate(move |_: &ResponderEvent| {
+                    dragging.set(false);
+                    offset.set(px(0.0));
+                    drop_target.set(None);
+                    drag_source.set(None);
+                });
             column()
                 .key(account.id.clone())
+                .group()
+                .relative()
+                .translate_y(move || offset.get())
+                .opacity(move || if dragging.get() { 0.7_f32 } else { 1.0 })
                 .child(select)
                 .child(menu)
+                .child(handle)
+                .child(
+                    view()
+                        .absolute()
+                        .left(px(0.0))
+                        .right(px(0.0))
+                        .top(move || {
+                            px(if drag_source.get().is_some_and(|from| from < index) {
+                                52.0
+                            } else {
+                                0.0
+                            })
+                        })
+                        .h(px(2.0))
+                        .bg(ACCENT)
+                        .opacity(move || {
+                            if drop_target.get() == Some(index) && !dragging.get() {
+                                1.0_f32
+                            } else {
+                                0.0
+                            }
+                        }),
+                )
                 .into_element()
         })
         .collect()

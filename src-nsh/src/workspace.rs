@@ -22,6 +22,7 @@ use std::{
 };
 
 enum Pending {
+    ReorderAccounts(String, String),
     Accounts(Option<String>),
     Buckets(u64, Option<String>),
     Objects(u64, bool),
@@ -176,6 +177,7 @@ pub struct Workspace {
     list_cache: crate::list_cache::ListCache,
     pub backend: Backend,
     pub accounts: Vec<Account>,
+    pub account_reordering: bool,
     pub active_id: String,
     pub buckets: Vec<Bucket>,
     pub bucket: String,
@@ -232,6 +234,7 @@ impl Workspace {
             list_cache: Default::default(),
             backend,
             accounts: vec![],
+            account_reordering: false,
             active_id: String::new(),
             buckets: vec![],
             bucket: String::new(),
@@ -395,6 +398,17 @@ impl Workspace {
         let id = self.next_request;
         self.pending.insert(id, pending);
         self.backend.request(id, command, args);
+    }
+    pub fn reorder_accounts(&mut self, source: String, target: String) {
+        if self.is_busy() || self.account_reordering || source == target {
+            return;
+        }
+        self.account_reordering = true;
+        self.request(
+            "reorder_accounts",
+            json!({"source":source,"target":target}),
+            Pending::ReorderAccounts(source, target),
+        );
     }
     pub fn select_account(&mut self, id: String) {
         if self.is_busy() || id == self.active_id {
@@ -1519,6 +1533,7 @@ impl Workspace {
             return;
         }
         match &pending {
+            Pending::ReorderAccounts(..) => self.account_reordering = false,
             Pending::Update => self.update_pending = false,
             Pending::Buckets(..) => self.bucket_loading = false,
             Pending::Objects(..) => self.loading = false,
@@ -1560,6 +1575,15 @@ impl Workspace {
         };
         let handled: Result<(), String> = (|| {
             match pending {
+                Pending::ReorderAccounts(source, target) => {
+                    if let (Some(from), Some(to)) = (
+                        self.accounts.iter().position(|a| a.id == source),
+                        self.accounts.iter().position(|a| a.id == target),
+                    ) {
+                        let account = self.accounts.remove(from);
+                        self.accounts.insert(to, account);
+                    }
+                }
                 Pending::Accounts(select) => {
                     self.accounts = serde_json::from_value(data).map_err(|e| e.to_string())?;
                     self.active_id = select

@@ -339,5 +339,6 @@
   "路径中的存储桶不在当前账户的列表中。": "Le compartiment indiqué dans ce chemin ne figure pas dans la liste du compte actif.",
   "找不到指定的目录或对象。": "Le dossier ou l’objet indiqué est introuvable.",
   "在当前工作空间的 Endpoint 创建存储桶；Region 留空时使用工作空间或全局默认值。": "Créez le compartiment sur le Endpoint de l’espace de travail actuel. Laissez Region vide pour utiliser la valeur par défaut de l’espace de travail ou la valeur globale.",
-  "此工作空间已有同名存储桶。": "Un compartiment portant ce nom existe déjà dans cet espace de travail."
+  "此工作空间已有同名存储桶。": "Un compartiment portant ce nom existe déjà dans cet espace de travail.",
+  "拖动排序": "Faire glisser pour réorganiser"
 }

@@ -680,3 +680,50 @@ fn returning_to_a_directory_restores_all_loaded_pages() {
         .unwrap();
     assert!(!app.screen().matches("id:load-more").unwrap());
 }
+
+#[test]
+fn dragging_workspace_handle_reorders_without_switching_accounts() {
+    use nsh_core::geometry::point;
+    let mut app = preview();
+    let first = "id:account-demo-aws";
+    let second = "id:account-demo-minio";
+    app.hover(first).unwrap();
+    app.drag("id:account-drag-demo-aws", point(px(0.0), px(58.0)))
+        .unwrap();
+    // Wait for the persistence response before inspecting the reordered layout.
+    app.wait_until("workspace order changes", WAIT, |screen| {
+        let nodes = screen.layout_nodes();
+        let y = |id: &str| {
+            nodes
+                .iter()
+                .find(|n| n.test_id.as_deref() == Some(id))
+                .unwrap()
+                .bounds
+                .origin
+                .y
+                .0
+        };
+        y("account-demo-aws") > y("account-demo-minio")
+    })
+    .unwrap();
+    assert!(app.screen().selected(first).unwrap());
+    app.hover(second).unwrap();
+    app.drag("id:account-drag-demo-minio", point(px(0.0), px(58.0)))
+        .unwrap();
+    app.wait_until("workspace order changes", WAIT, |screen| {
+        let nodes = screen.layout_nodes();
+        let y = |id: &str| {
+            nodes
+                .iter()
+                .find(|n| n.test_id.as_deref() == Some(id))
+                .unwrap()
+                .bounds
+                .origin
+                .y
+                .0
+        };
+        y("account-demo-aws") < y("account-demo-minio")
+    })
+    .unwrap();
+    assert!(app.screen().selected(first).unwrap());
+}

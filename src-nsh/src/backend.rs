@@ -407,6 +407,9 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             .await,
         ),
         "list_accounts" => value(accounts::list_accounts(store).await),
+        "reorder_accounts" => {
+            value(accounts::reorder_accounts(store, text("source"), text("target")).await)
+        }
         "save_account" => {
             let _changes = cache.mutations.lock().await;
             let account = accounts::save_account(
@@ -605,6 +608,7 @@ fn preview(
                 serde_json::from_value(args["connection"].clone()).map_err(|e| e.to_string())?;
             value(connection.normalized())
         }
+        "reorder_accounts" => Ok(Value::Null),
         "list_accounts" => Ok(json!([
             {"id":"demo-aws","name":"Design workspace","region":"ap-southeast-1","endpoint":"","pathStyle":false},
             {"id":"demo-minio","name":"Local development","region":"us-east-1","endpoint":"http://localhost:9000","pathStyle":true}
