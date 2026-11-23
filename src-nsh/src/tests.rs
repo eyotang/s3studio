@@ -506,7 +506,8 @@ fn canceled_size_scan_keeps_browsing_available() {
     app.wait_for("id:tree-file-Brand assets/Logo.svg").unwrap();
     app.press("id:tree-rescan").unwrap();
     app.wait_for("id:tree-size-pending-Brand assets/").unwrap();
-    gate.add_permits(1);
+    // The original bucket now keeps scanning in the background as well.
+    gate.add_permits(2);
     app.wait_for("id:tree-totals").unwrap();
 }
 
@@ -630,4 +631,22 @@ fn list_sizes_finish_without_dismissing_an_open_form() {
         app.screen().input_text("id:name").unwrap(),
         Some("Keep this draft")
     );
+}
+
+#[test]
+fn bucket_scan_finishes_in_background_and_is_reused_on_return() {
+    let (mut app, gate) = paused_scan();
+    app.press("id:bucket-application-backups").unwrap();
+    app.wait_for("id:tree-scanning").unwrap();
+    // Only the first bucket's waiting scan may finish. The second stays paused.
+    gate.add_permits(1);
+    app.press("id:bucket-studio-assets").unwrap();
+    app.wait_for("id:tree-totals").unwrap();
+    app.wait_for("24.6 MB").unwrap();
+    assert!(!app.screen().matches("id:tree-scanning").unwrap());
+    app.press("id:bucket-application-backups").unwrap();
+    app.wait_for("id:tree-scanning").unwrap();
+    app.press("id:bucket-studio-assets").unwrap();
+    app.wait_for("id:tree-totals").unwrap();
+    assert!(!app.screen().matches("id:tree-scanning").unwrap());
 }

@@ -67,6 +67,13 @@ pub enum TreeStatus {
     Failed(String),
 }
 
+struct BackgroundScan {
+    scope: TreeScope,
+    revision: u64,
+    status: TreeStatus,
+    task: TreeTask,
+}
+
 pub struct TreeBrowser {
     pub status: TreeStatus,
     pub options: TreeOptions,
@@ -112,7 +119,7 @@ impl TreeBrowser {
 
     fn cancel_scan(&mut self) {
         if self.task.take().is_some() {
-            self.revision += 1;
+            self.revision = 0;
             self.status = TreeStatus::Cancelled;
         }
     }
@@ -185,6 +192,8 @@ pub struct Workspace {
     pub selected: HashSet<String>,
     pub object_view: ObjectView,
     pub tree: TreeBrowser,
+    background_scans: Vec<BackgroundScan>,
+    scan_revision: u64,
     pub appearance: Appearance,
     pub show_info: bool,
     pub info: Option<ObjectInfo>,
@@ -237,6 +246,8 @@ impl Workspace {
             selected: HashSet::new(),
             object_view: ObjectView::List,
             tree: TreeBrowser::new(),
+            background_scans: Vec::new(),
+            scan_revision: 0,
             appearance: crate::appearance::preference(),
             show_info: false,
             info: None,
@@ -402,6 +413,7 @@ impl Workspace {
         self.bucket.clear();
         self.clear_list_page();
         self.selected.clear();
+        self.park_tree_scan();
         self.tree.clear();
         self.prefix.clear();
         self.error.clear();
@@ -447,6 +459,7 @@ impl Workspace {
         }
         let scope = self.tree_scope();
         if self.tree.scope.as_ref().is_some_and(|old| old != &scope) {
+            self.park_tree_scan();
             self.tree.clear();
         }
         if self.object_view == ObjectView::Tree {
@@ -556,20 +569,47 @@ impl Workspace {
         )
     }
 
+    fn park_tree_scan(&mut self) {
+        if let (Some(scope), Some(task)) = (self.tree.scope.clone(), self.tree.task.take()) {
+            self.background_scans.push(BackgroundScan {
+                scope,
+                revision: self.tree.revision,
+                status: std::mem::replace(&mut self.tree.status, TreeStatus::Idle),
+                task,
+            });
+            self.tree.revision = 0;
+        }
+    }
+
     fn start_tree_scan(&mut self, force: bool) {
         if self.active_id.is_empty() || self.bucket.is_empty() {
             return;
         }
         let scope = self.tree_scope();
         if self.tree.scope.as_ref() != Some(&scope) {
+            self.park_tree_scan();
             self.tree.clear();
             self.tree.scope = Some(scope.clone());
         }
         self.tree.cancel_scan();
+        if let Some(index) = self
+            .background_scans
+            .iter()
+            .position(|scan| scan.scope == scope)
+        {
+            let scan = self.background_scans.swap_remove(index);
+            if !force {
+                self.tree.revision = scan.revision;
+                self.tree.status = scan.status;
+                self.tree.task = Some(scan.task);
+                return;
+            }
+        }
         if force {
             self.tree.cancel_query();
         }
-        self.tree.revision += 1;
+        self.scan_revision += 1;
+        self.tree.revision = self.scan_revision;
         self.tree.status = TreeStatus::Opening;
         self.tree.task = Some(self.backend.scan_tree(self.tree.revision, scope, force));
         if !self.tree.cache_available && self.list_loaded {
@@ -783,6 +823,14 @@ impl Workspace {
     }
 
     fn receive_tree_scanning(&mut self, revision: u64) {
+        if let Some(scan) = self
+            .background_scans
+            .iter_mut()
+            .find(|scan| scan.revision == revision)
+        {
+            scan.status = TreeStatus::Scanning(Totals::default());
+            return;
+        }
         if self.tree.revision == revision {
             self.receive_tree_progress(revision, Totals::default());
             if self.object_view == ObjectView::Tree && !self.tree.cache_available {
@@ -797,12 +845,28 @@ impl Workspace {
     }
 
     fn receive_tree_progress(&mut self, revision: u64, totals: Totals) {
+        if let Some(scan) = self
+            .background_scans
+            .iter_mut()
+            .find(|scan| scan.revision == revision)
+        {
+            scan.status = TreeStatus::Scanning(totals);
+            return;
+        }
         if self.tree.revision == revision {
             self.tree.status = TreeStatus::Scanning(totals);
         }
     }
 
     fn receive_tree_ready(&mut self, revision: u64, result: Result<(), String>) {
+        if let Some(index) = self
+            .background_scans
+            .iter()
+            .position(|scan| scan.revision == revision)
+        {
+            self.background_scans.swap_remove(index);
+            return;
+        }
         if self.tree.revision != revision {
             return;
         }
@@ -1589,6 +1653,16 @@ impl Workspace {
                     self.settings = serde_json::from_value(data).map_err(|e| e.to_string())?
                 }
                 Pending::Submit(dialog) => {
+                    if matches!(
+                        &dialog,
+                        Dialog::Account(_)
+                            | Dialog::RemoveAccount(_)
+                            | Dialog::BucketSettings
+                            | Dialog::S3Defaults
+                    ) {
+                        self.background_scans.clear();
+                        self.tree.cancel_scan();
+                    }
                     let message = match dialog {
                         Dialog::Account(id) => {
                             let saved: Account =
@@ -1833,7 +1907,7 @@ impl Store {
             Message::TreeScanning(revision) => {
                 let tree = self.write(|workspace| {
                     workspace.receive_tree_scanning(revision);
-                    workspace.object_view == ObjectView::Tree
+                    workspace.object_view == ObjectView::Tree && workspace.tree.revision == revision
                 });
                 if tree {
                     self.revision.update(|v| *v += 1);
@@ -1844,7 +1918,7 @@ impl Store {
             Message::TreeProgress(revision, totals) => {
                 let visible = self.write(|workspace| {
                     workspace.receive_tree_progress(revision, totals);
-                    workspace.object_view == ObjectView::Tree
+                    workspace.object_view == ObjectView::Tree && workspace.tree.revision == revision
                 });
                 if visible {
                     self.revision.update(|revision| *revision += 1);
@@ -1853,7 +1927,7 @@ impl Store {
             Message::TreeReady(revision, result) => {
                 let tree = self.write(|workspace| {
                     workspace.receive_tree_ready(revision, result);
-                    workspace.object_view == ObjectView::Tree
+                    workspace.object_view == ObjectView::Tree && workspace.tree.revision == revision
                 });
                 if tree {
                     self.revision.update(|v| *v += 1);
