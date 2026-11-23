@@ -428,6 +428,17 @@ fn bucket_options_can_be_added_reused_and_removed() {
     }
     app.press("id:s3-defaults").unwrap();
     app.press("id:delete-s3-option-region-eu-west-2").unwrap();
+    app.wait_for(i18n::t(
+        "确认删除此全局选项？如果它是当前默认值，将同时清空默认值；保存设置后生效。",
+    ))
+    .unwrap();
+    app.press("id:cancel-dialog").unwrap();
+    app.wait_for("id:delete-s3-option-region-eu-west-2")
+        .unwrap();
+    app.press("id:delete-s3-option-region-eu-west-2").unwrap();
+    app.press("id:submit-dialog").unwrap();
+    app.wait_for_gone("id:delete-s3-option-region-eu-west-2", WAIT)
+        .unwrap();
     app.press("id:submit-dialog").unwrap();
     app.wait_for(i18n::t("设置保存成功")).unwrap();
 }
@@ -874,4 +885,36 @@ fn windows_registers_native_application_menu_with_shared_actions() {
     assert!(!app.screen().matches("id:header-settings").unwrap());
     app.press_key("ctrl+,").unwrap();
     app.wait_for("id:settings-language-system").unwrap();
+}
+
+#[test]
+fn clearing_transfer_records_requires_confirmation_and_can_be_cancelled() {
+    let (events, receiver) = mpsc::channel();
+    let mut config = desktop_config(Root::of::<TestWorkspace>());
+    config.context = config.context.with(Events(events));
+    let mut app = Headless::start(config).unwrap();
+    let sender = receiver.recv_timeout(WAIT).unwrap();
+    app.wait_for("id:object-Brand assets/").unwrap();
+    let transfer = serde_json::from_value(serde_json::json!({
+        "id":"completed-example", "name":"keep-local-file.zip", "accountId":"demo-aws",
+        "bucket":"studio-assets", "key":"keep-local-file.zip", "direction":"download",
+        "status":"done", "bytes":1024, "total":1024
+    }))
+    .unwrap();
+    sender.unbounded_send(Message::Transfer(transfer)).unwrap();
+    app.press("id:transfers-toggle").unwrap();
+    app.wait_for("id:clear-transfers").unwrap();
+    app.press("id:clear-transfers").unwrap();
+    app.wait_for(i18n::t(
+        "确认清除所有已完成及已取消的传输记录？只清除记录，不删除本地文件或存储桶对象。",
+    ))
+    .unwrap();
+    app.press("id:cancel-dialog").unwrap();
+    app.press("id:transfers-toggle").unwrap();
+    app.wait_for("keep-local-file.zip").unwrap();
+    app.press("id:clear-transfers").unwrap();
+    app.press("id:submit-dialog").unwrap();
+    app.press("id:transfers-toggle").unwrap();
+    app.wait_for_gone("keep-local-file.zip", WAIT).unwrap();
+    assert!(!app.screen().matches("id:clear-transfers").unwrap());
 }

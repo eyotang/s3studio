@@ -362,5 +362,7 @@
   "已还原为新的当前版本。": "Restauré en tant que nouvelle version actuelle.",
   "选择历史数据版本还原为新的当前版本；已有版本保留，当前内容将被替换。": "Restaurez une ancienne version des données en tant que nouvelle version actuelle. Les versions existantes sont conservées ; le contenu actuel sera remplacé.",
   "对象状态已变化，请刷新版本列表后重试。": "L’état de l’objet a changé. Actualisez la liste des versions et réessayez.",
-  "请先在存储服务中启用版本控制，再按版本还原。": "Activez le versionnement dans votre service de stockage avant de restaurer une version spécifique."
+  "请先在存储服务中启用版本控制，再按版本还原。": "Activez le versionnement dans votre service de stockage avant de restaurer une version spécifique.",
+  "确认清除所有已完成及已取消的传输记录？只清除记录，不删除本地文件或存储桶对象。": "Effacer tous les historiques de transferts terminés et annulés ? Seuls les enregistrements sont supprimés, sans supprimer les fichiers locaux ni les objets des buckets.",
+  "确认删除此全局选项？如果它是当前默认值，将同时清空默认值；保存设置后生效。": "Supprimer cette option globale ? Si elle est la valeur par défaut actuelle, celle-ci sera également effacée. Les modifications prennent effet après l’enregistrement des paramètres."
 }

@@ -362,5 +362,7 @@
   "已还原为新的当前版本。": "Als neue aktuelle Version wiederhergestellt.",
   "选择历史数据版本还原为新的当前版本；已有版本保留，当前内容将被替换。": "Stellen Sie eine frühere Datenversion als neue aktuelle Version wieder her. Vorhandene Versionen bleiben erhalten; der aktuelle Inhalt wird ersetzt.",
   "对象状态已变化，请刷新版本列表后重试。": "Der Objektstatus hat sich geändert. Aktualisieren Sie die Versionsliste und versuchen Sie es erneut.",
-  "请先在存储服务中启用版本控制，再按版本还原。": "Aktivieren Sie die Versionierung im Speicherdienst, bevor Sie eine bestimmte Version wiederherstellen."
+  "请先在存储服务中启用版本控制，再按版本还原。": "Aktivieren Sie die Versionierung im Speicherdienst, bevor Sie eine bestimmte Version wiederherstellen.",
+  "确认清除所有已完成及已取消的传输记录？只清除记录，不删除本地文件或存储桶对象。": "Alle abgeschlossenen und abgebrochenen Übertragungsprotokolle löschen? Nur die Einträge werden entfernt, keine lokalen Dateien oder Bucket-Objekte.",
+  "确认删除此全局选项？如果它是当前默认值，将同时清空默认值；保存设置后生效。": "Diese globale Option löschen? Ist sie der aktuelle Standardwert, wird auch dieser geleert. Änderungen werden beim Speichern der Einstellungen wirksam."
 }

@@ -121,6 +121,13 @@ fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
             t("显示已删除对象，还原后回到原路径。未启用版本控制或历史数据已清理的对象无法恢复。")
                 .into()
         }
+        Dialog::RemoveS3Option(..) => {
+            t("确认删除此全局选项？如果它是当前默认值，将同时清空默认值；保存设置后生效。").into()
+        }
+        Dialog::ClearTransfers => {
+            t("确认清除所有已完成及已取消的传输记录？只清除记录，不删除本地文件或存储桶对象。")
+                .into()
+        }
         Dialog::Account(_) => t("所有凭据仅保存于本机系统密钥库，账户数量没有限制。").into(),
         Dialog::Bucket => {
             t("在当前工作空间的 Endpoint 创建存储桶；Region 留空时使用工作空间或全局默认值。")
@@ -181,6 +188,9 @@ fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
 
 fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> {
     let body = match dialog {
+        Dialog::RemoveS3Option(field, value) => column()
+            .child(label(if field == "endpoint" { "Endpoint" } else { "Region" }, 12.0, MUTED))
+            .child(label(value.clone(), 12.0, TEXT).selectable(true)),
         Dialog::Trash => trash_contents(store, state),
         Dialog::Versions => version_contents(store, state),
         Dialog::Account(_) => column().gap(px(11.0))
@@ -239,7 +249,7 @@ fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> 
             .child(label(crate::lf!("版本 {}", env!("CARGO_PKG_VERSION")), 14.0, TEXT).test_id("about-version"))
             .child(label(t("跨平台 S3 文件工作空间"), 12.0, MUTED)),
         Dialog::Update => update_status(state),
-        Dialog::Upload | Dialog::RemoveAccount(_) | Dialog::CancelTransfer(_) => return None,
+        Dialog::Upload | Dialog::RemoveAccount(_) | Dialog::CancelTransfer(_) | Dialog::ClearTransfers => return None,
     };
     Some(body.into_element())
 }

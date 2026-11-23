@@ -1150,6 +1150,12 @@ impl Workspace {
         if self.is_busy() || (self.dialog == Some(Dialog::Update) && self.update_pending) {
             return;
         }
+        if matches!(self.dialog, Some(Dialog::RemoveS3Option(..))) {
+            self.dialog = Some(Dialog::S3Defaults);
+            self.dialog_revision += 1;
+            self.dialog_error.clear();
+            return;
+        }
         self.dialog = None;
         self.form.inputs.clear();
     }
@@ -1439,6 +1445,14 @@ impl Workspace {
     }
 
     pub fn remove_s3_option(&mut self, field: S3Option, value: &str) {
+        if self.is_busy() || self.dialog != Some(Dialog::S3Defaults) {
+            return;
+        }
+        self.dialog = Some(Dialog::RemoveS3Option(field.key().into(), value.into()));
+        self.dialog_revision += 1;
+        self.dialog_error.clear();
+    }
+    fn confirm_remove_s3_option(&mut self, field: S3Option, value: &str) {
         self.form.s3_options.remove_option(field, value);
         if field
             .normalize(self.input(field.key()).to_owned())
@@ -1470,6 +1484,22 @@ impl Workspace {
             return;
         }
         let command = match &dialog {
+            Dialog::RemoveS3Option(field, value) => {
+                let field = match field.as_str() {
+                    "endpoint" => S3Option::Endpoint,
+                    "region" => S3Option::Region,
+                    _ => return,
+                };
+                self.confirm_remove_s3_option(field, value);
+                self.close_dialog();
+                return;
+            }
+            Dialog::ClearTransfers => {
+                self.close_dialog();
+                self.busy = true;
+                self.request("clear_finished_transfers", json!({}), Pending::Clear);
+                return;
+            }
             Dialog::LocatePath => {
                 self.locate_path();
                 return;
@@ -1613,7 +1643,9 @@ impl Workspace {
         self.request(command, json!({"transferId":id}), Pending::Control(id));
     }
     pub fn clear_finished(&mut self) {
-        self.request("clear_finished_transfers", json!({}), Pending::Clear);
+        if !self.is_busy() && self.dialog.is_none() {
+            self.open_dialog(Dialog::ClearTransfers);
+        }
     }
     fn notify(&mut self, message: String) {
         self.toast = message;
@@ -1691,6 +1723,7 @@ impl Workspace {
             Pending::Buckets(..) => self.bucket_loading = false,
             Pending::Objects(..) => self.loading = false,
             Pending::Submit(_)
+            | Pending::Clear
             | Pending::LocatePath(_)
             | Pending::AddS3Option
             | Pending::Download
@@ -2305,5 +2338,34 @@ mod tests {
         );
         assert!(workspace.prefix.is_empty());
         assert_eq!(workspace.search_query(), "guidelines");
+    }
+    #[test]
+    fn deleting_global_options_preserves_drafts_until_confirmation() {
+        for (field, value) in [
+            (S3Option::Endpoint, "https://s3.example.com"),
+            (S3Option::Region, "eu-west-2"),
+        ] {
+            let (backend, _receiver) = Backend::open(true).unwrap();
+            let mut workspace = Workspace::new(backend);
+            workspace.open_dialog(Dialog::S3Defaults);
+            workspace.form.s3_options.add_option(field, value.into());
+            workspace.set_input(field.key(), value);
+            let request = workspace.next_request;
+            workspace.remove_s3_option(field, value);
+            assert!(matches!(workspace.dialog, Some(Dialog::RemoveS3Option(..))));
+            assert_eq!(workspace.input(field.key()), value);
+            assert_eq!(workspace.next_request, request);
+            workspace.close_dialog();
+            assert_eq!(workspace.dialog, Some(Dialog::S3Defaults));
+            assert_eq!(workspace.input(field.key()), value);
+            workspace.remove_s3_option(field, value);
+            workspace.submit();
+            assert_eq!(workspace.dialog, Some(Dialog::S3Defaults));
+            assert_eq!(workspace.input(field.key()), "");
+            assert_eq!(
+                workspace.next_request, request,
+                "deletion is saved only with settings"
+            );
+        }
     }
 }

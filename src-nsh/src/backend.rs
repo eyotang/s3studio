@@ -655,7 +655,7 @@ fn preview(
             {"id":"older-data","modified":"2026-11-20T08:00:00Z","size":512,"latest":false,"deleted":false},
             {"id":"old-marker","modified":"2026-11-19T08:00:00Z","size":null,"latest":false,"deleted":true}
         ],"cursor":null})),
-        "restore_version" => Ok(Value::Null),
+        "restore_version" | "clear_finished_transfers" => Ok(Value::Null),
         "list_trash" => Ok(json!({"objects":[
             {"key":"deleted/report.pdf","versionId":"preview-delete","deleted":"2026-11-20T08:00:00Z"}
         ],"cursor":null,"versioning":true})),

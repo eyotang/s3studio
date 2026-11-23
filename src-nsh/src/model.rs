@@ -20,6 +20,8 @@ pub enum Dialog {
     Delete,
     Upload,
     RemoveAccount(String),
+    RemoveS3Option(String, String),
+    ClearTransfers,
     Help,
     About,
     TransferSettings,
@@ -41,6 +43,8 @@ impl Dialog {
             Self::Delete => crate::i18n::t("删除所选项目？"),
             Self::Upload => crate::i18n::t("上传文件"),
             Self::RemoveAccount(_) => crate::i18n::t("删除工作空间配置？"),
+            Self::RemoveS3Option(..) => crate::i18n::t("删除选项"),
+            Self::ClearTransfers => crate::i18n::t("清除已完成及已取消的记录"),
             Self::Help => crate::i18n::t("为云端工作而设计"),
             Self::About => crate::i18n::t("关于 S3 Studio"),
             Self::TransferSettings => crate::i18n::t("设置"),
@@ -58,7 +62,10 @@ impl Dialog {
             Self::Trash => crate::i18n::t("还原所选对象"),
             Self::Versions => crate::i18n::t("还原所选版本"),
             Self::Copy => crate::i18n::t("复制"),
-            Self::Delete | Self::RemoveAccount(_) => crate::i18n::t("确认删除"),
+            Self::Delete
+            | Self::RemoveAccount(_)
+            | Self::RemoveS3Option(..)
+            | Self::ClearTransfers => crate::i18n::t("确认删除"),
             Self::Upload => crate::i18n::t("选择文件并上传"),
             Self::TransferSettings | Self::S3Defaults => crate::i18n::t("保存设置"),
             Self::Help => crate::i18n::t("开始使用"),
@@ -70,7 +77,11 @@ impl Dialog {
     pub fn destructive(&self) -> bool {
         matches!(
             self,
-            Self::Delete | Self::RemoveAccount(_) | Self::CancelTransfer(_)
+            Self::Delete
+                | Self::RemoveAccount(_)
+                | Self::RemoveS3Option(..)
+                | Self::ClearTransfers
+                | Self::CancelTransfer(_)
         )
     }
 }

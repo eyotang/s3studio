@@ -362,5 +362,7 @@
   "已还原为新的当前版本。": "Restored as a new current version.",
   "选择历史数据版本还原为新的当前版本；已有版本保留，当前内容将被替换。": "Restore a historical data version as a new current version. Existing versions are retained; the current contents will be replaced.",
   "对象状态已变化，请刷新版本列表后重试。": "The object has changed. Refresh the version list and try again.",
-  "请先在存储服务中启用版本控制，再按版本还原。": "Enable versioning in your storage service before restoring a specific version."
+  "请先在存储服务中启用版本控制，再按版本还原。": "Enable versioning in your storage service before restoring a specific version.",
+  "确认清除所有已完成及已取消的传输记录？只清除记录，不删除本地文件或存储桶对象。": "Clear all completed and cancelled transfer records? Only records are removed; local files and bucket objects are not deleted.",
+  "确认删除此全局选项？如果它是当前默认值，将同时清空默认值；保存设置后生效。": "Delete this global option? If it is the current default, the default will also be cleared. Changes take effect when settings are saved."
 }
