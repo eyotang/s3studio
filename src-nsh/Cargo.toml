@@ -1,6 +1,6 @@
 [package]
 name = "s3-studio-nsh"
-version = "0.4.35"
+version = "0.4.36"
 description = "A beautiful cross-platform S3 workspace"
 authors = ["S3 Studio"]
 edition = "2024"
@@ -46,6 +46,7 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["NSAppl
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSString"] }
 
 [target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 nsh-platform-windows = { git = "https://github.com/longbridge/nsh", tag = "v0.6.1", default-features = false }
 
 [target.'cfg(windows)'.build-dependencies]

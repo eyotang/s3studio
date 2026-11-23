@@ -551,6 +551,7 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             invalidate_tree_cache(cache, Some(account), Some(bucket)).await;
             value(result)
         }
+        "trash_enabled" => value(s3::trash::enabled(store, account, bucket).await),
         "list_trash" => value(
             s3::trash::list(
                 store,
@@ -656,6 +657,7 @@ fn preview(
             {"id":"old-marker","modified":"2026-11-19T08:00:00Z","size":null,"latest":false,"deleted":true}
         ],"cursor":null})),
         "restore_version" | "clear_finished_transfers" => Ok(Value::Null),
+        "trash_enabled" => Ok(json!(args["bucket"].as_str() == Some("studio-assets"))),
         "list_trash" => Ok(json!({"objects":[
             {"key":"deleted/report.pdf","versionId":"preview-delete","deleted":"2026-11-20T08:00:00Z"}
         ],"cursor":null,"versioning":true})),

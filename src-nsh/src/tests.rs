@@ -918,3 +918,26 @@ fn clearing_transfer_records_requires_confirmation_and_can_be_cancelled() {
     app.wait_for_gone("keep-local-file.zip", WAIT).unwrap();
     assert!(!app.screen().matches("id:clear-transfers").unwrap());
 }
+
+#[test]
+fn recycle_bin_is_disabled_for_buckets_without_versioning_in_all_views() {
+    let mut app = preview();
+    app.press("id:bucket-application-backups").unwrap();
+    app.wait_until("disabled recycle bin", WAIT, |screen| {
+        screen.matches("id:open-trash").unwrap_or(false)
+            && !screen.enabled("id:open-trash").unwrap_or(true)
+    })
+    .unwrap();
+    for view in ["id:grid-view", "id:tree-view", "id:list-view"] {
+        app.press(view).unwrap();
+        app.wait_for("id:open-trash").unwrap();
+        assert!(!app.screen().enabled("id:open-trash").unwrap());
+    }
+    app.press("id:bucket-studio-assets").unwrap();
+    app.wait_until("enabled recycle bin", WAIT, |screen| {
+        screen.enabled("id:open-trash").unwrap_or(false)
+    })
+    .unwrap();
+    app.press("id:open-trash").unwrap();
+    app.wait_for("id:trash-check-deleted/report.pdf").unwrap();
+}

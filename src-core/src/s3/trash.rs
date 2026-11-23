@@ -30,6 +30,25 @@ pub struct RestoreResult {
     pub failed: Vec<(String, String)>,
 }
 
+pub async fn enabled(
+    store: &AccountStore,
+    account: String,
+    bucket: String,
+) -> Result<bool, String> {
+    let client = bucket_client(store, &account, &bucket).await?;
+    enabled_with_client(&client, &bucket).await
+}
+
+async fn enabled_with_client(client: &Client, bucket: &str) -> Result<bool, String> {
+    let status = client
+        .get_bucket_versioning()
+        .bucket(bucket)
+        .send()
+        .await
+        .map_err(failure)?;
+    Ok(status.status() == Some(&aws_sdk_s3::types::BucketVersioningStatus::Enabled))
+}
+
 pub async fn list(
     store: &AccountStore,
     account: String,
@@ -383,5 +402,26 @@ mod tests {
         ]);
         assert!(restore_one(&client, "bucket", &item()).await.is_err());
         server.join().unwrap();
+    }
+    #[tokio::test]
+    async fn recycle_bin_availability_requires_enabled_versioning() {
+        for (xml, expected) in [
+            (
+                "<VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration>",
+                true,
+            ),
+            (
+                "<VersioningConfiguration><Status>Suspended</Status></VersioningConfiguration>",
+                false,
+            ),
+            ("<VersioningConfiguration/>", false),
+        ] {
+            let (client, server) = mock(vec![("GET", "versioning", xml)]);
+            assert_eq!(
+                enabled_with_client(&client, "bucket").await.unwrap(),
+                expected
+            );
+            server.join().unwrap();
+        }
     }
 }

@@ -22,6 +22,7 @@ use std::{
 };
 
 enum Pending {
+    TrashEnabled(u64),
     Versions(u64, bool),
     RestoreVersion,
     Trash(u64, bool),
@@ -202,6 +203,10 @@ pub struct VersionBrowser {
 pub struct Workspace {
     pub versions: VersionBrowser,
     pub trash: TrashBrowser,
+    pub trash_available: Option<bool>,
+    pub trash_availability_error: String,
+    trash_scope: Option<(String, String)>,
+    trash_check_revision: u64,
     list_cache: crate::list_cache::ListCache,
     pub backend: Backend,
     pub accounts: Vec<Account>,
@@ -261,6 +266,10 @@ impl Workspace {
         let mut this = Self {
             versions: VersionBrowser::default(),
             trash: TrashBrowser::default(),
+            trash_available: None,
+            trash_availability_error: String::new(),
+            trash_scope: None,
+            trash_check_revision: 0,
             list_cache: Default::default(),
             backend,
             accounts: vec![],
@@ -448,6 +457,9 @@ impl Workspace {
         self.load_buckets(None);
     }
     fn load_buckets(&mut self, select: Option<String>) {
+        self.trash_scope = None;
+        self.trash_available = None;
+        self.trash_check_revision += 1;
         self.bucket_revision += 1;
         self.object_revision += 1;
         self.info_revision += 1;
@@ -488,6 +500,7 @@ impl Workspace {
         self.load_objects_cached(append, false);
     }
     fn load_objects_cached(&mut self, append: bool, reuse: bool) {
+        self.check_trash_availability(false);
         if append {
             self.cancel_auto_location();
         }
@@ -563,6 +576,7 @@ impl Workspace {
     }
 
     pub fn refresh_objects(&mut self) {
+        self.check_trash_availability(true);
         self.list_cache
             .invalidate_bucket(&self.active_id, &self.bucket);
         self.cancel_auto_location();
@@ -1096,8 +1110,27 @@ impl Workspace {
         );
     }
 
+    fn check_trash_availability(&mut self, force: bool) {
+        let scope = (self.active_id.clone(), self.bucket.clone());
+        if !force && self.trash_scope.as_ref() == Some(&scope) {
+            return;
+        }
+        self.trash_scope = Some(scope);
+        self.trash_check_revision += 1;
+        self.trash_available = None;
+        self.trash_availability_error.clear();
+        if self.active_id.is_empty() || self.bucket.is_empty() {
+            return;
+        }
+        self.request(
+            "trash_enabled",
+            json!({"accountId":self.active_id,"bucket":self.bucket}),
+            Pending::TrashEnabled(self.trash_check_revision),
+        );
+    }
+
     pub fn open_trash(&mut self) {
-        if self.is_busy() || self.bucket.is_empty() {
+        if self.is_busy() || self.bucket.is_empty() || self.trash_available != Some(true) {
             return;
         }
         self.open_dialog(Dialog::Trash);
@@ -1699,6 +1732,19 @@ impl Workspace {
             }
             return;
         }
+        if let Pending::TrashEnabled(revision) = &pending {
+            if *revision != self.trash_check_revision {
+                return;
+            }
+            match result {
+                Ok(value) => self.trash_available = Some(value.as_bool().unwrap_or(false)),
+                Err(error) => {
+                    self.trash_available = Some(false);
+                    self.trash_availability_error = error;
+                }
+            }
+            return;
+        }
         if matches!(&pending, Pending::Versions(rev, _) if *rev != self.dialog_revision || self.dialog != Some(Dialog::Versions))
         {
             return;
@@ -2053,7 +2099,9 @@ impl Workspace {
                     .transfers
                     .retain(|t| !matches!(t.status.as_str(), "done" | "cancelled")),
                 Pending::Control(_) | Pending::Download | Pending::Update => {}
-                Pending::TreeLevel(..) | Pending::AutoLocatePath { .. } => unreachable!(),
+                Pending::TrashEnabled(..)
+                | Pending::TreeLevel(..)
+                | Pending::AutoLocatePath { .. } => unreachable!(),
             }
             Ok(())
         })();
@@ -2267,6 +2315,7 @@ mod tests {
                 next_token: Some("next-page".into()),
             },
         );
+        workspace.check_trash_availability(false);
         workspace.prefix = "child/".into();
         let before = workspace.next_request;
         workspace.navigate("studio-assets".into(), "".into());
@@ -2367,5 +2416,33 @@ mod tests {
                 "deletion is saved only with settings"
             );
         }
+    }
+    #[test]
+    fn recycle_bin_ignores_old_bucket_status_and_blocks_unknown_or_disabled_status() {
+        let (backend, _receiver) = Backend::open(true).unwrap();
+        let mut workspace = Workspace::new(backend);
+        workspace.active_id = "demo-aws".into();
+        workspace.bucket = "studio-assets".into();
+        workspace.check_trash_availability(false);
+        let old_request = workspace.next_request;
+        workspace.open_trash();
+        assert!(workspace.dialog.is_none());
+        workspace.bucket = "application-backups".into();
+        workspace.check_trash_availability(false);
+        let current_request = workspace.next_request;
+        workspace.receive_response(old_request, Ok(json!(true)));
+        assert_eq!(workspace.trash_available, None);
+        workspace.receive_response(current_request, Ok(json!(false)));
+        workspace.open_trash();
+        assert!(workspace.dialog.is_none());
+        workspace.check_trash_availability(true);
+        workspace.receive_response(workspace.next_request, Err("AccessDenied".into()));
+        assert_eq!(workspace.trash_available, Some(false));
+        workspace.open_trash();
+        assert!(workspace.dialog.is_none());
+        workspace.check_trash_availability(true);
+        workspace.receive_response(workspace.next_request, Ok(json!(true)));
+        workspace.open_trash();
+        assert_eq!(workspace.dialog, Some(Dialog::Trash));
     }
 }

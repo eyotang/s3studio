@@ -247,7 +247,8 @@ fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> 
                 .child(label(nsh_core::element::key_label("mod+,"), 12.0, MUTED))),
         Dialog::About => column().gap(px(6.0))
             .child(label(crate::lf!("版本 {}", env!("CARGO_PKG_VERSION")), 14.0, TEXT).test_id("about-version"))
-            .child(label(t("跨平台 S3 文件工作空间"), 12.0, MUTED)),
+            .child(label(t("跨平台 S3 文件工作空间"), 12.0, MUTED))
+            .child(scroll().max_h(px(100.0)).child(label(include_str!("../../assets/icons/LICENSE-FLUENT"), 10.0, MUTED).selectable(true))),
         Dialog::Update => update_status(state),
         Dialog::Upload | Dialog::RemoveAccount(_) | Dialog::CancelTransfer(_) | Dialog::ClearTransfers => return None,
     };

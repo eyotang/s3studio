@@ -158,6 +158,8 @@ fn app_menu(store: Store, enabled: bool) {
             ],
         ),
     ]);
+    #[cfg(windows)]
+    run_on_main_thread(crate::windows_menu::use_system_menus);
     // AppKit fills this submenu with the system's installed Services.
     #[cfg(target_os = "macos")]
     run_on_main_thread(move || {

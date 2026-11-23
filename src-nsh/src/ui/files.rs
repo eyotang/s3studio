@@ -445,26 +445,41 @@ fn show_trash(state: &Workspace) -> bool {
 }
 
 fn trash_entry(store: Store, state: &Workspace, grid: bool) -> AnyElement {
-    button("open-trash", t("回收站"))
-        .h(px(if grid {
-            135.0
-        } else if state.object_view == ObjectView::Tree {
-            40.0
+    button(
+        "open-trash",
+        if state.trash_availability_error.is_empty() {
+            t("回收站").to_owned()
         } else {
-            43.0
-        }))
-        .w_full()
-        .justify_start()
-        .px(px(if grid { 18.0 } else { 42.0 }))
-        .gap(px(9.0))
-        .border_b_1()
-        .border_color(LINE)
-        .hover(|style| style.bg(SUBTLE))
-        .disabled(state.is_busy())
-        .child(icon("recycle-bin", if grid { 28.0 } else { 20.0 }, ACCENT))
-        .child(label(t("回收站"), 12.0, TEXT))
-        .on_press(store.action(Workspace::open_trash))
-        .into_element()
+            format!("{}: {}", t("回收站"), state.trash_availability_error)
+        },
+    )
+    .h(px(if grid {
+        135.0
+    } else if state.object_view == ObjectView::Tree {
+        40.0
+    } else {
+        43.0
+    }))
+    .w_full()
+    .justify_start()
+    .px(px(if grid { 18.0 } else { 42.0 }))
+    .gap(px(9.0))
+    .border_b_1()
+    .border_color(LINE)
+    .hover(|style| style.bg(SUBTLE))
+    .disabled(state.is_busy() || state.trash_available != Some(true))
+    .child(icon(
+        "recycle-bin",
+        if grid { 28.0 } else { 20.0 },
+        if state.trash_available == Some(true) {
+            ACCENT
+        } else {
+            MUTED
+        },
+    ))
+    .child(label(t("回收站"), 12.0, TEXT))
+    .on_press(store.action(Workspace::open_trash))
+    .into_element()
 }
 
 fn objects_height() -> Points {

@@ -27,9 +27,21 @@ try {
     if ($nativeProcess.HasExited) {
         throw "Desktop exited with code $($nativeProcess.ExitCode): $(Get-Content -LiteralPath $stderrPath -Raw)"
     }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class NativeMenuCheck {
+    [DllImport("user32.dll")] public static extern IntPtr GetMenu(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern int GetMenuItemCount(IntPtr menu);
+}
+'@
+    $menuHandle = [NativeMenuCheck]::GetMenu($nativeProcess.MainWindowHandle)
+    $menuItems = if ($menuHandle -ne [IntPtr]::Zero) { [NativeMenuCheck]::GetMenuItemCount($menuHandle) } else { 0 }
+    if ($menuItems -lt 2) { throw 'The native Windows application menu bar is missing.' }
     $report = [ordered]@{
         executable = $executablePath
         alive = -not $nativeProcess.HasExited
+        nativeMenuItems = $menuItems
         inputIdle = $ready
         responding = $nativeProcess.Responding
         title = $nativeProcess.MainWindowTitle

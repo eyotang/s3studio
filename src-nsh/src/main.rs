@@ -12,6 +12,8 @@ mod object_tree;
 mod tree_cache;
 mod ui;
 mod updater;
+#[cfg(windows)]
+mod windows_menu;
 mod workspace;
 pub use s3_studio_core::lf;
 
