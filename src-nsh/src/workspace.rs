@@ -22,6 +22,8 @@ use std::{
 };
 
 enum Pending {
+    Trash(u64, bool),
+    RestoreTrash,
     ReorderAccounts(String, String),
     Accounts(Option<String>),
     Buckets(u64, Option<String>),
@@ -173,7 +175,18 @@ impl TreeBrowser {
     }
 }
 
+#[derive(Default)]
+pub struct TrashBrowser {
+    pub objects: Vec<s3_studio_core::s3::trash::TrashObject>,
+    pub selected: HashSet<String>,
+    pub cursor: Option<s3_studio_core::s3::trash::Cursor>,
+    pub versioning: Option<bool>,
+    pub loading: bool,
+    pub notice: String,
+}
+
 pub struct Workspace {
+    pub trash: TrashBrowser,
     list_cache: crate::list_cache::ListCache,
     pub backend: Backend,
     pub accounts: Vec<Account>,
@@ -231,6 +244,7 @@ pub struct Workspace {
 impl Workspace {
     fn new(backend: Backend) -> Self {
         let mut this = Self {
+            trash: TrashBrowser::default(),
             list_cache: Default::default(),
             backend,
             accounts: vec![],
@@ -1013,6 +1027,56 @@ impl Workspace {
             self.ascending = true;
         }
     }
+    pub fn open_trash(&mut self) {
+        if self.is_busy() || self.bucket.is_empty() {
+            return;
+        }
+        self.open_dialog(Dialog::Trash);
+        self.trash = TrashBrowser::default();
+        self.load_trash(false);
+    }
+    pub fn load_trash(&mut self, append: bool) {
+        if self.trash.loading || self.is_busy() || self.dialog != Some(Dialog::Trash) {
+            return;
+        }
+        self.trash.loading = true;
+        self.dialog_error.clear();
+        let cursor = if append {
+            self.trash.cursor.clone()
+        } else {
+            self.trash.selected.clear();
+            None
+        };
+        self.request(
+            "list_trash",
+            json!({"accountId":self.active_id,"bucket":self.bucket,"cursor":cursor}),
+            Pending::Trash(self.dialog_revision, append),
+        );
+    }
+    pub fn restore_trash(&mut self) {
+        if self.is_busy() || self.trash.loading || self.dialog != Some(Dialog::Trash) {
+            return;
+        }
+        let objects: Vec<_> = self
+            .trash
+            .objects
+            .iter()
+            .filter(|o| self.trash.selected.contains(&o.key))
+            .cloned()
+            .collect();
+        if objects.is_empty() {
+            return;
+        }
+        self.busy = true;
+        self.trash.notice.clear();
+        self.dialog_error.clear();
+        self.request(
+            "restore_trash",
+            json!({"accountId":self.active_id,"bucket":self.bucket,"objects":objects}),
+            Pending::RestoreTrash,
+        );
+    }
+
     pub fn close_dialog(&mut self) {
         if self.is_busy() || (self.dialog == Some(Dialog::Update) && self.update_pending) {
             return;
@@ -1433,6 +1497,10 @@ impl Workspace {
                 self.control("cancel_transfer", id);
                 return;
             }
+            Dialog::Trash => {
+                self.restore_trash();
+                return;
+            }
             Dialog::Update | Dialog::Help | Dialog::About => return,
         };
         self.busy = true;
@@ -1526,6 +1594,10 @@ impl Workspace {
             }
             return;
         }
+        if matches!(&pending, Pending::Trash(rev, _) if *rev != self.dialog_revision || self.dialog != Some(Dialog::Trash))
+        {
+            return;
+        }
         if matches!(pending,Pending::Buckets(rev,_) if rev!=self.bucket_revision)
             || matches!(pending,Pending::Objects(rev,_) if rev!=self.object_revision)
             || matches!(pending,Pending::Info(rev) if rev!=self.info_revision)
@@ -1533,6 +1605,8 @@ impl Workspace {
             return;
         }
         match &pending {
+            Pending::Trash(..) => self.trash.loading = false,
+            Pending::RestoreTrash => self.busy = false,
             Pending::ReorderAccounts(..) => self.account_reordering = false,
             Pending::Update => self.update_pending = false,
             Pending::Buckets(..) => self.bucket_loading = false,
@@ -1560,9 +1634,11 @@ impl Workspace {
                         self.load_objects(false);
                         self.dialog_error = error;
                     }
-                    Pending::Submit(_) | Pending::LocatePath(_) | Pending::AddS3Option => {
-                        self.dialog_error = error
-                    }
+                    Pending::Trash(..)
+                    | Pending::RestoreTrash
+                    | Pending::Submit(_)
+                    | Pending::LocatePath(_)
+                    | Pending::AddS3Option => self.dialog_error = error,
                     Pending::Info(_) => self.info_error = error,
                     Pending::Control(_)
                     | Pending::Clear
@@ -1575,6 +1651,48 @@ impl Workspace {
         };
         let handled: Result<(), String> = (|| {
             match pending {
+                Pending::Trash(_, append) => {
+                    let page: s3_studio_core::s3::trash::TrashPage =
+                        serde_json::from_value(data).map_err(|e| e.to_string())?;
+                    self.trash.versioning = Some(page.versioning);
+                    if !append {
+                        self.trash.objects.clear();
+                    }
+                    for object in page.objects {
+                        if !self.trash.objects.iter().any(|old| old.key == object.key) {
+                            self.trash.objects.push(object);
+                        }
+                    }
+                    self.trash.cursor = page.cursor;
+                }
+                Pending::RestoreTrash => {
+                    let result: s3_studio_core::s3::trash::RestoreResult =
+                        serde_json::from_value(data).map_err(|e| e.to_string())?;
+                    self.trash.notice =
+                        format!("{}: {}", crate::i18n::t("已还原"), result.restored.len());
+                    self.trash
+                        .objects
+                        .retain(|o| !result.restored.contains(&o.key));
+                    self.trash
+                        .selected
+                        .retain(|key| !result.restored.contains(key));
+                    self.dialog_error = result
+                        .failed
+                        .into_iter()
+                        .map(|(key, error)| format!("{key}: {error}"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    self.list_cache.clear();
+                    self.refresh_objects();
+                    // Version cursors may refer to markers just removed by this restore.
+                    if self.trash.cursor.is_some() {
+                        let failures = self.dialog_error.clone();
+                        self.trash.cursor = None;
+                        self.load_trash(false);
+                        self.dialog_error = failures;
+                    }
+                }
+
                 Pending::ReorderAccounts(source, target) => {
                     if let (Some(from), Some(to)) = (
                         self.accounts.iter().position(|a| a.id == source),

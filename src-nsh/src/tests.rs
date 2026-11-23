@@ -727,3 +727,52 @@ fn dragging_workspace_handle_reorders_without_switching_accounts() {
     .unwrap();
     assert!(app.screen().selected(first).unwrap());
 }
+
+#[test]
+fn recycle_bin_restores_checked_objects_and_stays_out_of_subdirectories() {
+    let mut app = preview();
+    app.press("id:open-trash").unwrap();
+    app.wait_for("id:trash-check-deleted/report.pdf").unwrap();
+    assert!(!app.screen().enabled("id:trash-restore").unwrap());
+    app.press("id:trash-check-deleted/report.pdf").unwrap();
+    app.press("id:trash-restore").unwrap();
+    app.wait_for(&format!("{}: 1", i18n::t("已还原"))).unwrap();
+    app.wait_for_gone("id:trash-check-deleted/report.pdf", WAIT)
+        .unwrap();
+    app.press("id:trash-close").unwrap();
+    app.type_text("id:object-search", "Brand assets/").unwrap();
+    app.press_key("enter").unwrap();
+    app.wait_for("id:breadcrumb-Brand assets/").unwrap();
+    assert!(!app.screen().matches("id:open-trash").unwrap());
+}
+
+#[test]
+fn transfer_activity_animates_only_while_tasks_are_active_without_opening_panel() {
+    let (events, receiver) = mpsc::channel();
+    let mut config = desktop_config(Root::of::<TestWorkspace>());
+    config.context = config.context.with(Events(events));
+    let mut app = Headless::start(config).unwrap();
+    let sender = receiver.recv_timeout(WAIT).unwrap();
+    app.wait_for("id:object-Brand assets/").unwrap();
+    assert!(!app.screen().matches("id:transfer-animation").unwrap());
+    let mut transfer: s3_studio_core::transfers::Transfer = serde_json::from_value(serde_json::json!({
+        "id":"activity-test","name":"archive.zip","accountId":"demo-aws","bucket":"studio-assets",
+        "key":"archive.zip","direction":"download","status":"running","bytes":512,"total":1024
+    })).unwrap();
+    sender
+        .unbounded_send(Message::Transfer(transfer.clone()))
+        .unwrap();
+    app.wait_for("id:transfer-animation").unwrap();
+    assert!(!app.screen().matches("id:transfers-panel").unwrap());
+    for status in ["paused", "running", "error", "queued", "done"] {
+        transfer.status = status.into();
+        sender
+            .unbounded_send(Message::Transfer(transfer.clone()))
+            .unwrap();
+        if matches!(status, "running" | "queued") {
+            app.wait_for("id:transfer-animation").unwrap();
+        } else {
+            app.wait_for_gone("id:transfer-animation", WAIT).unwrap();
+        }
+    }
+}

@@ -527,6 +527,24 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             }
             value(Ok(()))
         }
+        "list_trash" => value(
+            s3::trash::list(
+                store,
+                account,
+                bucket,
+                serde_json::from_value(args["cursor"].clone()).map_err(|e| e.to_string())?,
+            )
+            .await,
+        ),
+        "restore_trash" => {
+            let _changes = cache.mutations.lock().await;
+            let objects =
+                serde_json::from_value(args["objects"].clone()).map_err(|e| e.to_string())?;
+            let result = s3::trash::restore(store, account.clone(), bucket.clone(), objects).await;
+            // Even a partial restore can expose data; invalidate both listings and totals.
+            invalidate_tree_cache(cache, Some(account), Some(bucket)).await;
+            value(result)
+        }
         "delete_objects" => {
             let _changes = cache.mutations.lock().await;
             let keys: Vec<String> =
@@ -608,6 +626,13 @@ fn preview(
                 serde_json::from_value(args["connection"].clone()).map_err(|e| e.to_string())?;
             value(connection.normalized())
         }
+        "list_trash" => Ok(json!({"objects":[
+            {"key":"deleted/report.pdf","versionId":"preview-delete","deleted":"2026-11-20T08:00:00Z"}
+        ],"cursor":null,"versioning":true})),
+        "restore_trash" => Ok(
+            json!({"restored": args["objects"].as_array().into_iter().flatten()
+            .filter_map(|o| o["key"].as_str()).collect::<Vec<_>>(), "failed":[]}),
+        ),
         "reorder_accounts" => Ok(Value::Null),
         "list_accounts" => Ok(json!([
             {"id":"demo-aws","name":"Design workspace","region":"ap-southeast-1","endpoint":"","pathStyle":false},

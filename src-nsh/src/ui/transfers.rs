@@ -4,6 +4,20 @@ use nsh_base::popover;
 use s3_studio_core::transfers::{Direction, Transfer};
 
 pub(super) fn activity(store: Store) -> impl IntoElement {
+    let counts = computed(move || {
+        store.read_transfers(|state| {
+            let mut up = 0usize;
+            let mut down = 0usize;
+            for transfer in state.transfers.iter().filter(|t| model::active(t)) {
+                if transfer.direction == Direction::Upload {
+                    up += 1;
+                } else {
+                    down += 1;
+                }
+            }
+            (up, down)
+        })
+    });
     popover()
         .placement(Placement::Top)
         .align(Align::Start)
@@ -16,8 +30,47 @@ pub(super) fn activity(store: Store) -> impl IntoElement {
                 .h(px(34.0))
                 .justify_start()
                 .px(px(8.0))
-                .child(icon("arrow-down-to-line", 16.0, MUTED))
-                .child(label(t("传输活动"), 12.0, TEXT)),
+                .child(when(
+                    move || counts.get() == (0, 0),
+                    move || icon("arrow-down-to-line", 16.0, MUTED),
+                ))
+                .child(when(
+                    move || counts.get() != (0, 0),
+                    move || {
+                        view().test_id("transfer-animation").child(dynamic(move || {
+                            let (up, down) = counts.get();
+                            view().animate_pulse().child(icon(
+                                if up > 0 && down > 0 {
+                                    "arrow-up-down"
+                                } else if up > 0 {
+                                    "arrow-up-to-line"
+                                } else {
+                                    "arrow-down-to-line"
+                                },
+                                16.0,
+                                ACCENT,
+                            ))
+                        }))
+                    },
+                ))
+                .child(label(t("传输活动"), 12.0, TEXT))
+                .child(when(
+                    move || counts.get() != (0, 0),
+                    move || {
+                        label(
+                            move || {
+                                let (up, down) = counts.get();
+                                (up + down).to_string()
+                            },
+                            10.0,
+                            ACCENT,
+                        )
+                        .test_id("transfer-active-count")
+                        .px(px(5.0))
+                        .rounded_full()
+                        .bg(SELECTED)
+                    },
+                )),
         )
         .child(
             view()
@@ -211,7 +264,11 @@ fn transfer_row(store: Store, state: &Workspace, transfer: &Transfer) -> View {
         .gap(px(10.0))
         .border_b_1()
         .border_color(LINE)
-        .child(icon(status_icon, 17.0, ink))
+        .child(
+            view()
+                .child(icon(status_icon, 17.0, ink))
+                .when(model::active(transfer), |i| i.animate_spin()),
+        )
         .child(
             column()
                 .flex_1()

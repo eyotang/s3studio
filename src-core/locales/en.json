@@ -340,5 +340,16 @@
   "找不到指定的目录或对象。": "The specified folder or object was not found.",
   "在当前工作空间的 Endpoint 创建存储桶；Region 留空时使用工作空间或全局默认值。": "Create the bucket at the current workspace Endpoint. Leave Region empty to use the workspace or global default.",
   "此工作空间已有同名存储桶。": "A bucket with this name already exists in this workspace.",
-  "拖动排序": "Drag to reorder"
+  "拖动排序": "Drag to reorder",
+  "回收站": "Recycle Bin",
+  "还原所选对象": "Restore selected objects",
+  "已还原": "Restored",
+  "删除时间": "Deleted at",
+  "回收站为空。": "The recycle bin is empty.",
+  "当前页没有已删除对象，可继续加载。": "No deleted objects on this page. Load more to continue.",
+  "此存储桶未启用版本控制，无法查看可还原对象。": "Versioning is not enabled for this bucket; recoverable objects are unavailable.",
+  "显示已删除对象，还原后回到原路径。未启用版本控制或历史数据已清理的对象无法恢复。": "Deleted objects are restored to their original paths. Objects deleted without versioning, or whose historical data was removed, cannot be recovered.",
+  "对象状态已变化，请刷新回收站后重试。": "The object has changed. Refresh the recycle bin and try again.",
+  "历史数据版本已不存在，无法还原此对象。": "No historical data version remains; this object cannot be restored.",
+  "服务器返回了重复的分页标记。": "The server returned a repeated pagination marker."
 }

@@ -38,7 +38,9 @@ pub(super) fn active(store: Store) -> AnyElement {
                         .child(
                             scroll()
                                 .test_id("modal")
-                                .w(px(if matches!(current, Dialog::Account(_)) {
+                                .w(px(if matches!(current, Dialog::Trash) {
+                                    700.0
+                                } else if matches!(current, Dialog::Account(_)) {
                                     510.0
                                 } else {
                                     460.0
@@ -112,6 +114,10 @@ fn body(store: Store, state: &Workspace, dialog: &Dialog) -> View {
 
 fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
     Some(match dialog {
+        Dialog::Trash => {
+            t("显示已删除对象，还原后回到原路径。未启用版本控制或历史数据已清理的对象无法恢复。")
+                .into()
+        }
         Dialog::Account(_) => t("所有凭据仅保存于本机系统密钥库，账户数量没有限制。").into(),
         Dialog::Bucket => {
             t("在当前工作空间的 Endpoint 创建存储桶；Region 留空时使用工作空间或全局默认值。")
@@ -172,6 +178,7 @@ fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
 
 fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> {
     let body = match dialog {
+        Dialog::Trash => trash_contents(store, state),
         Dialog::Account(_) => column().gap(px(11.0))
             .child(field(store, state, "name", t("账户名称"), true))
             .child(connection(store, state, S3Option::Endpoint, "Endpoint", false))
@@ -477,6 +484,19 @@ fn preferences(store: Store, state: &Workspace) -> View {
 fn actions(store: Store, state: &Workspace, dialog: &Dialog) -> View {
     let actions = row().justify_end().gap(px(7.0)).flex_wrap();
     match dialog {
+        Dialog::Trash => actions
+            .child(
+                secondary("trash-close", t("关闭"))
+                    .disabled(state.is_busy())
+                    .on_press(store.action(Workspace::close_dialog)),
+            )
+            .child(
+                primary("trash-restore", t("还原所选对象"), false)
+                    .disabled(
+                        state.is_busy() || state.trash.loading || state.trash.selected.is_empty(),
+                    )
+                    .on_press(store.action(Workspace::restore_trash)),
+            ),
         Dialog::Help => actions.child(
             primary("help-start", t("开始使用"), false)
                 .on_press(store.action(Workspace::close_dialog)),
@@ -645,4 +665,132 @@ fn update_status(state: &Workspace) -> View {
                 && state.transfers.iter().any(model::active),
             |body| body.child(error_notice(t("请先暂停或完成所有传输，再安装更新。"))),
         )
+}
+
+fn trash_contents(store: Store, state: &Workspace) -> View {
+    let trash = &state.trash;
+    let all = !trash.objects.is_empty()
+        && trash
+            .objects
+            .iter()
+            .all(|o| trash.selected.contains(&o.key));
+    column()
+        .gap(px(10.0))
+        .child(
+            row()
+                .justify_between()
+                .child(label(state.bucket.clone(), 12.0, TEXT))
+                .child(
+                    secondary("trash-refresh", t("刷新"))
+                        .disabled(state.is_busy() || trash.loading)
+                        .on_press(store.action(|s| s.load_trash(false))),
+                ),
+        )
+        .when(!trash.notice.is_empty(), |body| {
+            body.child(label(trash.notice.clone(), 12.0, OK))
+        })
+        .when(trash.versioning == Some(false), |body| {
+            body.child(label(
+                t("此存储桶未启用版本控制，无法查看可还原对象。"),
+                12.0,
+                MUTED,
+            ))
+        })
+        .when(!trash.objects.is_empty(), |body| {
+            body.child(
+                checkbox(
+                    "trash-select-all",
+                    t("全选"),
+                    all,
+                    !all && !trash.selected.is_empty(),
+                )
+                .disabled(state.is_busy() || trash.loading)
+                .gap(px(7.0))
+                .child(label(t("全选"), 12.0, TEXT))
+                .on_change(move |checked: &bool| {
+                    store.change(|s| {
+                        s.trash.selected = if *checked {
+                            s.trash.objects.iter().map(|o| o.key.clone()).collect()
+                        } else {
+                            Default::default()
+                        };
+                    })
+                }),
+            )
+            .child(
+                scroll().max_h(px(320.0)).child(
+                    column().gap(px(6.0)).child(
+                        trash
+                            .objects
+                            .iter()
+                            .map(|object| {
+                                let key = object.key.clone();
+                                row()
+                                    .gap(px(8.0))
+                                    .p(px(7.0))
+                                    .bg(SUBTLE)
+                                    .rounded(px(5.0))
+                                    .child(
+                                        checkbox(
+                                            &format!("trash-check-{key}"),
+                                            key.clone(),
+                                            trash.selected.contains(&key),
+                                            false,
+                                        )
+                                        .disabled(state.is_busy() || trash.loading)
+                                        .on_change(
+                                            move |checked: &bool| {
+                                                store.change(|s| {
+                                                    if *checked {
+                                                        s.trash.selected.insert(key.clone());
+                                                    } else {
+                                                        s.trash.selected.remove(&key);
+                                                    }
+                                                })
+                                            },
+                                        ),
+                                    )
+                                    .child(icon("file", 16.0, MUTED))
+                                    .child(
+                                        column()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .gap(px(3.0))
+                                            .child(label(object.key.clone(), 12.0, TEXT).truncate())
+                                            .child(label(
+                                                format!("{}: {}", t("删除时间"), object.deleted),
+                                                11.0,
+                                                MUTED,
+                                            )),
+                                    )
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            )
+        })
+        .when(trash.loading, |body| {
+            body.child(label(t("正在加载文件"), 12.0, MUTED))
+        })
+        .when(
+            !trash.loading && trash.objects.is_empty() && trash.versioning == Some(true),
+            |body| {
+                body.child(label(
+                    if trash.cursor.is_some() {
+                        t("当前页没有已删除对象，可继续加载。")
+                    } else {
+                        t("回收站为空。")
+                    },
+                    12.0,
+                    MUTED,
+                ))
+            },
+        )
+        .when(trash.cursor.is_some(), |body| {
+            body.child(
+                secondary("trash-load-more", t("加载更多对象"))
+                    .disabled(state.is_busy() || trash.loading)
+                    .on_press(store.action(|s| s.load_trash(true))),
+            )
+        })
 }

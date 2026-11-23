@@ -340,5 +340,16 @@
   "找不到指定的目录或对象。": "Le dossier ou l’objet indiqué est introuvable.",
   "在当前工作空间的 Endpoint 创建存储桶；Region 留空时使用工作空间或全局默认值。": "Créez le compartiment sur le Endpoint de l’espace de travail actuel. Laissez Region vide pour utiliser la valeur par défaut de l’espace de travail ou la valeur globale.",
   "此工作空间已有同名存储桶。": "Un compartiment portant ce nom existe déjà dans cet espace de travail.",
-  "拖动排序": "Faire glisser pour réorganiser"
+  "拖动排序": "Faire glisser pour réorganiser",
+  "回收站": "Corbeille",
+  "还原所选对象": "Restaurer les objets sélectionnés",
+  "已还原": "Restaurés",
+  "删除时间": "Date de suppression",
+  "回收站为空。": "La corbeille est vide.",
+  "当前页没有已删除对象，可继续加载。": "Aucun objet supprimé sur cette page. Chargez la suite pour continuer.",
+  "此存储桶未启用版本控制，无法查看可还原对象。": "Le versionnement est désactivé pour ce compartiment ; aucun objet récupérable ne peut être affiché.",
+  "显示已删除对象，还原后回到原路径。未启用版本控制或历史数据已清理的对象无法恢复。": "Les objets supprimés sont restaurés à leur chemin d’origine. Sans versionnement ou si les anciennes données ont été supprimées, la récupération est impossible.",
+  "对象状态已变化，请刷新回收站后重试。": "L’état de l’objet a changé. Actualisez la corbeille et réessayez.",
+  "历史数据版本已不存在，无法还原此对象。": "Aucune ancienne version des données ne subsiste ; cet objet ne peut pas être restauré.",
+  "服务器返回了重复的分页标记。": "Le serveur a renvoyé un marqueur de pagination répété."
 }

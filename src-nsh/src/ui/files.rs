@@ -186,6 +186,14 @@ fn toolbar(store: Store, state: &Workspace) -> View {
             .child(label(t("根目录"), 11.0, MUTED))
             .on_press(store.action(|state| state.navigate(state.bucket.clone(), String::new()))),
     );
+    if state.prefix.is_empty() && !state.bucket.is_empty() {
+        crumbs = crumbs.child(
+            secondary("open-trash", t("回收站"))
+                .child(icon("trash-2", 14.0, MUTED))
+                .disabled(state.is_busy())
+                .on_press(store.action(Workspace::open_trash)),
+        );
+    }
     // Empty S3 path components have their own clickable slash.
     let mut prefix = String::new();
     for part in state.prefix.split_inclusive('/') {

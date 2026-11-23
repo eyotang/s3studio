@@ -340,5 +340,16 @@
   "找不到指定的目录或对象。": "Der angegebene Ordner oder das angegebene Objekt wurde nicht gefunden.",
   "在当前工作空间的 Endpoint 创建存储桶；Region 留空时使用工作空间或全局默认值。": "Erstellen Sie den Bucket am Endpoint des aktuellen Arbeitsbereichs. Lassen Sie Region leer, um den Standard des Arbeitsbereichs oder den globalen Standard zu verwenden.",
   "此工作空间已有同名存储桶。": "In diesem Arbeitsbereich existiert bereits ein Bucket mit diesem Namen.",
-  "拖动排序": "Zum Sortieren ziehen"
+  "拖动排序": "Zum Sortieren ziehen",
+  "回收站": "Papierkorb",
+  "还原所选对象": "Ausgewählte Objekte wiederherstellen",
+  "已还原": "Wiederhergestellt",
+  "删除时间": "Gelöscht am",
+  "回收站为空。": "Der Papierkorb ist leer.",
+  "当前页没有已删除对象，可继续加载。": "Auf dieser Seite gibt es keine gelöschten Objekte. Laden Sie weitere Einträge.",
+  "此存储桶未启用版本控制，无法查看可还原对象。": "Für diesen Bucket ist die Versionierung nicht aktiviert; wiederherstellbare Objekte sind nicht verfügbar.",
+  "显示已删除对象，还原后回到原路径。未启用版本控制或历史数据已清理的对象无法恢复。": "Gelöschte Objekte werden am ursprünglichen Pfad wiederhergestellt. Ohne Versionierung oder nach dem Entfernen historischer Daten ist eine Wiederherstellung nicht möglich.",
+  "对象状态已变化，请刷新回收站后重试。": "Der Objektstatus hat sich geändert. Aktualisieren Sie den Papierkorb und versuchen Sie es erneut.",
+  "历史数据版本已不存在，无法还原此对象。": "Es ist keine historische Datenversion mehr vorhanden; dieses Objekt kann nicht wiederhergestellt werden.",
+  "服务器返回了重复的分页标记。": "Der Server hat einen wiederholten Seitenmarker zurückgegeben."
 }
