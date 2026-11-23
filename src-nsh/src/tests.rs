@@ -830,7 +830,7 @@ fn version_history_restores_selected_data_versions_and_opens_from_recycle_bin() 
     app.wait_for("id:trash-check-deleted/report.pdf").unwrap();
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn application_menu_exposes_settings_about_and_updates_on_every_platform() {
     let mut app = preview();
@@ -850,7 +850,7 @@ fn application_menu_exposes_settings_about_and_updates_on_every_platform() {
 }
 
 #[test]
-fn windows_registers_native_application_menu_with_shared_actions() {
+fn application_menu_registers_shared_actions_and_shortcuts() {
     use nsh_core::Command;
     use nsh_core::desktop::{DesktopCommand, MenuItem};
     let mut config = desktop_config(studio_root(true));
@@ -992,4 +992,41 @@ fn transfer_progress_keeps_pause_and_cancel_buttons_mounted() {
     transfer.status = "paused".into();
     sender.unbounded_send(Message::Transfer(transfer)).unwrap();
     app.wait_for("id:resume-click-test").unwrap();
+}
+
+#[test]
+fn title_bar_uses_system_chrome_on_mac_and_integrated_chrome_elsewhere() {
+    let options = main_window_options();
+    if cfg!(target_os = "macos") {
+        assert!(options.attributes.title_bar.is_none());
+    } else {
+        let title_bar = options.attributes.title_bar.unwrap();
+        assert_eq!(title_bar.style, nsh_core::desktop::TitleBarStyle::Hidden);
+        assert_eq!(title_bar.height, Some(px(50.0)));
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn framework_menu_shares_existing_header_and_opens_with_keyboard() {
+    let mut app = preview();
+    let nodes = app.screen().layout_nodes();
+    let bounds = |id| {
+        nodes
+            .iter()
+            .find(|node| node.test_id.as_deref() == Some(id))
+            .unwrap()
+            .bounds
+    };
+    let header = bounds("application-titlebar");
+    let menu = bounds("application-menu");
+    assert_eq!(header.size.height, px(50.0));
+    assert!(header.contains(&menu.center()));
+    app.press_key("f10").unwrap();
+    app.wait_for("id:application-settings").unwrap();
+    app.wait_for("id:application-quit").unwrap();
+    app.press_key("escape").unwrap();
+    app.wait_for_gone("id:application-settings", WAIT).unwrap();
+    app.press_key("ctrl+,").unwrap();
+    app.wait_for("id:settings-language-system").unwrap();
 }

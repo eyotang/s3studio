@@ -37,7 +37,7 @@ public static class NativeMenuCheck {
 '@
     $menuHandle = [NativeMenuCheck]::GetMenu($nativeProcess.MainWindowHandle)
     $menuItems = if ($menuHandle -ne [IntPtr]::Zero) { [NativeMenuCheck]::GetMenuItemCount($menuHandle) } else { 0 }
-    if ($menuItems -lt 2) { throw 'The native Windows application menu bar is missing.' }
+    if ($menuHandle -ne [IntPtr]::Zero) { throw 'The framework title bar must not have a separate native Windows menu bar.' }
     $report = [ordered]@{
         executable = $executablePath
         alive = -not $nativeProcess.HasExited

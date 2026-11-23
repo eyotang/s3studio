@@ -12,8 +12,6 @@ mod object_tree;
 mod tree_cache;
 mod ui;
 mod updater;
-#[cfg(windows)]
-mod windows_menu;
 mod workspace;
 pub use s3_studio_core::lf;
 
@@ -37,12 +35,24 @@ fn main() -> ExitCode {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let preview = std::env::args_os().any(|arg| arg == "--preview");
     let appearance = appearance::preference();
-    let mut window = MainWindowOptions::default();
+    let mut window = main_window_options();
     window.attributes.min_size = Some(Some(nsh_core::element::size(px(960.0), px(680.0))));
     let root = studio_root(preview)
         .appearance(appearance)
         .main_window(window);
     run(root, appearance)
+}
+
+fn main_window_options() -> MainWindowOptions {
+    let mut options = MainWindowOptions::default();
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut title_bar = nsh_core::desktop::TitleBarOptions::default();
+        title_bar.style = nsh_core::desktop::TitleBarStyle::Hidden;
+        title_bar.height = Some(px(50.0));
+        options.attributes.title_bar = Some(title_bar);
+    }
+    options
 }
 
 fn studio_root(preview: bool) -> Root {

@@ -69,7 +69,9 @@ pub fn workspace(store: Store) -> AnyElement {
             column()
                 .flex_1()
                 .min_w_0()
-                .child(dynamic(move || store.read(|state| header(state, inset()))))
+                .child(dynamic(move || {
+                    store.read(|state| header(store, state, inset()))
+                }))
                 .child(
                     scroll().test_id("workspace-body").flex_1().min_h_0().child(
                         column()
@@ -158,8 +160,6 @@ fn app_menu(store: Store, enabled: bool) {
             ],
         ),
     ]);
-    #[cfg(windows)]
-    run_on_main_thread(crate::windows_menu::use_system_menus);
     // AppKit fills this submenu with the system's installed Services.
     #[cfg(target_os = "macos")]
     run_on_main_thread(move || {
@@ -180,33 +180,51 @@ fn app_menu(store: Store, enabled: bool) {
     });
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn application_menu(store: Store, state: &Workspace) -> impl IntoElement + use<> {
+    let open = signal(false);
+    let enabled = state.can_open_app_dialog();
+    on_key("f10", move |_| {
+        if enabled {
+            open.set(!open.get());
+        }
+    });
     menu()
-        .offset(px(4.0))
-        .popup_style(sidebar_menu_style)
+        .open(move || Some(open.get()))
+        .on_open_change(move |event: &nsh_base::MenuEvent| {
+            if let nsh_base::MenuEvent::OpenChange(value, _) = event {
+                open.set(*value);
+            }
+        })
+        .offset(px(6.0))
+        .popup_style(|style| sidebar_menu_style(style).min_w(px(220.0)))
         .trigger(
             button("application-menu", "S3 Studio")
-                .w_full()
-                .justify_start()
-                .gap(px(8.0))
-                .pl(px(8.0))
-                .disabled(!state.can_open_app_dialog())
-                .child(brand(36.0))
-                .child(label("S3 Studio", 18.0, INK).font_weight(FontWeight::SEMIBOLD))
-                .child(icon("chevron-down", 14.0, MUTED)),
+                .h(px(30.0))
+                .px(px(8.0))
+                .gap(px(6.0))
+                .disabled(!enabled)
+                .child(label("S3 Studio", 12.0, TEXT).font_weight(FontWeight::MEDIUM))
+                .child(icon("chevron-down", 12.0, MUTED)),
         )
         .child(
-            sidebar_menu_item("application-settings", t("设置…"), "settings-2", TEXT)
-                .on_select(store.open(Dialog::TransferSettings)),
+            sidebar_menu_item("application-about", t("关于 S3 Studio"), "info", TEXT)
+                .on_select(store.open(Dialog::About)),
         )
         .child(
             sidebar_menu_item("application-update", t("检查更新…"), "refresh-cw", TEXT)
                 .on_select(store.action(Workspace::check_for_updates)),
         )
         .child(
-            sidebar_menu_item("application-about", t("关于 S3 Studio"), "info", TEXT)
-                .on_select(store.open(Dialog::About)),
+            sidebar_menu_item("application-settings", t("设置…"), "settings-2", TEXT)
+                .child(view().flex_1())
+                .child(label("Ctrl+,", 11.0, MUTED))
+                .on_select(store.open(Dialog::TransferSettings)),
+        )
+        .child(divider().my(px(4.0)))
+        .child(
+            sidebar_menu_item("application-quit", t("退出 S3 Studio"), "x", TEXT)
+                .on_select(nsh_core::element::desktop::quit),
         )
 }
 
@@ -223,29 +241,29 @@ fn sidebar(store: Store, width: Memo<f32>) -> View {
             })
         })
         .flex_shrink_0()
-        .pt(px(27.0))
+        .pt(|| {
+            // Some Linux desktops place caption buttons on the left.
+            let controls = nsh_core::element::desktop::title_bar();
+            px(if !cfg!(target_os = "macos") && controls.left.0 > 0.0 {
+                50.0
+            } else {
+                27.0
+            })
+        })
         .pb(px(14.0))
         .px(px(15.0))
         .border_r_1()
         .border_color(LINE)
         .bg(SIDEBAR)
-        .child(view().mb(px(30.0)).child(dynamic(move || {
-            #[cfg(not(any(windows, target_os = "macos")))]
-            {
-                store
-                    .read(|state| application_menu(store, state))
-                    .into_element()
-            }
-            #[cfg(any(windows, target_os = "macos"))]
-            {
+        .child(
+            view().mb(px(30.0)).child(
                 row()
                     .gap(px(10.0))
                     .pl(px(8.0))
                     .child(brand(42.0))
-                    .child(label("S3 Studio", 20.0, INK).font_weight(FontWeight::SEMIBOLD))
-                    .into_element()
-            }
-        })))
+                    .child(label("S3 Studio", 20.0, INK).font_weight(FontWeight::SEMIBOLD)),
+            ),
+        )
         .child(
             row()
                 .justify_between()
@@ -590,19 +608,39 @@ fn dot() -> View {
     view().size(px(6.0)).rounded_full().bg(OK).flex_shrink_0()
 }
 
-fn header(state: &Workspace, inset: Points) -> View {
+fn header(store: Store, state: &Workspace, inset: Points) -> View {
     let name = state
         .account()
         .map_or_else(|| t("你的工作空间").into(), |account| account.name.clone());
     column()
         .child(
             row()
+                .test_id("application-titlebar")
+                .window_drag(!cfg!(target_os = "macos"))
                 .h(px(50.0))
-                .px(inset)
+                .pl(inset)
+                .pr(move || {
+                    if cfg!(target_os = "macos") {
+                        inset
+                    } else {
+                        px(nsh_core::element::desktop::title_bar().right.0.max(inset.0))
+                    }
+                })
                 .gap(px(8.0))
                 .bg(SURFACE)
                 .border_b_1()
                 .border_color(LINE)
+                .child({
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        application_menu(store, state).into_element()
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = store;
+                        view().into_element()
+                    }
+                })
                 .child(dot())
                 .child(label(name, 12.0, TEXT).truncate()),
         )
