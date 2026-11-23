@@ -731,6 +731,26 @@ fn dragging_workspace_handle_reorders_without_switching_accounts() {
 #[test]
 fn recycle_bin_restores_checked_objects_and_stays_out_of_subdirectories() {
     let mut app = preview();
+    app.wait_for("id:object-Brand assets/").unwrap();
+    let nodes = app.screen().layout_nodes();
+    let y = |id: &str| {
+        nodes
+            .iter()
+            .find(|n| n.test_id.as_deref() == Some(id))
+            .unwrap()
+            .bounds
+            .origin
+            .y
+            .0
+    };
+    assert!(y("open-trash") < y("object-Brand assets/"));
+    assert!(y("open-trash") > y("root-directory"));
+    app.press("id:sort-name").unwrap();
+    app.press("id:grid-view").unwrap();
+    app.wait_for("id:open-trash").unwrap();
+    app.press("id:tree-view").unwrap();
+    app.wait_for("id:open-trash").unwrap();
+    app.press("id:list-view").unwrap();
     app.press("id:open-trash").unwrap();
     app.wait_for("id:trash-check-deleted/report.pdf").unwrap();
     assert!(!app.screen().enabled("id:trash-restore").unwrap());

@@ -186,14 +186,6 @@ fn toolbar(store: Store, state: &Workspace) -> View {
             .child(label(t("根目录"), 11.0, MUTED))
             .on_press(store.action(|state| state.navigate(state.bucket.clone(), String::new()))),
     );
-    if state.prefix.is_empty() && !state.bucket.is_empty() {
-        crumbs = crumbs.child(
-            secondary("open-trash", t("回收站"))
-                .child(icon("trash-2", 14.0, MUTED))
-                .disabled(state.is_busy())
-                .on_press(store.action(Workspace::open_trash)),
-        );
-    }
     // Empty S3 path components have their own clickable slash.
     let mut prefix = String::new();
     for part in state.prefix.split_inclusive('/') {
@@ -347,11 +339,16 @@ fn objects(
         let _ = location.get();
         list_ref.scroll_to(nsh_core::element::point(px(0.0), px(0.0)), false);
     });
+    let trash = computed(move || store.read(show_trash));
     let list = virtual_list(
-        move || visible.with(Vec::len),
+        move || visible.with(Vec::len) + usize::from(trash.get()),
         move |position| {
             dynamic(move || {
                 let index = position.index();
+                if trash.get() && index == 0 {
+                    return Some(store.read(|state| trash_entry(store, state, grid.get())));
+                }
+                let index = index - usize::from(trash.get());
                 let grid = grid.get();
                 let compact = compact.get();
                 visible.with(|objects| {
@@ -369,9 +366,11 @@ fn objects(
     )
     .keys(move || {
         visible.with(|objects| {
-            objects
-                .iter()
-                .map(|object| object.key.clone())
+            trash
+                .get()
+                .then(|| (true, String::new()))
+                .into_iter()
+                .chain(objects.iter().map(|object| (false, object.key.clone())))
                 .collect::<Vec<_>>()
         })
     })
@@ -439,6 +438,33 @@ fn objects(
             },
         ))
         .child(list)
+}
+
+fn show_trash(state: &Workspace) -> bool {
+    !state.bucket.is_empty() && state.prefix.is_empty() && state.search_query().is_empty()
+}
+
+fn trash_entry(store: Store, state: &Workspace, grid: bool) -> AnyElement {
+    button("open-trash", t("回收站"))
+        .h(px(if grid {
+            135.0
+        } else if state.object_view == ObjectView::Tree {
+            40.0
+        } else {
+            43.0
+        }))
+        .w_full()
+        .justify_start()
+        .px(px(if grid { 18.0 } else { 42.0 }))
+        .gap(px(9.0))
+        .border_b_1()
+        .border_color(LINE)
+        .hover(|style| style.bg(SUBTLE))
+        .disabled(state.is_busy())
+        .child(icon("trash", if grid { 28.0 } else { 18.0 }, MUTED))
+        .child(label(t("回收站"), 12.0, TEXT))
+        .on_press(store.action(Workspace::open_trash))
+        .into_element()
 }
 
 fn objects_height() -> Points {

@@ -30,25 +30,33 @@ pub(super) fn objects(store: Store) -> View {
         location.with(|_| ());
         scroll_ref.scroll_to(nsh_core::element::point(px(0.0), px(0.0)), false);
     });
+    let trash = computed(move || store.read(show_trash));
     let list = virtual_list(
-        move || rows.with(|rows| rows.len()),
+        move || rows.with(|rows| rows.len()) + usize::from(trash.get()),
         move |position| {
             dynamic(move || {
+                let index = position.index();
+                if trash.get() && index == 0 {
+                    return Some(store.read(|state| trash_entry(store, state, false)));
+                }
                 rows.with(|rows| {
-                    rows.get(position.index())
-                        .map(|entry| store.read(|state| item(store, state, entry)))
+                    rows.get(index - usize::from(trash.get()))
+                        .map(|entry| store.read(|state| item(store, state, entry).into_element()))
                 })
             })
         },
     )
     .keys(move || {
         rows.with(|rows| {
-            rows.iter()
-                .map(|entry| match entry {
+            trash
+                .get()
+                .then(|| (3, String::new(), false))
+                .into_iter()
+                .chain(rows.iter().map(|entry| match entry {
                     TreeRow::Entry { item, .. } => (0, item.key.key.clone(), item.key.folder),
                     TreeRow::Pager { parent, .. } => (1, parent.clone(), false),
                     TreeRow::Level { parent, .. } => (2, parent.clone(), false),
-                })
+                }))
                 .collect::<Vec<_>>()
         })
     })
