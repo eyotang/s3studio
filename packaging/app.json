@@ -1,7 +1,7 @@
 {
   "productName": "S3 Studio",
   "identifier": "com.s3studio.desktop",
-  "version": "0.4.33",
+  "version": "0.4.34",
   "minimumMacOS": "14.0",
   "macOSSigningCertificateSha256": "9f1f43e8b1d9a2a5b00474c67fc7934fefe1ce2fbfef42dfc36c384dc0fe24aa",
   "macOSTeamId": "73VK6N7B74"

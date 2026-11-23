@@ -819,6 +819,7 @@ fn version_history_restores_selected_data_versions_and_opens_from_recycle_bin() 
     app.wait_for("id:trash-check-deleted/report.pdf").unwrap();
 }
 
+#[cfg(not(any(windows, target_os = "macos")))]
 #[test]
 fn application_menu_exposes_settings_about_and_updates_on_every_platform() {
     let mut app = preview();
@@ -838,30 +839,39 @@ fn application_menu_exposes_settings_about_and_updates_on_every_platform() {
 }
 
 #[test]
-fn header_has_direct_visible_settings_about_and_update_entries() {
+fn windows_registers_native_application_menu_with_shared_actions() {
+    use nsh_core::Command;
+    use nsh_core::desktop::{DesktopCommand, MenuItem};
     let mut config = desktop_config(studio_root(true));
     config.environment.os = Os::Windows;
-    config.viewport = nsh_core::element::size(px(960.0), px(680.0));
     let mut app = Headless::start(config).unwrap();
     app.wait_for("id:object-Brand assets/").unwrap();
-    let nodes = app.screen().layout_nodes();
-    for id in ["header-settings", "header-update", "header-about"] {
-        let node = nodes
-            .iter()
-            .find(|node| node.test_id.as_deref() == Some(id))
-            .unwrap();
-        assert!(node.bounds.size.width.0 > 0.0);
-        assert!(node.bounds.size.height.0 > 0.0);
-        assert!(node.bounds.origin.y.0 < 100.0);
-        assert!(node.bounds.origin.x.0 >= 0.0);
-        assert!(node.bounds.origin.x.0 + node.bounds.size.width.0 <= 960.0);
+    let menus = app
+        .screen()
+        .commands()
+        .iter()
+        .rev()
+        .find_map(|(_, command)| match command {
+            Command::Desktop(command) => match command.as_ref() {
+                DesktopCommand::SetMenu(Some(items)) => Some(items),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("native window menu must be registered on Windows");
+    let MenuItem::Submenu { label, items, .. } = &menus[0] else {
+        panic!("application menu")
+    };
+    assert_eq!(label, "S3 Studio");
+    for title in [
+        i18n::t("设置…"),
+        i18n::t("检查更新…"),
+        i18n::t("关于 S3 Studio"),
+    ] {
+        assert!(items.iter().any(|item| matches!(item, MenuItem::Action(action) if action.label == title && action.enabled && action.id != 0)));
     }
-    app.press("id:header-settings").unwrap();
+    assert!(matches!(&menus[1], MenuItem::Submenu { label, .. } if label == i18n::t("编辑")));
+    assert!(!app.screen().matches("id:header-settings").unwrap());
+    app.press_key("ctrl+,").unwrap();
     app.wait_for("id:settings-language-system").unwrap();
-    app.press("id:cancel-dialog").unwrap();
-    app.press("id:header-about").unwrap();
-    app.wait_for("id:about-close").unwrap();
-    app.press("id:about-close").unwrap();
-    app.press("id:header-update").unwrap();
-    app.wait_for("id:check-update").unwrap();
 }

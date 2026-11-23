@@ -37,11 +37,10 @@ pub fn workspace(store: Store) -> AnyElement {
                 search_shortcut.focus();
             }
         });
-        let menu_state = computed(move || {
-            store.read(|state| (state.can_open_app_dialog(), crate::i18n::current()))
-        });
-        effect(move || app_menu(store, menu_state.get().0));
     }
+    let menu_state =
+        computed(move || store.read(|state| (state.can_open_app_dialog(), crate::i18n::current())));
+    effect(move || app_menu(store, menu_state.get().0));
     on_key_with(
         "escape",
         KeyOptions {
@@ -70,9 +69,7 @@ pub fn workspace(store: Store) -> AnyElement {
             column()
                 .flex_1()
                 .min_w_0()
-                .child(dynamic(move || {
-                    store.read(|state| header(store, state, inset()))
-                }))
+                .child(dynamic(move || store.read(|state| header(state, inset()))))
                 .child(
                     scroll().test_id("workspace-body").flex_1().min_h_0().child(
                         column()
@@ -117,36 +114,37 @@ pub fn workspace(store: Store) -> AnyElement {
         .into_element()
 }
 
-#[cfg(target_os = "macos")]
 fn app_menu(store: Store, enabled: bool) {
     use nsh_core::desktop::MenuRole;
     use nsh_core::element::desktop::{MenuItem, set_application_menu};
     let role = |role, name| MenuItem::role(role).label(t(name));
+    let mut actions = vec![
+        MenuItem::new(t("关于 S3 Studio"))
+            .disabled(!enabled)
+            .on_select(store.open(Dialog::About)),
+        MenuItem::new(t("检查更新…"))
+            .disabled(!enabled)
+            .on_select(store.action(Workspace::check_for_updates)),
+        MenuItem::new(t("设置…"))
+            .shortcut("mod+,")
+            .disabled(!enabled)
+            .on_select(store.open(Dialog::TransferSettings)),
+        MenuItem::separator(),
+    ];
+    #[cfg(target_os = "macos")]
     let services = t("服务");
+    #[cfg(target_os = "macos")]
+    actions.extend([
+        MenuItem::submenu(services, []),
+        MenuItem::separator(),
+        role(MenuRole::Hide, "隐藏 S3 Studio"),
+        role(MenuRole::HideOthers, "隐藏其他应用"),
+        role(MenuRole::ShowAll, "显示全部"),
+        MenuItem::separator(),
+    ]);
+    actions.push(role(MenuRole::Quit, "退出 S3 Studio"));
     set_application_menu(vec![
-        MenuItem::submenu(
-            "S3 Studio",
-            [
-                MenuItem::new(t("关于 S3 Studio"))
-                    .disabled(!enabled)
-                    .on_select(store.open(Dialog::About)),
-                MenuItem::new(t("检查更新…"))
-                    .disabled(!enabled)
-                    .on_select(store.action(Workspace::check_for_updates)),
-                MenuItem::new(t("设置…"))
-                    .shortcut("mod+,")
-                    .disabled(!enabled)
-                    .on_select(store.open(Dialog::TransferSettings)),
-                MenuItem::separator(),
-                MenuItem::submenu(services, []),
-                MenuItem::separator(),
-                role(MenuRole::Hide, "隐藏 S3 Studio"),
-                role(MenuRole::HideOthers, "隐藏其他应用"),
-                role(MenuRole::ShowAll, "显示全部"),
-                MenuItem::separator(),
-                role(MenuRole::Quit, "退出 S3 Studio"),
-            ],
-        ),
+        MenuItem::submenu("S3 Studio", actions),
         MenuItem::submenu(
             t("编辑"),
             [
@@ -161,6 +159,7 @@ fn app_menu(store: Store, enabled: bool) {
         ),
     ]);
     // AppKit fills this submenu with the system's installed Services.
+    #[cfg(target_os = "macos")]
     run_on_main_thread(move || {
         use objc2::MainThreadMarker;
         use objc2_app_kit::NSApplication;
@@ -179,6 +178,7 @@ fn app_menu(store: Store, enabled: bool) {
     });
 }
 
+#[cfg(not(any(windows, target_os = "macos")))]
 fn application_menu(store: Store, state: &Workspace) -> impl IntoElement + use<> {
     menu()
         .offset(px(4.0))
@@ -228,7 +228,21 @@ fn sidebar(store: Store, width: Memo<f32>) -> View {
         .border_color(LINE)
         .bg(SIDEBAR)
         .child(view().mb(px(30.0)).child(dynamic(move || {
-            store.read(|state| application_menu(store, state))
+            #[cfg(not(any(windows, target_os = "macos")))]
+            {
+                store
+                    .read(|state| application_menu(store, state))
+                    .into_element()
+            }
+            #[cfg(any(windows, target_os = "macos"))]
+            {
+                row()
+                    .gap(px(10.0))
+                    .pl(px(8.0))
+                    .child(brand(42.0))
+                    .child(label("S3 Studio", 20.0, INK).font_weight(FontWeight::SEMIBOLD))
+                    .into_element()
+            }
         })))
         .child(
             row()
@@ -574,7 +588,7 @@ fn dot() -> View {
     view().size(px(6.0)).rounded_full().bg(OK).flex_shrink_0()
 }
 
-fn header(store: Store, state: &Workspace, inset: Points) -> View {
+fn header(state: &Workspace, inset: Points) -> View {
     let name = state
         .account()
         .map_or_else(|| t("你的工作空间").into(), |account| account.name.clone());
@@ -588,32 +602,7 @@ fn header(store: Store, state: &Workspace, inset: Points) -> View {
                 .border_b_1()
                 .border_color(LINE)
                 .child(dot())
-                .child(label(name, 12.0, TEXT).truncate().flex_1().min_w_0())
-                .child(
-                    button("header-settings", t("设置…"))
-                        .h(px(32.0))
-                        .px(px(8.0))
-                        .disabled(!state.can_open_app_dialog())
-                        .child(icon("settings-2", 14.0, MUTED))
-                        .child(label(t("设置…"), 12.0, TEXT))
-                        .on_press(store.open(Dialog::TransferSettings)),
-                )
-                .child(
-                    button("header-update", t("检查更新"))
-                        .h(px(32.0))
-                        .px(px(8.0))
-                        .disabled(!state.can_open_app_dialog())
-                        .child(label(t("检查更新"), 12.0, TEXT))
-                        .on_press(store.action(Workspace::check_for_updates)),
-                )
-                .child(
-                    button("header-about", t("关于 S3 Studio"))
-                        .h(px(32.0))
-                        .px(px(8.0))
-                        .disabled(!state.can_open_app_dialog())
-                        .child(label(t("关于 S3 Studio"), 12.0, TEXT))
-                        .on_press(store.open(Dialog::About)),
-                ),
+                .child(label(name, 12.0, TEXT).truncate()),
         )
         .when(state.backend.preview, |header| {
             header.child(
