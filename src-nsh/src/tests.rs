@@ -433,6 +433,7 @@ fn bucket_options_can_be_added_reused_and_removed() {
 }
 
 struct Events(mpsc::Sender<UnboundedSender<Message>>);
+struct OpenUpdate;
 struct ScanGate(std::sync::Arc<tokio::sync::Semaphore>);
 
 #[component]
@@ -444,7 +445,11 @@ fn TestWorkspace() -> impl IntoElement {
     if let Some(gate) = engine_context::<ScanGate>() {
         backend.hold_preview_scan(gate.0.clone());
     }
-    ui::workspace(Store::new(backend, receiver))
+    let store = Store::new(backend, receiver);
+    if engine_context::<OpenUpdate>().is_some() {
+        store.change(|state| state.open_dialog(model::Dialog::Update));
+    }
+    ui::workspace(store)
 }
 
 fn paused_scan() -> (Headless, std::sync::Arc<tokio::sync::Semaphore>) {
@@ -517,11 +522,11 @@ fn canceled_size_scan_keeps_browsing_available() {
 fn update_dialog_tracks_progress_and_blocks_install_during_transfers() {
     let (events, receiver) = mpsc::channel();
     let mut config = desktop_config(Root::of::<TestWorkspace>());
-    config.context = config.context.with(Events(events));
+    config.context = config.context.with(Events(events)).with(OpenUpdate);
     let mut app = Headless::start(config).unwrap();
     let sender = receiver.recv_timeout(WAIT).unwrap();
     app.wait_for("id:object-Brand assets/").unwrap();
-    app.press("id:update").unwrap();
+    assert!(!app.screen().matches("id:update").unwrap());
     app.wait_for("id:check-update").unwrap();
     assert!(!app.screen().enabled("id:check-update").unwrap());
     let available = Status {

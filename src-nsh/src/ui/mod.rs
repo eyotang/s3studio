@@ -81,8 +81,7 @@ pub fn workspace(store: Store) -> AnyElement {
                             .child(dynamic(move || {
                                 store.read(|state| bucket_heading(store, state))
                             }))
-                            .child(files::browser(store, search))
-                            .child(footer(store)),
+                            .child(files::browser(store, search)),
                     ),
                 ),
         )
@@ -513,31 +512,4 @@ fn bucket_heading(store: Store, state: &Workspace) -> View {
                 .disabled(state.disabled())
                 .on_press(store.open(Dialog::Upload)),
         )
-}
-
-fn footer(store: Store) -> View {
-    let can_open = move || store.read(Workspace::can_open_app_dialog);
-    row().justify_end().child(
-        button("update", t("检查应用更新"))
-            .px(px(6.0))
-            .h(px(26.0))
-            .disabled(move || !can_open())
-            .child(label(
-                concat!("S3 Studio v", env!("CARGO_PKG_VERSION")),
-                11.0,
-                MUTED,
-            ))
-            .child(icon("refresh-cw", 12.0, MUTED))
-            .child(when(
-                move || store.read(|state| state.update_status.version.is_some()),
-                move || {
-                    label(
-                        move || store.read(|_| SharedString::from(t("新版本"))),
-                        11.0,
-                        ACCENT,
-                    )
-                },
-            ))
-            .on_press(store.open(Dialog::Update)),
-    )
 }
