@@ -182,22 +182,24 @@ fn transfer_row(store: Store, state: &Workspace, transfer: &Transfer) -> View {
     let id = &transfer.id;
     let disabled = state.is_busy() || state.pending_transfers.contains(id);
     let status = transfer.status.as_str();
-    let ratio = if transfer.total > 0 {
-        (transfer.bytes as f32 / transfer.total as f32).clamp(0.0, 1.0)
-    } else if status == "done" {
-        1.0
-    } else {
-        0.0
+    let progress_id = id.clone();
+    let values = computed(move || store.read_transfer_progress(&progress_id));
+    let total = transfer.total;
+    let done = status == "done";
+    let running = status == "running";
+    let ratio = move || {
+        if total > 0 {
+            (values.get().0 as f32 / total as f32).clamp(0.0, 1.0)
+        } else if done {
+            1.0
+        } else {
+            0.0
+        }
     };
     let direction = if transfer.direction == Direction::Upload {
         t("上传")
     } else {
         t("下载")
-    };
-    let speed = if status == "running" && transfer.speed > 0 {
-        format!(" · {}/s", model::bytes(transfer.speed.into()))
-    } else {
-        String::new()
     };
     let (status_icon, ink) = match status {
         "done" => ("check", OK),
@@ -276,22 +278,36 @@ fn transfer_row(store: Store, state: &Workspace, transfer: &Transfer) -> View {
                 .gap(px(4.0))
                 .child(label(transfer.name.clone(), 12.0, TEXT).truncate())
                 .child(label(
-                    format!(
-                        "{direction} · {} / {}{speed}",
-                        model::bytes(transfer.bytes.into()),
-                        model::bytes(transfer.total.into())
-                    ),
+                    move || {
+                        let (bytes, speed) = values.get();
+                        let speed = if running && speed > 0 {
+                            format!(" · {}/s", model::bytes(speed.into()))
+                        } else {
+                            String::new()
+                        };
+                        format!(
+                            "{direction} · {} / {}{speed}",
+                            model::bytes(bytes.into()),
+                            model::bytes(total.into())
+                        )
+                    },
                     10.0,
                     MUTED,
                 ))
-                .child(progress(
-                    ratio,
-                    match status {
+                .child({
+                    let fill = match status {
                         "paused" => MUTED,
                         "done" => OK,
                         _ => BLUE,
-                    },
-                ))
+                    };
+                    view().h(px(5.0)).w_full().rounded_full().bg(LINE).child(
+                        view()
+                            .h_full()
+                            .w(move || percentage(ratio()))
+                            .bg(fill)
+                            .rounded_full(),
+                    )
+                })
                 .when_some(transfer.error.as_ref(), |column, error| {
                     column.child(label(error.clone(), 11.0, DANGER))
                 }),
@@ -302,7 +318,11 @@ fn transfer_row(store: Store, state: &Workspace, transfer: &Transfer) -> View {
                 .gap(px(4.0))
                 .child(label(model::status_label(status), 11.0, ink))
                 .when(status == "running" && transfer.total > 0, |column| {
-                    column.child(label(format!("{:.0}%", ratio * 100.0), 10.0, MUTED))
+                    column.child(label(
+                        move || format!("{:.0}%", ratio() * 100.0),
+                        10.0,
+                        MUTED,
+                    ))
                 }),
         )
         .child(controls)

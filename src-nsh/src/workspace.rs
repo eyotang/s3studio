@@ -2120,6 +2120,7 @@ pub struct Store {
     draft_revision: Signal<u64>,
     sizes_revision: Signal<u64>,
     transfer_revision: Signal<u64>,
+    transfer_progress_revision: Signal<u64>,
 }
 impl Store {
     pub fn new(backend: Backend, mut receiver: UnboundedReceiver<Message>) -> Self {
@@ -2129,6 +2130,7 @@ impl Store {
             draft_revision: signal(0),
             sizes_revision: signal(0),
             transfer_revision: signal(0),
+            transfer_progress_revision: signal(0),
         };
         spawn(async move {
             while let Some(message) = receiver.next().await {
@@ -2152,6 +2154,18 @@ impl Store {
     pub fn read_transfers<T>(self, f: impl FnOnce(&Workspace) -> T) -> T {
         self.transfer_revision.get();
         self.read(f)
+    }
+
+    pub fn read_transfer_progress(self, id: &str) -> (u64, u64) {
+        self.transfer_progress_revision.get();
+        self.workspace
+            .get()
+            .borrow()
+            .transfers
+            .iter()
+            .find(|transfer| transfer.id == id)
+            .map(|transfer| (transfer.bytes, transfer.speed))
+            .unwrap_or_default()
     }
 
     pub fn read_draft<T>(self, f: impl FnOnce(&Workspace) -> T) -> T {
@@ -2200,8 +2214,30 @@ impl Store {
     fn receive(self, message: Message) {
         match message {
             Message::Transfer(transfer) => {
-                let refresh = self.write(|workspace| workspace.receive_transfer(transfer));
-                self.transfer_revision.update(|revision| *revision += 1);
+                let (refresh, structure_changed) = self.write(|workspace| {
+                    // Progress arrives frequently. Rebuilding the panel here unmounts
+                    // a pressed button before pointer-up can deliver its action.
+                    let structure_changed = workspace
+                        .transfers
+                        .iter()
+                        .find(|old| old.id == transfer.id)
+                        .is_none_or(|old| {
+                            old.name != transfer.name
+                                || old.account_id != transfer.account_id
+                                || old.bucket != transfer.bucket
+                                || old.key != transfer.key
+                                || old.direction != transfer.direction
+                                || old.status != transfer.status
+                                || old.total != transfer.total
+                                || old.error != transfer.error
+                        });
+                    (workspace.receive_transfer(transfer), structure_changed)
+                });
+                self.transfer_progress_revision
+                    .update(|revision| *revision += 1);
+                if structure_changed {
+                    self.transfer_revision.update(|revision| *revision += 1);
+                }
                 if refresh {
                     self.revision.update(|revision| *revision += 1);
                 }

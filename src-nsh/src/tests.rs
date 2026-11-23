@@ -941,3 +941,55 @@ fn recycle_bin_is_disabled_for_buckets_without_versioning_in_all_views() {
     app.press("id:open-trash").unwrap();
     app.wait_for("id:trash-check-deleted/report.pdf").unwrap();
 }
+
+#[test]
+fn transfer_progress_keeps_pause_and_cancel_buttons_mounted() {
+    let (events, receiver) = mpsc::channel();
+    let mut config = desktop_config(Root::of::<TestWorkspace>());
+    config.context = config.context.with(Events(events));
+    let mut app = Headless::start(config).unwrap();
+    let sender = receiver.recv_timeout(WAIT).unwrap();
+    app.wait_for("id:object-Brand assets/").unwrap();
+    let mut transfer: s3_studio_core::transfers::Transfer = serde_json::from_value(serde_json::json!({
+        "id":"click-test", "name":"archive.zip", "accountId":"demo-aws", "bucket":"studio-assets",
+        "key":"archive.zip", "direction":"download", "status":"running", "bytes":0, "total":1024
+    })).unwrap();
+    sender
+        .unbounded_send(Message::Transfer(transfer.clone()))
+        .unwrap();
+    app.press("id:transfers-toggle").unwrap();
+    app.wait_for("id:pause-click-test").unwrap();
+    let button_id = |app: &Headless, test_id: &str| {
+        app.screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|node| node.test_id.as_deref() == Some(test_id))
+            .unwrap()
+            .id
+    };
+    let pause = button_id(&app, "pause-click-test");
+    let cancel = button_id(&app, "cancel-transfer-click-test");
+    for bytes in [256, 512, 768] {
+        transfer.bytes = bytes;
+        transfer.speed = bytes;
+        sender
+            .unbounded_send(Message::Transfer(transfer.clone()))
+            .unwrap();
+        app.wait_for(&format!("{:.0}%", bytes as f32 / 1024.0 * 100.0))
+            .unwrap();
+        assert_eq!(
+            button_id(&app, "pause-click-test"),
+            pause,
+            "progress must not replace a button between pointer down and up"
+        );
+        assert_eq!(button_id(&app, "cancel-transfer-click-test"), cancel);
+    }
+    transfer.status = "pausing".into();
+    sender
+        .unbounded_send(Message::Transfer(transfer.clone()))
+        .unwrap();
+    app.wait_for_gone("id:pause-click-test", WAIT).unwrap();
+    transfer.status = "paused".into();
+    sender.unbounded_send(Message::Transfer(transfer)).unwrap();
+    app.wait_for("id:resume-click-test").unwrap();
+}
