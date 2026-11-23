@@ -161,7 +161,7 @@ macOS 使用 AppKit，Windows 使用 Win32，Linux 使用 Native Shell 的 GPUI 
 
 macOS 构建前通过 `rustup target add aarch64-apple-darwin x86_64-apple-darwin` 安装两个目标。使用 `node scripts/build-native.mjs --universal` 构建，再执行 `node scripts/package-native.mjs` 生成 Universal DMG。
 
-推送与应用版本一致的 `v<版本号>` 标签后，工作流等待三平台测试与构建全部通过，汇总六个安装包（含 Omarchy）、三份更新签名和 `latest.json`，生成 SHA-256 校验清单，先上传到草稿 Release，核对远端文件数量和大小后再正式发布。Windows 和 AppImage 更新包使用专用密钥签名，macOS 正式安装包使用固定的项目自签名证书。
+推送与应用版本一致的 `v<版本号>` 标签后，工作流等待三平台测试与构建全部通过，汇总六个安装包（含 Omarchy）、三份更新签名和 `latest.json`，生成 SHA-256 校验清单，先上传到草稿 Release，核对远端文件数量和大小后再正式发布。Windows 和 AppImage 更新包使用专用密钥签名，macOS 正式安装包使用 Apple Developer ID Application 证书。
 
 Omarchy 包复用同版本 deb 中的原生可执行文件，通过 Arch 的 `makepkg` 生成，安装后使用系统动态库，不需要 FUSE。Linux CI 使用 `bash scripts/build-omarchy.sh <本仓库内的.deb路径> artifacts/omarchy` 构建与验证，需要 Docker。`Supplement release with Omarchy package` 工作流用于给当前已发布版本补包，不覆盖已有附件、更新清单或签名。
 
@@ -183,7 +183,7 @@ Omarchy 包复用同版本 deb 中的原生可执行文件，通过 Arch 的 `ma
 
 更新签名继续使用已有的 Minisign 密钥。GitHub Actions 将现有仓库 Secret 传给独立签名工具，公钥固定在 `packaging/app.json`。发布脚本会校验三份更新包的签名和绑定的版本。更新清单由本仓库 Release 的 `latest.json` 提供。
 
-macOS 正式发布使用 GitHub Actions 中的 `S3_STUDIO_MACOS_SIGNING_P12`（Base64 编码的 PKCS#12）和 `S3_STUDIO_MACOS_SIGNING_PASSWORD`。打包会核对 `packaging/app.json` 中的证书指纹，并验证通用包的两种架构。发布时复用同一证书和 Bundle ID，但自签名证书没有 Apple Team ID，钥匙串分区检查仍可能按每次构建变化的 CDHash 要求重新授权，「始终允许」不能保证跨版本生效。要稳定延续正式版本的授权，需要配置 Apple 签发的 Developer ID Application 证书。macOS CI 的临时钥匙串测试仅覆盖该测试环境，不代表用户登录钥匙串的分区授权行为。
+macOS 正式发布使用 GitHub Actions 中的 `S3_STUDIO_MACOS_SIGNING_P12`（Base64 编码的 PKCS#12）和 `S3_STUDIO_MACOS_SIGNING_PASSWORD`。打包会核对 `packaging/app.json` 中的证书指纹，并验证通用包的两种架构。从 0.4.20 起使用 Apple Developer ID Application 证书，`macOSTeamId` 固定团队身份，正式包逐架构验证 Apple 证书链及 Team ID。此前自签名版本按变化的 CDHash 分区授权，不能保证跨版本继承；迁移到 Apple 签名后旧凭据可能需要再授权一次。临时钥匙串测试仅覆盖该测试环境，不能代替用户登录钥匙串的升级验证。当前尚未配置 Apple 公证。
 
 Windows Release 构建后可运行 `powershell -NoProfile -File scripts/smoke-desktop.ps1` 检查原生程序启动；测试会结束自己启动的进程，报告保存到 `artifacts/native-startup.json`。
 

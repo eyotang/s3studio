@@ -30,6 +30,9 @@ cat > "$app/Contents/Info.plist" <<EOF
 </plist>
 EOF
 plutil -lint "$app/Contents/Info.plist"
+if [[ ${S3_STUDIO_REQUIRE_MACOS_SIGNATURE:-false} == true ]]; then
+    : "${S3_STUDIO_MACOS_TEAM_ID:?Official macOS releases require an Apple Developer ID team}"
+fi
 if [[ ${S3_STUDIO_REQUIRE_MACOS_SIGNATURE:-false} == true || -n ${S3_STUDIO_MACOS_SIGNING_P12:-} ]]; then
     bash packaging/macos/sign.sh "$app" "$S3_STUDIO_ID" "${S3_STUDIO_MACOS_CERTIFICATE_SHA256:?}"
 else
