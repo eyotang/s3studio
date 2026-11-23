@@ -324,12 +324,20 @@ fn connection(
                 .border_color(LINE)
                 .bg(SUBTLE)
                 .input_style(|s| {
-                    s.h(px(36.0))
+                    s.flex_1()
+                        .min_w_0()
+                        .h(px(36.0))
                         .px(px(10.0))
                         .text_size(px(12.0))
                         .text_color(TEXT)
                 })
-                .trigger_button(icon("chevron-down", 15.0, MUTED))
+                .trigger_button(
+                    row()
+                        .size(px(36.0))
+                        .flex_shrink(0.0)
+                        .justify_center()
+                        .child(icon("chevron-down", 15.0, MUTED)),
+                )
                 .offset(px(4.0))
                 .popup_style(|s| {
                     s.bg(SURFACE)
@@ -339,10 +347,12 @@ fn connection(
                         .p(px(4.0))
                         .shadow_md()
                 })
-                .item_class(
-                    "rounded-md selected:bg-violet-100 selected:text-violet-700 focus:bg-gray-100",
-                )
-                .item_style(|s| s.p(px(7.0)).text_size(px(12.0)).text_color(TEXT))
+                .item_class("rounded-md focus:bg-[#f7f9fc] dark:focus:bg-[#2a2e38] selected:bg-[#e7f1ff] dark:selected:bg-[#233d5a] selected:text-[#2166b7] dark:selected:text-[#97c7ff]")
+                .item_style(|s| {
+                    s.p(px(7.0))
+                        .text_size(px(12.0))
+                        .text_color(TEXT)
+                })
                 .on_query_change(move |value: &SharedString| store.edit(key, value.as_str()))
                 .on_change(move |values: &Vec<SharedString>| {
                     if let Some(value) = values.first() {
