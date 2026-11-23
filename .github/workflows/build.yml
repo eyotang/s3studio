@@ -69,8 +69,8 @@ jobs:
           $tools = Join-Path $env:RUNNER_TEMP 'wix314'
           Expand-Archive -LiteralPath $archive -DestinationPath $tools
           "WIX_BIN=$tools" >> $env:GITHUB_ENV
-      - name: Test release signatures
-        run: node --test tests/update-signature.test.mjs
+      - name: Test release manifests
+        run: node --test tests/release-manifest.test.mjs
       - name: Rust tests
         shell: bash
         run: |
@@ -168,16 +168,6 @@ jobs:
         with:
           pattern: s3-studio-*
           path: artifacts/release-input
-      - name: Compile update signer
-        run: cargo build --locked --manifest-path packaging/signing/Cargo.toml
-      - name: Sign in-app update packages
-        env:
-          S3_STUDIO_UPDATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          S3_STUDIO_UPDATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          mapfile -d '' installers < <(find artifacts/release-input -type f \( -name '*.msi' -o -name '*.exe' -o -name '*.AppImage' \) -print0)
-          test "${#installers[@]}" -eq 3
-          packaging/signing/target/debug/sign-s3-studio-update "${installers[@]}"
       - name: Verify and collect all three platforms
         run: node scripts/prepare-release.mjs artifacts/release-input artifacts/release
       - name: Publish complete release

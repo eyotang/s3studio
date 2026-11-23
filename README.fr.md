@@ -30,7 +30,7 @@ Téléchargez la dernière version sur [GitHub Releases](https://github.com/eyot
 
 ### Si macOS refuse d’ouvrir l’application
 
-Les paquets ne disposent actuellement ni de signature de code système ni de notarisation Apple. Déplacez l’application dans Applications, vérifiez la source officielle et le SHA-256, puis exécutez :
+L’application macOS est signée avec Apple Developer ID, mais n’est pas encore notarisée. Déplacez l’application dans Applications, vérifiez la source officielle et le SHA-256, puis exécutez :
 
 ```bash
 sudo xattr -d com.apple.quarantine "/Applications/S3 Studio.app"
@@ -73,7 +73,7 @@ Exécutez les vérifications adaptées à vos modifications :
 ```bash
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
-node --test tests/update-signature.test.mjs
+node --test tests/release-manifest.test.mjs
 ```
 
 Exécutez `node scripts/build-native.mjs` puis `node scripts/package-native.mjs` sur le système cible. Les scripts d’empaquetage et de publication utilisent Node.js 22.12+ et sa bibliothèque standard. Consultez la [référence de développement](README.md#开发与贡献) pour les builds Universal, les chemins de données et les signatures. Modifiez les traductions dans `src-core/locales`, exécutez `node scripts/sync-i18n.mjs`, formatez Rust puis testez.

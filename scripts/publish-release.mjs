@@ -26,12 +26,12 @@ if (
   throw new Error("Release notes need English and Chinese macOS instructions");
 const files = (await readdir(directory)).sort();
 if (
-  files.length !== 11 ||
+  files.length !== 8 ||
   !files.includes("SHA256SUMS.txt") ||
   !files.includes("latest.json")
 )
   throw new Error(
-    "Expected six installers, three signatures, latest.json and SHA256SUMS.txt",
+    "Expected six installers, latest.json and SHA256SUMS.txt",
   );
 const manifest = JSON.parse(
   await readFile(path.join(directory, "latest.json"), "utf8"),

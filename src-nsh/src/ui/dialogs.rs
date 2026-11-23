@@ -570,7 +570,7 @@ fn update_status(state: &Workspace) -> View {
     let message = match (status.mode, status.phase) {
         ("disabled", _) => t("开发模式与网页预览不检查更新。安装发布版后即可使用。"),
         (_, "checking") => t("正在检查新版本…"),
-        (_, "installing") => t("签名校验通过，正在安装更新…"),
+        (_, "installing") => t("完整性校验通过，正在安装更新…"),
         (_, "downloading") => t("正在下载并校验更新包…"),
         _ if status.last_checked.is_some() && status.version.is_none() && error.is_empty() => {
             t("已是最新版本。")
@@ -630,7 +630,7 @@ fn update_status(state: &Workspace) -> View {
         .when(status.version.is_some() && !status.installing(), |body| {
             body.child(label(
                 if status.mode == "inApp" {
-                    t("确认后下载更新包，通过签名校验后安装并重启应用。")
+                    t("确认后下载更新包，通过完整性校验后安装并重启应用。")
                 } else {
                     t("当前安装方式需前往发布页下载新版本。账户配置与传输断点会保留。")
                 },

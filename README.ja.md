@@ -30,7 +30,7 @@ S3 Studioは、クラウド上のファイルをひとつの見やすいワー�
 
 ### macOSでアプリを開けない場合
 
-現在、インストーラーにはシステムのコード署名やAppleの公証を行っていません。アプリを「アプリケーション」に移し、公式リリースの配布元とSHA-256を確認してから、次を実行してください：
+macOSアプリはApple Developer IDで署名されていますが、Appleの公証はまだ行っていません。アプリを「アプリケーション」に移し、公式リリースの配布元とSHA-256を確認してから、次を実行してください：
 
 ```bash
 sudo xattr -d com.apple.quarantine "/Applications/S3 Studio.app"
@@ -73,7 +73,7 @@ cargo run --locked --manifest-path src-nsh/Cargo.toml
 ```bash
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
-node --test tests/update-signature.test.mjs
+node --test tests/release-manifest.test.mjs
 ```
 
 対象OSで `node scripts/build-native.mjs` と `node scripts/package-native.mjs` を実行します。パッケージ化とリリースにはNode.js 22.12以降の標準ライブラリを使用します。Universalビルド、保存先、更新署名は[開発リファレンス](README.md#开发与贡献)を参照してください。翻訳は `src-core/locales` を編集し、`node scripts/sync-i18n.mjs` を実行してRustを整形後、テストしてください。

@@ -30,7 +30,7 @@ S3 Studio는 클라우드 파일을 하나의 깔끔한 작업 공간에서 관�
 
 ### macOS에서 앱을 열 수 없는 경우
 
-현재 설치 파일에는 운영체제 코드 서명 및 Apple 공증이 적용되지 않았습니다. 앱을 응용 프로그램 폴더로 옮기고 공식 릴리스 출처와 SHA-256을 확인한 후 다음 명령을 실행하세요:
+macOS 앱에는 Apple Developer ID 서명이 적용되어 있지만 Apple 공증은 아직 적용되지 않았습니다. 앱을 응용 프로그램 폴더로 옮기고 공식 릴리스 출처와 SHA-256을 확인한 후 다음 명령을 실행하세요:
 
 ```bash
 sudo xattr -d com.apple.quarantine "/Applications/S3 Studio.app"
@@ -73,7 +73,7 @@ cargo run --locked --manifest-path src-nsh/Cargo.toml
 ```bash
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
-node --test tests/update-signature.test.mjs
+node --test tests/release-manifest.test.mjs
 ```
 
 대상 운영체제에서 `node scripts/build-native.mjs`와 `node scripts/package-native.mjs`를 실행합니다. 패키징 및 릴리스 스크립트는 Node.js 22.12+ 표준 라이브러리를 사용합니다. Universal 빌드, 저장 경로 및 릴리스 서명은 [개발 참조](README.md#开发与贡献)를 확인하세요. `src-core/locales`의 번역을 수정한 뒤 `node scripts/sync-i18n.mjs`를 실행하고 Rust 형식을 정리한 다음 테스트하세요.

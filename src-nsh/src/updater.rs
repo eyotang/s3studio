@@ -1,10 +1,8 @@
 use crate::backend::Message;
-use anyhow::Context;
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futures::channel::mpsc::UnboundedSender;
-use minisign_verify::{PublicKey, Signature};
 use s3_studio_core::transfers::Engine;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -128,15 +126,14 @@ struct Manifest {
 #[derive(Deserialize)]
 struct ReleaseAsset {
     url: String,
-    signature: String,
+    sha256: String,
 }
 
 #[derive(Clone)]
 struct Update {
     package: Package,
-    version: String,
     url: String,
-    signature: String,
+    sha256: String,
 }
 
 impl Manifest {
@@ -151,11 +148,13 @@ impl Manifest {
         }) {
             return Err(crate::i18n::t("更新包地址不属于官方发布仓库。").into());
         }
+        if asset.sha256.len() != 64 || !asset.sha256.bytes().all(|c| c.is_ascii_hexdigit()) {
+            return Err(crate::i18n::t("更新清单格式无效。").into());
+        }
         Ok(Update {
             package,
-            version: self.version.clone(),
             url: asset.url.clone(),
-            signature: asset.signature.clone(),
+            sha256: asset.sha256.to_ascii_lowercase(),
         })
     }
 }
@@ -165,15 +164,7 @@ impl Update {
         &self,
         mut progress: impl FnMut(usize, Option<u64>),
     ) -> anyhow::Result<StagedUpdate> {
-        let config: serde_json::Value =
-            serde_json::from_str(include_str!("../../packaging/app.json"))?;
-        let key = config["updaterPublicKey"]
-            .as_str()
-            .context("Missing update public key")?;
-        let public_key = PublicKey::decode(&String::from_utf8(STANDARD.decode(key)?)?)?;
-        let signature = Signature::decode(&String::from_utf8(STANDARD.decode(&self.signature)?)?)?;
-        let mut verifier = public_key.verify_stream(&signature)?;
-
+        let mut digest = Sha256::new();
         let mut response = client(Duration::from_secs(5 * 60))?
             .get(&self.url)
             .send()
@@ -183,24 +174,21 @@ impl Update {
         let stage = StagedUpdate::new(self.package)?;
         let mut file = tokio::fs::File::from_std(stage.file.reopen()?);
         while let Some(chunk) = response.chunk().await? {
-            verifier.update(&chunk);
+            digest.update(&chunk);
             file.write_all(&chunk).await?;
             progress(chunk.len(), total);
         }
-        verifier.finalize()?;
-        // The trusted comment is authenticated by finalize().
-        let version = signature
-            .trusted_comment()
-            .split('\t')
-            .find_map(|part| part.strip_prefix("version:"))
-            .and_then(|version| semver::Version::parse(version.trim_start_matches('v')).ok());
-        anyhow::ensure!(
-            version.as_ref() == Some(&semver::Version::parse(&self.version)?),
-            "Update signature version does not match the release"
-        );
+        verify_checksum(digest, &self.sha256)?;
         file.sync_all().await?;
         Ok(stage)
     }
+}
+fn verify_checksum(digest: Sha256, expected: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        format!("{:x}", digest.finalize()) == expected,
+        "Update SHA-256 checksum mismatch"
+    );
+    Ok(())
 }
 fn parse_manifest(bytes: &[u8], current: &str) -> Result<Option<Manifest>, String> {
     if bytes.len() > MAX_MANIFEST {
@@ -404,6 +392,54 @@ mod tests {
         assert!(parse_manifest(&vec![b' '; MAX_MANIFEST + 1], "0.2.3").is_err());
     }
     #[test]
+    fn update_requires_official_versioned_url_and_valid_checksum() {
+        let mut release = Manifest {
+            version: "0.4.22".into(),
+            notes: None,
+            platforms: HashMap::from([(
+                Package::Nsis.manifest_key().to_owned(),
+                ReleaseAsset {
+                    url: format!("{RELEASES}/download/v0.4.22/app.exe"),
+                    sha256: "ab".repeat(32),
+                },
+            )]),
+        };
+        assert!(release.update(Package::Nsis).is_ok());
+        for url in [
+            "http://github.com/eyotang/s3studio/releases/download/v0.4.22/app.exe".to_owned(),
+            format!("{RELEASES}/download/v0.4.21/app.exe"),
+            format!("{RELEASES}/download/v0.4.22/../app.exe"),
+            format!("{RELEASES}/download/v0.4.22/app.exe?redirect=1"),
+        ] {
+            release
+                .platforms
+                .get_mut(Package::Nsis.manifest_key())
+                .unwrap()
+                .url = url;
+            assert!(release.update(Package::Nsis).is_err());
+        }
+        release
+            .platforms
+            .get_mut(Package::Nsis.manifest_key())
+            .unwrap()
+            .url = format!("{RELEASES}/download/v0.4.22/app.exe");
+        for checksum in ["", "abcd", &"zz".repeat(32)] {
+            release
+                .platforms
+                .get_mut(Package::Nsis.manifest_key())
+                .unwrap()
+                .sha256 = checksum.into();
+            assert!(release.update(Package::Nsis).is_err());
+        }
+        let expected = format!("{:x}", Sha256::digest(b"installer"));
+        let mut digest = Sha256::new();
+        digest.update(b"installer");
+        assert!(verify_checksum(digest, &expected).is_ok());
+        let mut corrupted = Sha256::new();
+        corrupted.update(b"tampered");
+        assert!(verify_checksum(corrupted, &expected).is_err());
+    }
+    #[test]
     fn distribution_modes_preserve_installer_compatibility() {
         assert_eq!(mode(true, Some(Package::Nsis)), "disabled");
         for package in [Package::Nsis, Package::Msi, Package::AppImage] {
@@ -446,7 +482,7 @@ mod tests {
             .unwrap()
             .unwrap();
         for package in [Package::Nsis, Package::Msi, Package::AppImage] {
-            assert_eq!(release.update(package).unwrap().version, release.version);
+            assert!(release.update(package).is_ok());
         }
     }
 }

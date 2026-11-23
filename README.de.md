@@ -30,7 +30,7 @@ Laden Sie die aktuelle Version von [GitHub Releases](https://github.com/eyotang/
 
 ### Wenn macOS die App nicht öffnen kann
 
-Die Installationspakete sind derzeit nicht mit einer System-Codesignatur oder Apple-Notarisierung versehen. Verschieben Sie die App nach Programme, prüfen Sie die offizielle Quelle und SHA-256 und führen Sie dann Folgendes aus:
+Die macOS-App ist mit Apple Developer ID signiert, aber noch nicht von Apple notarisiert. Verschieben Sie die App nach Programme, prüfen Sie die offizielle Quelle und SHA-256 und führen Sie dann Folgendes aus:
 
 ```bash
 sudo xattr -d com.apple.quarantine "/Applications/S3 Studio.app"
@@ -73,7 +73,7 @@ Führen Sie die für Ihre Änderungen relevanten Prüfungen aus:
 ```bash
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
-node --test tests/update-signature.test.mjs
+node --test tests/release-manifest.test.mjs
 ```
 
 Führen Sie `node scripts/build-native.mjs` und `node scripts/package-native.mjs` auf dem Zielbetriebssystem aus. Die Paket- und Veröffentlichungsskripte verwenden Node.js 22.12+ und dessen Standardbibliothek. Die [Entwicklungsreferenz](README.md#开发与贡献) beschreibt Universal-Builds, Datenpfade und Signaturen. Ändern Sie Übersetzungen in `src-core/locales`, führen Sie `node scripts/sync-i18n.mjs` aus, formatieren Sie Rust und testen Sie anschließend.

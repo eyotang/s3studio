@@ -1,6 +1,6 @@
 [package]
 name = "s3-studio-nsh"
-version = "0.4.21"
+version = "0.4.22"
 description = "A beautiful cross-platform S3 workspace"
 authors = ["S3 Studio"]
 edition = "2024"
@@ -27,8 +27,6 @@ icu_locale = "2.4"
 env_logger = { version = "0.11", default-features = false }
 semver = "1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream", "system-proxy"] }
-base64 = "0.22"
-minisign-verify = "0.2"
 tempfile = "3"
 rusqlite = { version = "0.37", features = ["bundled", "collation", "functions", "hooks"] }
 sha2 = "0.10"

@@ -30,7 +30,7 @@ S3 Studio 是一款跨平台桌面 S3 客户端，让云端文件管理更直观
 | Linux x86_64                    | `.AppImage`      | 添加执行权限后运行                  |
 | Omarchy / Arch Linux x86_64     | `.pkg.tar.zst`   | 使用 `pacman -U` 安装               |
 
-当前安装包尚未配置系统代码签名，macOS 尚未进行 Apple 公证，系统可能提示来源无法验证。
+macOS 安装包使用 Apple Developer ID 签名，但尚未进行 Apple 公证；Windows 安装包尚未配置系统代码签名，系统可能提示来源无法验证。
 
 ### macOS 无法打开应用
 
@@ -142,12 +142,12 @@ cargo run --locked --manifest-path src-nsh/Cargo.toml -- --preview
 
 ### 检查与构建
 
-原生交互使用 Native Shell 的无头测试驱动验证。签名测试、打包和发布脚本使用 Node.js 22.12+ 的标准库。
+原生交互使用 Native Shell 的无头测试驱动验证。更新清单测试、打包和发布脚本使用 Node.js 22.12+ 的标准库。
 
 ```bash
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
-node --test tests/update-signature.test.mjs
+node --test tests/release-manifest.test.mjs
 ```
 
 在目标操作系统上构建 NSH 可执行文件并生成安装包。Linux 需要 `dpkg-deb` 和 GitHub CLI，打包脚本会下载并校验 AppImage 工具。Windows 需要 PowerShell 7、NSIS 3.11 和 WiX Toolset 3.14.1。
@@ -157,13 +157,13 @@ node scripts/build-native.mjs
 node scripts/package-native.mjs
 ```
 
-macOS 使用 AppKit，Windows 使用 Win32，Linux 使用 Native Shell 的 GPUI 渲染后端。各平台使用原生打包工具，沿用原有应用 ID 和更新签名格式。安装包输出到 `src-nsh/target/installer/bundle/`，包括 Windows NSIS/MSI、Linux deb/AppImage 和 macOS Universal DMG。
+macOS 使用 AppKit，Windows 使用 Win32，Linux 使用 Native Shell 的 GPUI 渲染后端。各平台使用原生打包工具，沿用原有应用 ID，使用原生更新清单。安装包输出到 `src-nsh/target/installer/bundle/`，包括 Windows NSIS/MSI、Linux deb/AppImage 和 macOS Universal DMG。
 
 macOS 构建前通过 `rustup target add aarch64-apple-darwin x86_64-apple-darwin` 安装两个目标。使用 `node scripts/build-native.mjs --universal` 构建，再执行 `node scripts/package-native.mjs` 生成 Universal DMG。
 
-推送与应用版本一致的 `v<版本号>` 标签后，工作流等待三平台测试与构建全部通过，汇总六个安装包（含 Omarchy）、三份更新签名和 `latest.json`，生成 SHA-256 校验清单，先上传到草稿 Release，核对远端文件数量和大小后再正式发布。Windows 和 AppImage 更新包使用专用密钥签名，macOS 正式安装包使用 Apple Developer ID Application 证书。
+推送与应用版本一致的 `v<版本号>` 标签后，工作流等待三平台测试与构建全部通过，汇总六个安装包（含 Omarchy）、`latest.json`，生成 SHA-256 校验清单，先上传到草稿 Release，核对远端文件数量和大小后再正式发布。Windows 和 AppImage 更新包通过官方 GitHub HTTPS 下载并校验 SHA-256，macOS 正式安装包使用 Apple Developer ID Application 证书。
 
-Omarchy 包复用同版本 deb 中的原生可执行文件，通过 Arch 的 `makepkg` 生成，安装后使用系统动态库，不需要 FUSE。Linux CI 使用 `bash scripts/build-omarchy.sh <本仓库内的.deb路径> artifacts/omarchy` 构建与验证，需要 Docker。`Supplement release with Omarchy package` 工作流用于给当前已发布版本补包，不覆盖已有附件、更新清单或签名。
+Omarchy 包复用同版本 deb 中的原生可执行文件，通过 Arch 的 `makepkg` 生成，安装后使用系统动态库，不需要 FUSE。Linux CI 使用 `bash scripts/build-omarchy.sh <本仓库内的.deb路径> artifacts/omarchy` 构建与验证，需要 Docker。`Supplement release with Omarchy package` 工作流用于给当前已发布版本补包，不覆盖已有附件或更新清单。
 
 ### 数据与传输实现
 
@@ -181,13 +181,13 @@ Omarchy 包复用同版本 deb 中的原生可执行文件，通过 Arch 的 `ma
 
 ### 发布与验证
 
-更新签名继续使用已有的 Minisign 密钥。GitHub Actions 将现有仓库 Secret 传给独立签名工具，公钥固定在 `packaging/app.json`。发布脚本会校验三份更新包的签名和绑定的版本。更新清单由本仓库 Release 的 `latest.json` 提供。
+原生更新器不再依赖 Tauri/Minisign 私钥及 `.sig` 文件，发布无需 `TAURI_SIGNING_PRIVATE_KEY` 或其密码。`latest.json` 包含版本、官方安装包地址和 SHA-256；安装前拒绝非官方版本路径和校验和不匹配的下载。校验和用于检测损坏，发布来源信任依赖 GitHub 仓库及 HTTPS。旧版内置的签名要求无法远程取消，需要手动安装 0.4.22 或更高版本一次，后续可使用新更新流程。
 
-macOS 正式发布使用 GitHub Actions 中的 `S3_STUDIO_MACOS_SIGNING_P12`（Base64 编码的 PKCS#12）和 `S3_STUDIO_MACOS_SIGNING_PASSWORD`。打包会核对 `packaging/app.json` 中的证书指纹，并验证通用包的两种架构。从 0.4.21 起使用 Apple Developer ID Application 证书，`macOSTeamId` 固定团队身份，正式包逐架构验证 Apple 证书链及 Team ID。此前自签名版本按变化的 CDHash 分区授权，不能保证跨版本继承；迁移到 Apple 签名后旧凭据可能需要再授权一次。临时钥匙串测试仅覆盖该测试环境，不能代替用户登录钥匙串的升级验证。当前尚未配置 Apple 公证。
+macOS 正式发布使用 GitHub Actions 中的 `S3_STUDIO_MACOS_SIGNING_P12`（Base64 编码的 PKCS#12）和 `S3_STUDIO_MACOS_SIGNING_PASSWORD`。打包会核对 `packaging/app.json` 中的证书指纹，并验证通用包的两种架构。从 0.4.22 起使用 Apple Developer ID Application 证书，`macOSTeamId` 固定团队身份，正式包逐架构验证 Apple 证书链及 Team ID。此前自签名版本按变化的 CDHash 分区授权，不能保证跨版本继承；迁移到 Apple 签名后旧凭据可能需要再授权一次。临时钥匙串测试仅覆盖该测试环境，不能代替用户登录钥匙串的升级验证。当前尚未配置 Apple 公证。
 
 Windows Release 构建后可运行 `powershell -NoProfile -File scripts/smoke-desktop.ps1` 检查原生程序启动；测试会结束自己启动的进程，报告保存到 `artifacts/native-startup.json`。
 
-测试覆盖并发配置保存与动态调整、本地模拟 S3 的签名、完整分页递归删除、部分删除失败、共享并发限制、上传/下载暂停恢复、损坏断点校验、文件变化保护、提交后重启恢复、更新期间传输保护，以及更新包签名、公钥与版本绑定。Windows 原生启动报告保存于 `artifacts/native-startup.json`。
+测试覆盖并发配置保存与动态调整、本地模拟 S3 的签名、完整分页递归删除、部分删除失败、共享并发限制、上传/下载暂停恢复、损坏断点校验、文件变化保护、提交后重启恢复、更新期间传输保护，以及更新包完整性、官方地址与版本绑定。Windows 原生启动报告保存于 `artifacts/native-startup.json`。
 
 测试不使用真实云账户；三平台构建分别验证安装包，原生界面在三平台执行无头交互测试。
 

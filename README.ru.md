@@ -30,7 +30,7 @@ S3 Studio — кроссплатформенный настольный клие
 
 ### Если macOS не открывает приложение
 
-Пакеты пока не имеют системной подписи кода и нотариального заверения Apple. Переместите приложение в Программы, проверьте официальный источник выпуска и SHA-256, затем выполните:
+Приложение macOS подписано сертификатом Apple Developer ID, но ещё не прошло нотариальное заверение Apple. Переместите приложение в Программы, проверьте официальный источник выпуска и SHA-256, затем выполните:
 
 ```bash
 sudo xattr -d com.apple.quarantine "/Applications/S3 Studio.app"
@@ -73,7 +73,7 @@ cargo run --locked --manifest-path src-nsh/Cargo.toml
 ```bash
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
-node --test tests/update-signature.test.mjs
+node --test tests/release-manifest.test.mjs
 ```
 
 Запустите `node scripts/build-native.mjs` и `node scripts/package-native.mjs` на целевой ОС. Скрипты упаковки и публикации используют стандартную библиотеку Node.js 22.12+. Universal-сборки, пути данных и подписи описаны в [справочнике разработчика](README.md#开发与贡献). Измените переводы в `src-core/locales`, выполните `node scripts/sync-i18n.mjs`, отформатируйте Rust и запустите тесты.

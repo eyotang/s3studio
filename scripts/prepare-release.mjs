@@ -10,7 +10,6 @@ import {
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { appConfig, checkApplicationVersions } from "./app-config.mjs";
-import { verifyUpdateSignature } from "./update-signature.mjs";
 
 const [input, output] = process.argv.slice(2);
 if (!input || !output)
@@ -67,25 +66,12 @@ for (const [extension, suffix] of packages) {
     size += chunk.length;
   }
   if (!size) throw new Error(`Empty package: ${name}`);
-  checksums.push(`${hash.digest("hex")}  ${name}`);
+  const sha256 = hash.digest("hex");
+  checksums.push(`${sha256}  ${name}`);
   console.log(`${name}: ${size} bytes`);
   if (platformNames[extension]) {
-    const signature = (await readFile(`${source}.sig`, "utf8")).trim();
-    await verifyUpdateSignature(
-      target,
-      signature,
-      appConfig.updaterPublicKey,
-      version,
-    );
-    const signatureName = `${name}.sig`;
-    await writeFile(path.join(output, signatureName), signature + "\n");
-    checksums.push(
-      `${createHash("sha256")
-        .update(signature + "\n")
-        .digest("hex")}  ${signatureName}`,
-    );
     platforms[platformNames[extension]] = {
-      signature,
+      sha256,
       url: `https://github.com/eyotang/s3studio/releases/download/v${version}/${name}`,
     };
   }

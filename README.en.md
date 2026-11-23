@@ -30,7 +30,7 @@ Download the latest version from [GitHub Releases](https://github.com/eyotang/s3
 
 ### If macOS cannot open the app
 
-Installers are not currently system-code-signed or notarized by Apple. Move the app to Applications, verify its official release source and SHA-256, then run:
+The macOS app is signed with Apple Developer ID but is not yet notarized. Move the app to Applications, verify its official release source and SHA-256, then run:
 
 ```bash
 sudo xattr -d com.apple.quarantine "/Applications/S3 Studio.app"
@@ -73,7 +73,7 @@ Run the checks relevant to your changes:
 ```bash
 cargo test --locked --manifest-path src-core/Cargo.toml
 cargo test --locked --manifest-path src-nsh/Cargo.toml
-node --test tests/update-signature.test.mjs
+node --test tests/release-manifest.test.mjs
 ```
 
 Run `node scripts/build-native.mjs` and `node scripts/package-native.mjs` on the target operating system. Packaging and release scripts use Node.js 22.12+ and its standard library. See the [development reference](README.md#开发与贡献) for Universal builds, storage paths, and release signing. Update language catalogs in `src-core/locales`, then run `node scripts/sync-i18n.mjs` and format Rust before testing.
