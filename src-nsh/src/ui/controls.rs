@@ -204,6 +204,7 @@ pub fn icon(name: &'static str, size: f32, ink: AdaptiveColor) -> impl IntoEleme
         "server",
         "settings-2",
         "trash",
+        "recycle-bin",
         "x",
     );
     svg(ImageSrc::svg_markup(markup))

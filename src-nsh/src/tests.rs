@@ -836,3 +836,32 @@ fn application_menu_exposes_settings_about_and_updates_on_every_platform() {
     app.press("id:application-update").unwrap();
     app.wait_for("id:check-update").unwrap();
 }
+
+#[test]
+fn header_has_direct_visible_settings_about_and_update_entries() {
+    let mut config = desktop_config(studio_root(true));
+    config.environment.os = Os::Windows;
+    config.viewport = nsh_core::element::size(px(960.0), px(680.0));
+    let mut app = Headless::start(config).unwrap();
+    app.wait_for("id:object-Brand assets/").unwrap();
+    let nodes = app.screen().layout_nodes();
+    for id in ["header-settings", "header-update", "header-about"] {
+        let node = nodes
+            .iter()
+            .find(|node| node.test_id.as_deref() == Some(id))
+            .unwrap();
+        assert!(node.bounds.size.width.0 > 0.0);
+        assert!(node.bounds.size.height.0 > 0.0);
+        assert!(node.bounds.origin.y.0 < 100.0);
+        assert!(node.bounds.origin.x.0 >= 0.0);
+        assert!(node.bounds.origin.x.0 + node.bounds.size.width.0 <= 960.0);
+    }
+    app.press("id:header-settings").unwrap();
+    app.wait_for("id:settings-language-system").unwrap();
+    app.press("id:cancel-dialog").unwrap();
+    app.press("id:header-about").unwrap();
+    app.wait_for("id:about-close").unwrap();
+    app.press("id:about-close").unwrap();
+    app.press("id:header-update").unwrap();
+    app.wait_for("id:check-update").unwrap();
+}

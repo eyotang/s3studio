@@ -461,7 +461,7 @@ fn trash_entry(store: Store, state: &Workspace, grid: bool) -> AnyElement {
         .border_color(LINE)
         .hover(|style| style.bg(SUBTLE))
         .disabled(state.is_busy())
-        .child(icon("trash", if grid { 28.0 } else { 18.0 }, MUTED))
+        .child(icon("recycle-bin", if grid { 28.0 } else { 20.0 }, ACCENT))
         .child(label(t("回收站"), 12.0, TEXT))
         .on_press(store.action(Workspace::open_trash))
         .into_element()

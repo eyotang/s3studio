@@ -70,7 +70,9 @@ pub fn workspace(store: Store) -> AnyElement {
             column()
                 .flex_1()
                 .min_w_0()
-                .child(dynamic(move || store.read(|state| header(state, inset()))))
+                .child(dynamic(move || {
+                    store.read(|state| header(store, state, inset()))
+                }))
                 .child(
                     scroll().test_id("workspace-body").flex_1().min_h_0().child(
                         column()
@@ -572,7 +574,7 @@ fn dot() -> View {
     view().size(px(6.0)).rounded_full().bg(OK).flex_shrink_0()
 }
 
-fn header(state: &Workspace, inset: Points) -> View {
+fn header(store: Store, state: &Workspace, inset: Points) -> View {
     let name = state
         .account()
         .map_or_else(|| t("你的工作空间").into(), |account| account.name.clone());
@@ -586,7 +588,32 @@ fn header(state: &Workspace, inset: Points) -> View {
                 .border_b_1()
                 .border_color(LINE)
                 .child(dot())
-                .child(label(name, 12.0, TEXT).truncate()),
+                .child(label(name, 12.0, TEXT).truncate().flex_1().min_w_0())
+                .child(
+                    button("header-settings", t("设置…"))
+                        .h(px(32.0))
+                        .px(px(8.0))
+                        .disabled(!state.can_open_app_dialog())
+                        .child(icon("settings-2", 14.0, MUTED))
+                        .child(label(t("设置…"), 12.0, TEXT))
+                        .on_press(store.open(Dialog::TransferSettings)),
+                )
+                .child(
+                    button("header-update", t("检查更新"))
+                        .h(px(32.0))
+                        .px(px(8.0))
+                        .disabled(!state.can_open_app_dialog())
+                        .child(label(t("检查更新"), 12.0, TEXT))
+                        .on_press(store.action(Workspace::check_for_updates)),
+                )
+                .child(
+                    button("header-about", t("关于 S3 Studio"))
+                        .h(px(32.0))
+                        .px(px(8.0))
+                        .disabled(!state.can_open_app_dialog())
+                        .child(label(t("关于 S3 Studio"), 12.0, TEXT))
+                        .on_press(store.open(Dialog::About)),
+                ),
         )
         .when(state.backend.preview, |header| {
             header.child(
