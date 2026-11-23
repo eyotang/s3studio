@@ -173,6 +173,7 @@ impl TreeBrowser {
 }
 
 pub struct Workspace {
+    list_cache: crate::list_cache::ListCache,
     pub backend: Backend,
     pub accounts: Vec<Account>,
     pub active_id: String,
@@ -228,6 +229,7 @@ pub struct Workspace {
 impl Workspace {
     fn new(backend: Backend) -> Self {
         let mut this = Self {
+            list_cache: Default::default(),
             backend,
             accounts: vec![],
             active_id: String::new(),
@@ -436,9 +438,16 @@ impl Workspace {
         self.bucket = bucket;
         self.prefix = prefix;
         self.clear_search();
-        self.load_objects(false);
+        self.load_objects_cached(false, true);
     }
     pub fn load_objects(&mut self, append: bool) {
+        if !append {
+            self.list_cache
+                .invalidate_bucket(&self.active_id, &self.bucket);
+        }
+        self.load_objects_cached(append, false);
+    }
+    fn load_objects_cached(&mut self, append: bool, reuse: bool) {
         if append {
             self.cancel_auto_location();
         }
@@ -478,6 +487,13 @@ impl Workspace {
         if self.tree.scope.is_none() {
             self.start_tree_scan(false);
         }
+        if reuse && let Some(page) = self.list_cache.get(&scope) {
+            self.objects = page.objects;
+            self.next_token = page.next_token;
+            self.list_loaded = true;
+            self.update_tree_rows();
+            return;
+        }
         self.load_list_page(append);
     }
 
@@ -507,6 +523,8 @@ impl Workspace {
     }
 
     pub fn refresh_objects(&mut self) {
+        self.list_cache
+            .invalidate_bucket(&self.active_id, &self.bucket);
         self.cancel_auto_location();
         if self.object_view == ObjectView::Tree {
             self.clear_list_page();
@@ -937,6 +955,8 @@ impl Workspace {
     }
 
     fn receive_tree_upload(&mut self, scope: TreeScope, key: &str) {
+        self.list_cache
+            .invalidate_bucket(&scope.account, &scope.bucket);
         if scope.account != self.active_id
             || scope.bucket != self.bucket
             || !key.starts_with(&self.prefix)
@@ -1095,7 +1115,7 @@ impl Workspace {
         } else {
             self.clear_search();
         }
-        self.load_objects(false);
+        self.load_objects_cached(false, located.is_none());
         if let Some((object, info)) = located {
             self.selected.insert(object.key.clone());
             self.located = Some((object.key.clone(), self.object_revision));
@@ -1471,10 +1491,14 @@ impl Workspace {
     }
 
     fn receive_transfer(&mut self, t: Transfer) -> bool {
-        self.transfer_changes.insert(t.id.clone());
-        let refresh = t.status == "done"
+        let uploaded = t.status == "done"
             && t.direction == s3_studio_core::transfers::Direction::Upload
-            && self.refreshed_uploads.insert(t.id.clone())
+            && self.refreshed_uploads.insert(t.id.clone());
+        if uploaded {
+            self.list_cache.invalidate_bucket(&t.account_id, &t.bucket);
+        }
+        self.transfer_changes.insert(t.id.clone());
+        let refresh = uploaded
             && t.account_id == self.active_id
             && t.bucket == self.bucket
             && (self.object_view != ObjectView::Tree || t.key.starts_with(&self.prefix));
@@ -1614,6 +1638,15 @@ impl Workspace {
                     }
                     self.next_token = page.next_token;
                     self.list_loaded = true;
+                    if self.located.is_none() {
+                        self.list_cache.insert(
+                            self.tree_scope(),
+                            ObjectPage {
+                                objects: self.objects.clone(),
+                                next_token: self.next_token.clone(),
+                            },
+                        );
+                    }
                     self.update_tree_rows();
                 }
                 Pending::Info(_) => {
@@ -1653,6 +1686,7 @@ impl Workspace {
                     self.settings = serde_json::from_value(data).map_err(|e| e.to_string())?
                 }
                 Pending::Submit(dialog) => {
+                    self.list_cache.clear();
                     if matches!(
                         &dialog,
                         Dialog::Account(_)
@@ -1980,6 +2014,33 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cached_navigation_does_not_request_objects_but_refresh_does() {
+        let (backend, _receiver) = Backend::open(true).unwrap();
+        let mut workspace = Workspace::new(backend);
+        workspace.active_id = "demo-aws".into();
+        workspace.bucket = "studio-assets".into();
+        let root = workspace.tree_scope();
+        workspace.list_cache.insert(
+            root,
+            ObjectPage {
+                objects: vec![],
+                next_token: Some("next-page".into()),
+            },
+        );
+        workspace.prefix = "child/".into();
+        let before = workspace.next_request;
+        workspace.navigate("studio-assets".into(), "".into());
+        assert_eq!(workspace.next_request, before);
+        assert!(!workspace.loading);
+        assert!(workspace.list_loaded);
+        assert_eq!(workspace.next_token.as_deref(), Some("next-page"));
+        workspace.refresh_objects();
+        assert!(workspace.loading);
+        assert!(workspace.next_request > before);
+        assert!(workspace.list_cache.get(&workspace.tree_scope()).is_none());
+    }
 
     #[test]
     fn workspace_removal_keeps_the_open_bucket_when_removing_another_account() {

@@ -650,3 +650,26 @@ fn bucket_scan_finishes_in_background_and_is_reused_on_return() {
     app.wait_for("id:tree-totals").unwrap();
     assert!(!app.screen().matches("id:tree-scanning").unwrap());
 }
+
+#[test]
+fn returning_to_a_directory_restores_all_loaded_pages() {
+    let mut app = preview();
+    let search = "id:object-search";
+    app.type_text(search, "Brand assets/Guides/").unwrap();
+    app.press_key("enter").unwrap();
+    app.wait_for("id:object-Brand assets/Guides/Typography.txt")
+        .unwrap();
+    app.press("id:load-more").unwrap();
+    app.wait_for("id:object-Brand assets/Guides/Usage.pdf")
+        .unwrap();
+    app.wait_for_gone("id:load-more", WAIT).unwrap();
+    app.press("id:root-directory").unwrap();
+    app.wait_for("id:object-Brand assets/").unwrap();
+    app.type_text(search, "Brand assets/Guides/").unwrap();
+    app.press_key("enter").unwrap();
+    app.wait_for("id:object-Brand assets/Guides/Typography.txt")
+        .unwrap();
+    app.wait_for("id:object-Brand assets/Guides/Usage.pdf")
+        .unwrap();
+    assert!(!app.screen().matches("id:load-more").unwrap());
+}

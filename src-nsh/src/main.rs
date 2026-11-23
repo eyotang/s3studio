@@ -6,6 +6,7 @@
 mod appearance;
 mod backend;
 mod i18n;
+mod list_cache;
 mod model;
 mod object_tree;
 mod tree_cache;
