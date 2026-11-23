@@ -11,7 +11,7 @@ use s3_studio_core::{
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -25,6 +25,7 @@ pub enum Message {
     TreeScanning(u64),
     TreeProgress(u64, Totals),
     TreeReady(u64, Result<(), String>),
+    ListSizes(u64, Result<HashMap<String, u128>, String>),
     TreeRows(u64, Result<Option<TreeListing>, String>),
     TreeUpload(TreeScope, String),
     Transfer(Transfer),
@@ -247,6 +248,32 @@ impl Backend {
                 }
                 .await;
                 let _ = sender.unbounded_send(Message::TreeReady(revision, result));
+            })
+            .abort_handle();
+        TreeTask { cancel, task }
+    }
+
+    pub fn query_list_sizes(&self, revision: u64, scope: TreeScope, keys: Vec<String>) -> TreeTask {
+        let (cache, sender, services) = (
+            self.cache.clone(),
+            self.sender.clone(),
+            self.services.clone(),
+        );
+        let cancel = Arc::new(AtomicBool::new(false));
+        let query_cancel = cancel.clone();
+        let task = self
+            .runtime
+            .spawn(async move {
+                let result = async {
+                    let scope = cache_scope(
+                        services.as_ref().map(|service| service.store.as_ref()),
+                        scope,
+                    )
+                    .await?;
+                    cache_job(move || cache.folder_sizes(&scope, &keys, query_cancel)).await
+                }
+                .await;
+                let _ = sender.unbounded_send(Message::ListSizes(revision, result));
             })
             .abort_handle();
         TreeTask { cancel, task }

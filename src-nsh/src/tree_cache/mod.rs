@@ -188,6 +188,28 @@ impl TreeCache {
         db::listing(&conn, &scope.prefix, meta, stale_epoch, options)
     }
 
+    pub fn folder_sizes(
+        &self,
+        scope: &TreeScope,
+        keys: &[String],
+        cancel: Arc<AtomicBool>,
+    ) -> Result<HashMap<String, u128>> {
+        let _lock = self.lock(false)?;
+        let Some((conn, _, _)) = self.open_snapshot(scope)? else {
+            return Ok(HashMap::new());
+        };
+        let mut sizes = HashMap::new();
+        let mut query = conn.prepare_cached("SELECT bytes FROM entry WHERE key=?1 AND folder=1")?;
+        for key in keys {
+            ensure!(!cancel.load(Ordering::Relaxed), "query canceled");
+            let mut rows = query.query([key])?;
+            if let Some(row) = rows.next()? {
+                sizes.insert(key.clone(), u128::from_be_bytes(row.get::<_, [u8; 16]>(0)?));
+            }
+        }
+        Ok(sizes)
+    }
+
     pub fn begin(self: &Arc<Self>, scope: TreeScope, cancel: Arc<AtomicBool>) -> Result<TreeScan> {
         ensure!(
             scope.prefix.is_empty() || scope.prefix.ends_with('/'),

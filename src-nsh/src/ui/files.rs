@@ -597,18 +597,36 @@ fn object_row(store: Store, state: &Workspace, object: &S3Object, compact: bool)
                                 .min_w_0(),
                         ),
                 )
-                .child(
-                    label(
-                        if object.folder {
-                            "—".into()
-                        } else {
-                            model::bytes(object.size.max(0) as u128)
-                        },
-                        11.0,
-                        MUTED,
-                    )
-                    .w(px(80.0)),
-                )
+                .child({
+                    let key = key.clone();
+                    let folder = object.folder;
+                    let bytes = object.size.max(0) as u128;
+                    dynamic(move || {
+                        store.read_sizes(|state| {
+                            let size = if folder {
+                                state
+                                    .tree
+                                    .list_sizes
+                                    .get(&key)
+                                    .map(|size| model::bytes(*size))
+                                    .unwrap_or_else(|| {
+                                        if state.tree.calculating() {
+                                            t("计算大小中…").into()
+                                        } else {
+                                            "—".into()
+                                        }
+                                    })
+                            } else {
+                                model::bytes(bytes)
+                            };
+                            label(size, 11.0, MUTED)
+                                .test_id(&format!("object-size-{key}"))
+                                .w(px(80.0))
+                                .flex_shrink_0()
+                                .truncate()
+                        })
+                    })
+                })
                 .child(
                     label(
                         if object.folder {

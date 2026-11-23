@@ -308,3 +308,27 @@ fn directory_totals_and_sorting_cross_the_unsigned_64_bit_limit() {
         3 * i64::MAX as u128
     );
 }
+
+#[test]
+fn list_sizes_include_nested_content_and_keep_unknown_distinct_from_empty() {
+    let cache = Arc::new(TreeCache::preview().unwrap());
+    build(
+        &cache,
+        scope(""),
+        &[
+            object("folder/a", 12),
+            object("folder/nested/b", 30),
+            object("empty/", 0),
+        ],
+    );
+    let sizes = cache
+        .folder_sizes(
+            &scope(""),
+            &["folder/".into(), "empty/".into(), "missing/".into()],
+            canceled(),
+        )
+        .unwrap();
+    assert_eq!(sizes.get("folder/"), Some(&42));
+    assert_eq!(sizes.get("empty/"), Some(&0));
+    assert!(!sizes.contains_key("missing/"));
+}

@@ -603,3 +603,31 @@ fn formatting_and_directory_priority_match_existing_behavior() {
     assert!(visible(&objects, "missing", Sort::Name, true).is_empty());
     assert_eq!(objects[0].key, "file10");
 }
+
+#[test]
+fn list_view_shows_folder_totals_without_opening_tree_view() {
+    let mut app = preview();
+    app.wait_for("id:object-size-Brand assets/").unwrap();
+    app.wait_for("24.6 MB").unwrap();
+    app.type_text("id:object-search", "Brand assets/").unwrap();
+    app.press_key("enter").unwrap();
+    app.wait_for("id:object-size-Brand assets/Guides/").unwrap();
+    app.wait_for("24 MB").unwrap();
+}
+
+#[test]
+fn list_sizes_finish_without_dismissing_an_open_form() {
+    let (mut app, gate) = paused_scan();
+    app.press("id:list-view").unwrap();
+    app.wait_for("id:object-size-Brand assets/").unwrap();
+    app.wait_for(i18n::t("计算大小中…")).unwrap();
+    app.press("id:add-account").unwrap();
+    app.wait_for("id:name").unwrap();
+    app.type_text("id:name", "Keep this draft").unwrap();
+    gate.add_permits(1);
+    app.wait_for("24.6 MB").unwrap();
+    assert_eq!(
+        app.screen().input_text("id:name").unwrap(),
+        Some("Keep this draft")
+    );
+}

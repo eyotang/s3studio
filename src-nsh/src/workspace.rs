@@ -71,6 +71,7 @@ pub struct TreeBrowser {
     pub status: TreeStatus,
     pub options: TreeOptions,
     pub rows: Rc<Vec<TreeRow>>,
+    pub list_sizes: HashMap<String, u128>,
     pub selected: BTreeSet<TreeKey>,
     pub totals: Option<Totals>,
     pub scanned_at: Option<i64>,
@@ -92,6 +93,7 @@ impl TreeBrowser {
             status: TreeStatus::Idle,
             options: TreeOptions::default(),
             rows: Rc::default(),
+            list_sizes: HashMap::new(),
             selected: BTreeSet::new(),
             totals: None,
             scanned_at: None,
@@ -138,6 +140,7 @@ impl TreeBrowser {
 
     fn clear_result(&mut self) {
         self.rows = Rc::default();
+        self.list_sizes.clear();
         self.selected.clear();
         self.totals = None;
         self.scanned_at = None;
@@ -459,10 +462,15 @@ impl Workspace {
         if !append && self.tree.scope.is_some() && !self.tree.cache_available {
             self.tree.live_needs_refresh = true;
         }
+        if self.tree.scope.is_none() {
+            self.start_tree_scan(false);
+        }
         self.load_list_page(append);
     }
 
     fn clear_list_page(&mut self) {
+        self.tree.cancel_query();
+        self.tree.list_sizes.clear();
         self.objects.clear();
         self.located = None;
         self.list_loaded = false;
@@ -496,6 +504,7 @@ impl Workspace {
                 self.refresh_tree_levels(None);
             }
         } else {
+            self.start_tree_scan(true);
             self.load_objects(false);
         }
     }
@@ -535,6 +544,7 @@ impl Workspace {
             if !self.list_loaded && !self.bucket.is_empty() {
                 self.load_list_page(false);
             }
+            self.update_tree_rows();
         }
     }
 
@@ -737,6 +747,21 @@ impl Workspace {
 
     fn update_tree_rows(&mut self) {
         if self.object_view != ObjectView::Tree {
+            if self.tree.cache_available && self.list_loaded {
+                self.tree.cancel_query();
+                self.tree.query_revision += 1;
+                let keys = self
+                    .objects
+                    .iter()
+                    .filter(|o| o.folder)
+                    .map(|o| o.key.clone())
+                    .collect();
+                self.tree.query = Some(self.backend.query_list_sizes(
+                    self.tree.query_revision,
+                    self.tree_scope(),
+                    keys,
+                ));
+            }
             return;
         }
         let Some(scope) = self.tree.scope.clone() else {
@@ -856,6 +881,8 @@ impl Workspace {
         }
         if self.object_view == ObjectView::Tree && self.tree.totals.is_some() {
             self.clear_list_page();
+            self.update_tree_rows();
+        } else if self.tree.cache_available {
             self.update_tree_rows();
         }
     }
@@ -1523,6 +1550,7 @@ impl Workspace {
                     }
                     self.next_token = page.next_token;
                     self.list_loaded = true;
+                    self.update_tree_rows();
                 }
                 Pending::Info(_) => {
                     self.info = Some(serde_json::from_value(data).map_err(|e| e.to_string())?)
@@ -1696,6 +1724,7 @@ pub struct Store {
     workspace: Stored<Rc<RefCell<Workspace>>>,
     revision: Signal<u64>,
     draft_revision: Signal<u64>,
+    sizes_revision: Signal<u64>,
     transfer_revision: Signal<u64>,
 }
 impl Store {
@@ -1704,6 +1733,7 @@ impl Store {
             workspace: stored(Rc::new(RefCell::new(Workspace::new(backend)))),
             revision: signal(0),
             draft_revision: signal(0),
+            sizes_revision: signal(0),
             transfer_revision: signal(0),
         };
         spawn(async move {
@@ -1718,6 +1748,11 @@ impl Store {
         self.revision.get();
         // NSH can evaluate a control's reactive properties while building it.
         f(&self.workspace.get().borrow())
+    }
+
+    pub fn read_sizes<T>(self, f: impl FnOnce(&Workspace) -> T) -> T {
+        self.sizes_revision.get();
+        self.read(f)
     }
 
     pub fn read_transfers<T>(self, f: impl FnOnce(&Workspace) -> T) -> T {
@@ -1796,7 +1831,15 @@ impl Store {
             }
             Message::Update(status) => self.change(|workspace| workspace.accept_update(status)),
             Message::TreeScanning(revision) => {
-                self.change(|workspace| workspace.receive_tree_scanning(revision))
+                let tree = self.write(|workspace| {
+                    workspace.receive_tree_scanning(revision);
+                    workspace.object_view == ObjectView::Tree
+                });
+                if tree {
+                    self.revision.update(|v| *v += 1);
+                } else {
+                    self.sizes_revision.update(|v| *v += 1);
+                }
             }
             Message::TreeProgress(revision, totals) => {
                 let visible = self.write(|workspace| {
@@ -1808,7 +1851,28 @@ impl Store {
                 }
             }
             Message::TreeReady(revision, result) => {
-                self.change(|workspace| workspace.receive_tree_ready(revision, result))
+                let tree = self.write(|workspace| {
+                    workspace.receive_tree_ready(revision, result);
+                    workspace.object_view == ObjectView::Tree
+                });
+                if tree {
+                    self.revision.update(|v| *v += 1);
+                } else {
+                    self.sizes_revision.update(|v| *v += 1);
+                }
+            }
+            Message::ListSizes(revision, result) => {
+                self.write(|workspace| {
+                    if workspace.tree.query_revision == revision
+                        && workspace.object_view != ObjectView::Tree
+                    {
+                        workspace.tree.query = None;
+                        if let Ok(sizes) = result {
+                            workspace.tree.list_sizes = sizes;
+                        }
+                    }
+                });
+                self.sizes_revision.update(|v| *v += 1);
             }
             Message::TreeRows(revision, result) => {
                 let scan_time = self.write(|workspace| {
