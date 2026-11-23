@@ -10,7 +10,7 @@ use crate::{
     workspace::{Store, Workspace},
 };
 use controls::*;
-use nsh_base::{MenuItemElement, context_menu, menu, menu_item};
+use nsh_base::{MenuItemElement, menu, menu_item};
 use nsh_core::{element::StyleRefinement, prelude::*};
 use palette::*;
 
@@ -446,26 +446,7 @@ fn bucket_buttons(store: Store, state: &Workspace) -> Vec<AnyElement> {
                 .on_press(
                     store.action(move |state| state.navigate(selection.clone(), String::new())),
                 );
-            context_menu()
-                .key(name.clone())
-                .disabled(state.is_busy())
-                .popup_style(sidebar_menu_style)
-                .trigger(trigger)
-                .child(
-                    sidebar_menu_item(
-                        &format!("bucket-settings-{name}"),
-                        t("存储桶设置"),
-                        "settings-2",
-                        TEXT,
-                    )
-                    .on_select(store.action(move |state| {
-                        if state.bucket != name {
-                            state.navigate(name.clone(), String::new());
-                        }
-                        state.open_dialog(Dialog::BucketSettings);
-                    })),
-                )
-                .into_element()
+            trigger.into_element()
         })
         .collect()
 }

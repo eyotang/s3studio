@@ -114,10 +114,8 @@ fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
     Some(match dialog {
         Dialog::Account(_) => t("所有凭据仅保存于本机系统密钥库，账户数量没有限制。").into(),
         Dialog::Bucket => {
-            t("在所选 Endpoint 和 Region 创建存储桶。留空时使用账户或全局默认值。").into()
-        }
-        Dialog::BucketSettings => {
-            t("修改此存储桶在本机的连接设置。留空时继承账户或全局默认值。").into()
+            t("在当前工作空间的 Endpoint 创建存储桶；Region 留空时使用工作空间或全局默认值。")
+                .into()
         }
         Dialog::LocatePath => {
             t("输入从桶根目录开始的路径，或用 s3:// 指定存储桶。目录路径可用 / 结尾。").into()
@@ -199,10 +197,13 @@ fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> 
                     state.dialog_error.clear();
                 }))),
         Dialog::Copy => field(store, state, "name", t("目标对象键"), true),
-        Dialog::Bucket | Dialog::BucketSettings | Dialog::S3Defaults => column().gap(px(11.0))
+        Dialog::Bucket | Dialog::S3Defaults => column().gap(px(11.0))
             .when(dialog == &Dialog::Bucket, |body| body.child(field(store, state, "name", t("存储桶名称"), true)))
-            .when(dialog == &Dialog::BucketSettings, |body| body.child(label(state.bucket.clone(), 12.0, TEXT)))
-            .child(connection(store, state, S3Option::Endpoint, "Endpoint", dialog != &Dialog::Bucket))
+            .when(dialog == &Dialog::Bucket, |body| body.child(column().gap(px(4.0))
+                .child(label("Endpoint", 12.0, TEXT))
+                .child(label(state.account().map(|account| state.form.s3_options.endpoint_for(account))
+                    .filter(|endpoint| !endpoint.is_empty()).unwrap_or(t("使用默认值")).to_owned(), 12.0, MUTED))))
+            .when(dialog == &Dialog::S3Defaults, |body| body.child(connection(store, state, S3Option::Endpoint, "Endpoint", true)))
             .child(connection(store, state, S3Option::Region, "Region", false)),
         Dialog::TransferSettings => preferences(store, state),
         Dialog::Delete => column().child(

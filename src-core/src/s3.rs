@@ -30,11 +30,8 @@ fn resolve_connection(
     defaults: &S3Defaults,
     bucket: &S3Connection,
 ) -> (S3Connection, bool) {
-    let endpoint = if bucket.endpoint.is_empty() {
-        defaults.endpoint_for(account)
-    } else {
-        &bucket.endpoint
-    };
+    // Endpoint belongs to the workspace. Ignore legacy per-bucket overrides.
+    let endpoint = defaults.endpoint_for(account);
     let region = if bucket.region.is_empty() {
         defaults.region_for(account)
     } else {
@@ -501,11 +498,15 @@ pub async fn create_bucket(
         )
         .into());
     }
-    let connection = connection.normalized()?;
+    let connection = S3Connection {
+        endpoint: String::new(),
+        region: connection.region,
+    }
+    .normalized()?;
     let _change = store.connection_changes.lock().await;
     let account = store.account(&account_id).await?;
     if account.bucket_connections.contains_key(&name) {
-        return Err(crate::i18n::t("此账户已有同名存储桶，请编辑现有存储桶的连接设置。").into());
+        return Err(crate::i18n::t("此工作空间已有同名存储桶。").into());
     }
     let defaults = get_s3_defaults(store).await;
     let (resolved, _) = resolve_connection(&account, &defaults, &connection);
@@ -1115,8 +1116,38 @@ mod tests {
         thread.join().unwrap();
     }
 
+    #[test]
+    fn bucket_endpoint_always_follows_the_workspace() {
+        let mut account: Account = serde_json::from_value(serde_json::json!({
+            "id": "test", "name": "Test", "endpoint": "https://workspace.example",
+            "region": "eu-west-1", "pathStyle": true
+        }))
+        .unwrap();
+        let mut defaults = S3Defaults {
+            endpoint: "https://global.example".into(),
+            ..Default::default()
+        };
+        let legacy = S3Connection {
+            endpoint: "https://old-bucket.example".into(),
+            region: String::new(),
+        };
+        assert_eq!(
+            resolve_connection(&account, &defaults, &legacy).0.endpoint,
+            "https://workspace.example"
+        );
+        account.endpoint.clear();
+        assert_eq!(
+            resolve_connection(&account, &defaults, &legacy).0.endpoint,
+            "https://global.example"
+        );
+        defaults.endpoint.clear();
+        let (connection, pinned) = resolve_connection(&account, &defaults, &legacy);
+        assert!(connection.endpoint.is_empty());
+        assert!(!pinned);
+    }
+
     #[tokio::test]
-    async fn bucket_settings_persist_and_keep_explicit_values_after_option_removal() {
+    async fn legacy_bucket_settings_persist_but_endpoint_uses_workspace_defaults() {
         use crate::accounts::{set_s3_defaults, S3Option};
         use crate::transfers::Direction;
         let dir = std::env::temp_dir().join(format!("s3-bucket-{}", uuid::Uuid::new_v4()));
@@ -1163,7 +1194,7 @@ mod tests {
         assert_eq!(account.bucket_connections[bucket], connection);
         let (resolved, pinned) = resolve_connection(&account, &saved, &connection);
         assert!(pinned);
-        assert_eq!(resolved.endpoint, "https://bucket.example/Case");
+        assert_eq!(resolved.endpoint, "https://global.example");
         assert_eq!(resolved.region, "eu-west-1");
         engine
             .enqueue(

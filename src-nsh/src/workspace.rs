@@ -331,11 +331,7 @@ impl Workspace {
     pub fn account_by_id(&self, id: &str) -> Option<&Account> {
         self.accounts.iter().find(|account| account.id == id)
     }
-    pub fn current_bucket(&self) -> Option<&Bucket> {
-        self.buckets
-            .iter()
-            .find(|bucket| bucket.name == self.bucket)
-    }
+
     pub fn visible(&self) -> Vec<S3Object> {
         let mut rows = model::visible(
             &self.objects,
@@ -1200,29 +1196,14 @@ impl Workspace {
                 );
             }
             Dialog::Folder => self.add_input("name", "", crate::i18n::t("新文件夹"), false),
-            Dialog::Bucket | Dialog::BucketSettings => {
-                if dialog == Dialog::Bucket {
-                    self.add_input("name", "", "my-new-bucket", false);
-                }
-                let connection = self
-                    .current_bucket()
-                    .filter(|_| dialog == Dialog::BucketSettings)
-                    .map(|bucket| bucket.connection.clone())
-                    .unwrap_or_default();
-                let defaults = &self.form.s3_options;
-                let endpoint = self
-                    .account()
-                    .map(|account| defaults.endpoint_for(account))
-                    .filter(|endpoint| !endpoint.is_empty())
-                    .unwrap_or("https://s3.example.com")
-                    .to_owned();
+            Dialog::Bucket => {
+                self.add_input("name", "", "my-new-bucket", false);
                 let region = self
                     .account()
-                    .map(|account| defaults.region_for(account))
+                    .map(|account| self.form.s3_options.region_for(account))
                     .unwrap_or("us-east-1")
                     .to_owned();
-                self.add_input("endpoint", &connection.endpoint, &endpoint, false);
-                self.add_input("region", &connection.region, &region, false);
+                self.add_input("region", "", &region, false);
             }
             Dialog::LocatePath => self.add_input(
                 "path",
@@ -1368,23 +1349,17 @@ impl Workspace {
                 args["key"] = json!(format!("{}{name}/", self.prefix));
                 "create_folder"
             }
-            Dialog::Bucket | Dialog::BucketSettings => {
-                if dialog == Dialog::Bucket && self.buckets.iter().any(|bucket| bucket.name == name)
-                {
-                    self.dialog_error =
-                        crate::i18n::t("此账户已有同名存储桶，请编辑现有存储桶的连接设置。").into();
+            Dialog::Bucket => {
+                if self.buckets.iter().any(|bucket| bucket.name == name) {
+                    self.dialog_error = crate::i18n::t("此工作空间已有同名存储桶。").into();
                     return;
                 }
                 args["name"] = json!(name);
                 args["connection"] = json!(S3Connection {
-                    endpoint: self.input("endpoint").to_owned(),
+                    endpoint: String::new(),
                     region: self.input("region").to_owned(),
                 });
-                if dialog == Dialog::Bucket {
-                    "create_bucket"
-                } else {
-                    "set_bucket_connection"
-                }
+                "create_bucket"
             }
             Dialog::Copy => {
                 let Some(first) = self.first() else {
@@ -1689,10 +1664,7 @@ impl Workspace {
                     self.list_cache.clear();
                     if matches!(
                         &dialog,
-                        Dialog::Account(_)
-                            | Dialog::RemoveAccount(_)
-                            | Dialog::BucketSettings
-                            | Dialog::S3Defaults
+                        Dialog::Account(_) | Dialog::RemoveAccount(_) | Dialog::S3Defaults
                     ) {
                         self.background_scans.clear();
                         self.tree.cancel_scan();
@@ -1732,22 +1704,6 @@ impl Workspace {
                             let name = self.input("name").trim().to_owned();
                             self.load_buckets(Some(name));
                             crate::i18n::t("存储桶已创建").into()
-                        }
-                        Dialog::BucketSettings => {
-                            let connection: S3Connection =
-                                serde_json::from_value(data).map_err(|e| e.to_string())?;
-                            if let Some(bucket) = self
-                                .buckets
-                                .iter_mut()
-                                .find(|bucket| bucket.name == self.bucket)
-                            {
-                                bucket.connection = connection;
-                            }
-                            self.prefix.clear();
-                            self.clear_search();
-                            self.tree.clear();
-                            self.load_objects(false);
-                            crate::i18n::t("设置保存成功").into()
                         }
                         Dialog::S3Defaults => {
                             let defaults: S3Defaults =

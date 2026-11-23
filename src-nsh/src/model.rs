@@ -13,7 +13,6 @@ pub enum Dialog {
     Account(Option<String>),
     Folder,
     Bucket,
-    BucketSettings,
     LocatePath,
     Copy,
     Delete,
@@ -33,7 +32,6 @@ impl Dialog {
             Self::Account(None) => crate::i18n::t("连接一个新账户"),
             Self::Folder => crate::i18n::t("新建文件夹"),
             Self::Bucket => crate::i18n::t("创建存储桶"),
-            Self::BucketSettings => crate::i18n::t("存储桶设置"),
             Self::LocatePath => crate::i18n::t("定位路径"),
             Self::Copy => crate::i18n::t("复制对象"),
             Self::Delete => crate::i18n::t("删除所选项目？"),
@@ -56,9 +54,7 @@ impl Dialog {
             Self::Copy => crate::i18n::t("复制"),
             Self::Delete | Self::RemoveAccount(_) => crate::i18n::t("确认删除"),
             Self::Upload => crate::i18n::t("选择文件并上传"),
-            Self::TransferSettings | Self::S3Defaults | Self::BucketSettings => {
-                crate::i18n::t("保存设置")
-            }
+            Self::TransferSettings | Self::S3Defaults => crate::i18n::t("保存设置"),
             Self::Help => crate::i18n::t("开始使用"),
             Self::About => crate::i18n::t("关闭"),
             Self::CancelTransfer(_) => crate::i18n::t("取消并清理"),

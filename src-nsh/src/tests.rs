@@ -381,12 +381,14 @@ fn bucket_options_can_be_added_reused_and_removed() {
     app.press("id:cancel-dialog").unwrap();
 
     app.right_click("id:bucket-application-backups").unwrap();
-    app.press("id:bucket-settings-application-backups").unwrap();
     assert!(
-        app.screen()
-            .selected("id:bucket-application-backups")
+        !app.screen()
+            .matches("id:bucket-settings-application-backups")
             .unwrap()
     );
+    assert!(app.screen().selected("id:bucket-studio-assets").unwrap());
+    app.press("id:create-bucket").unwrap();
+    assert!(!app.screen().matches("id:endpoint").unwrap());
     app.press("id:s3-options-region").unwrap();
     app.wait_for("eu-west-2").unwrap();
     app.press_key("escape").unwrap();

@@ -337,5 +337,7 @@
   "仅定位对象": "Exact object only",
   "输入从桶根目录开始的路径，或用 s3:// 指定存储桶。目录路径可用 / 结尾。": "Enter a path from the bucket root, or use s3:// to specify the bucket. End a folder path with /.",
   "路径中的存储桶不在当前账户的列表中。": "The bucket in this path is outside the active account’s bucket list.",
-  "找不到指定的目录或对象。": "The specified folder or object was not found."
+  "找不到指定的目录或对象。": "The specified folder or object was not found.",
+  "在当前工作空间的 Endpoint 创建存储桶；Region 留空时使用工作空间或全局默认值。": "Create the bucket at the current workspace Endpoint. Leave Region empty to use the workspace or global default.",
+  "此工作空间已有同名存储桶。": "A bucket with this name already exists in this workspace."
 }
