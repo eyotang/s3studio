@@ -35,6 +35,17 @@ if [[ ${S3_STUDIO_REQUIRE_MACOS_SIGNATURE:-false} == true ]]; then
 fi
 if [[ ${S3_STUDIO_REQUIRE_MACOS_SIGNATURE:-false} == true || -n ${S3_STUDIO_MACOS_SIGNING_P12:-} ]]; then
     bash packaging/macos/sign.sh "$app" "$S3_STUDIO_ID" "${S3_STUDIO_MACOS_CERTIFICATE_SHA256:?}"
+    # Independently reject an unsigned or incorrectly signed app before making a DMG.
+    # Do not rely solely on a child shell's exit status (notably Bash 3 on macOS).
+    codesign --verify --strict --all-architectures "$app"
+    if [[ ${S3_STUDIO_REQUIRE_MACOS_SIGNATURE:-false} == true ]]; then
+        requirement="identifier \"$S3_STUDIO_ID\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = \"$S3_STUDIO_MACOS_TEAM_ID\""
+        codesign --verify --strict --all-architectures -R "=$requirement" "$app"
+        for arch in arm64 x86_64; do
+            details=$(codesign -d --arch "$arch" --verbose=4 "$app" 2>&1)
+            printf '%s\n' "$details" | grep -Fx "TeamIdentifier=$S3_STUDIO_MACOS_TEAM_ID"
+        done
+    fi
 else
     codesign --force --sign - "$app"
     codesign --verify --strict --all-architectures "$app"

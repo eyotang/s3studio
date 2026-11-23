@@ -24,19 +24,19 @@ requirement="identifier \"$identifier\" and certificate leaf = H\"$identity\""
 
 # Official Developer ID builds use a stable Apple-verified team requirement.
 # The self-signed path remains available for the isolated CI fixture.
-timestamp_args=(--timestamp-url none)
+timestamp_url=none
 if [[ -n ${S3_STUDIO_MACOS_TEAM_ID:-} ]]; then
     if [[ ! $S3_STUDIO_MACOS_TEAM_ID =~ ^[A-Z0-9]{10}$ ]]; then
         printf '%s\n' 'Invalid Apple Team ID.' >&2
         exit 1
     fi
     requirement="identifier \"$identifier\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = \"$S3_STUDIO_MACOS_TEAM_ID\""
-    timestamp_args=()
+    timestamp_url=http://timestamp.apple.com/ts01
 fi
 
 csreq -r "=$requirement" -b "$signing_dir/requirement.bin"
 printf '%s' "$S3_STUDIO_MACOS_SIGNING_PASSWORD" > "$signing_dir/password"
-rcodesign sign "${timestamp_args[@]}" --p12-file "$p12" --p12-password-file "$signing_dir/password" \
+rcodesign sign --timestamp-url "$timestamp_url" --p12-file "$p12" --p12-password-file "$signing_dir/password" \
     --code-requirements-file "$signing_dir/requirement.bin" "$bundle"
 codesign --verify --strict --all-architectures -R "=$requirement" "$bundle"
 if [[ -n ${S3_STUDIO_MACOS_TEAM_ID:-} ]]; then

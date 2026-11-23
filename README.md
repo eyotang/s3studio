@@ -183,7 +183,7 @@ Omarchy 包复用同版本 deb 中的原生可执行文件，通过 Arch 的 `ma
 
 更新签名继续使用已有的 Minisign 密钥。GitHub Actions 将现有仓库 Secret 传给独立签名工具，公钥固定在 `packaging/app.json`。发布脚本会校验三份更新包的签名和绑定的版本。更新清单由本仓库 Release 的 `latest.json` 提供。
 
-macOS 正式发布使用 GitHub Actions 中的 `S3_STUDIO_MACOS_SIGNING_P12`（Base64 编码的 PKCS#12）和 `S3_STUDIO_MACOS_SIGNING_PASSWORD`。打包会核对 `packaging/app.json` 中的证书指纹，并验证通用包的两种架构。从 0.4.20 起使用 Apple Developer ID Application 证书，`macOSTeamId` 固定团队身份，正式包逐架构验证 Apple 证书链及 Team ID。此前自签名版本按变化的 CDHash 分区授权，不能保证跨版本继承；迁移到 Apple 签名后旧凭据可能需要再授权一次。临时钥匙串测试仅覆盖该测试环境，不能代替用户登录钥匙串的升级验证。当前尚未配置 Apple 公证。
+macOS 正式发布使用 GitHub Actions 中的 `S3_STUDIO_MACOS_SIGNING_P12`（Base64 编码的 PKCS#12）和 `S3_STUDIO_MACOS_SIGNING_PASSWORD`。打包会核对 `packaging/app.json` 中的证书指纹，并验证通用包的两种架构。从 0.4.21 起使用 Apple Developer ID Application 证书，`macOSTeamId` 固定团队身份，正式包逐架构验证 Apple 证书链及 Team ID。此前自签名版本按变化的 CDHash 分区授权，不能保证跨版本继承；迁移到 Apple 签名后旧凭据可能需要再授权一次。临时钥匙串测试仅覆盖该测试环境，不能代替用户登录钥匙串的升级验证。当前尚未配置 Apple 公证。
 
 Windows Release 构建后可运行 `powershell -NoProfile -File scripts/smoke-desktop.ps1` 检查原生程序启动；测试会结束自己启动的进程，报告保存到 `artifacts/native-startup.json`。
 
