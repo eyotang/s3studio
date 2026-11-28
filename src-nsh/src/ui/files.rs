@@ -1,7 +1,10 @@
 mod tree;
 
 use super::*;
-use crate::{model, workspace::ObjectView};
+use crate::{
+    model::{self, FileAction},
+    workspace::ObjectView,
+};
 use s3_studio_core::s3::S3Object;
 
 pub(super) fn browser(store: Store, search: ElementRef) -> View {
@@ -22,6 +25,14 @@ pub(super) fn browser(store: Store, search: ElementRef) -> View {
                 .gap(px(10.0))
                 .justify_between()
                 .child(search_field(store, search))
+                .child(dynamic(move || {
+                    store.read(|s| {
+                        s.files.filter.is_some().then(|| {
+                            secondary("clear-advanced-filter", t("清除筛选"))
+                                .on_press(store.action(Workspace::clear_file_filter))
+                        })
+                    })
+                }))
                 .child(dynamic(move || {
                     store.read(|state| selection_actions(store, state))
                 })),
@@ -225,6 +236,7 @@ fn toolbar(store: Store, state: &Workspace) -> View {
             row()
                 .gap(px(4.0))
                 .flex_shrink_0()
+                .child(file_menu(store, state))
                 .child(
                     icon_button("new-folder", t("新建文件夹"), "folder-plus")
                         .disabled(state.disabled())
@@ -268,6 +280,37 @@ fn toolbar(store: Store, state: &Workspace) -> View {
         )
 }
 
+fn file_menu(store: Store, state: &Workspace) -> impl IntoElement {
+    use FileAction::*;
+    let selected = state.selection_count();
+    let single = state.first().is_some_and(|o| !o.folder);
+    let mut popup = menu()
+        .align(Align::End)
+        .offset(px(4.0))
+        .popup_style(sidebar_menu_style)
+        .trigger(secondary("file-actions", t("文件操作")).disabled(state.disabled()));
+    for (id, action, icon, enabled) in [
+        ("upload-folder", UploadFolder, "arrow-up-to-line", true),
+        ("download", Download, "arrow-down-to-line", true),
+        ("copy", CopyTo, "copy", true),
+        ("move", MoveTo, "folder", true),
+        ("rename", Rename, "file", selected == 1),
+        ("preview", Preview, "info", single),
+        ("edit", Edit, "file-code-corner", single),
+        ("sync", Sync, "refresh-cw", true),
+        ("filter", Filter, "list", true),
+        ("share", Share, "link", selected > 0),
+        ("properties", Properties, "settings-2", selected > 0),
+    ] {
+        popup = popup.child(
+            sidebar_menu_item(&format!("files-{id}"), action.title(), icon, TEXT)
+                .disabled(!enabled)
+                .on_select(store.open(Dialog::Files(action))),
+        );
+    }
+    popup
+}
+
 fn selection_actions(store: Store, state: &Workspace) -> Option<View> {
     let count = state.selection_count();
     if count == 0 {
@@ -287,8 +330,14 @@ fn selection_actions(store: Store, state: &Workspace) -> Option<View> {
                     t("下载所选文件"),
                     "arrow-down-to-line",
                 )
-                .disabled(disabled)
-                .on_press(store.action(Workspace::download)),
+                .disabled(busy)
+                .on_press(store.action(|s| {
+                    if s.first().is_some_and(|o| !o.folder) {
+                        s.download()
+                    } else {
+                        s.open_dialog(Dialog::Files(FileAction::Download))
+                    }
+                })),
             )
             .child(
                 icon_button("versions-selection", t("版本历史"), "history")
@@ -301,13 +350,25 @@ fn selection_actions(store: Store, state: &Workspace) -> Option<View> {
             )
             .child(
                 icon_button("copy-selection", t("复制所选对象"), "copy")
-                    .disabled(disabled)
-                    .on_press(store.open(Dialog::Copy)),
+                    .disabled(busy)
+                    .on_press(store.action(|s| {
+                        if s.first().is_some_and(|o| !o.folder) {
+                            s.open_dialog(Dialog::Copy)
+                        } else {
+                            s.open_dialog(Dialog::Files(FileAction::CopyTo))
+                        }
+                    })),
             )
             .child(
                 icon_button("share-selection", t("复制分享链接"), "link")
-                    .disabled(disabled)
-                    .on_press(store.action(Workspace::share)),
+                    .disabled(busy)
+                    .on_press(store.action(|s| {
+                        if s.first().is_some_and(|o| !o.folder) {
+                            s.share()
+                        } else {
+                            s.open_dialog(Dialog::Files(FileAction::Share))
+                        }
+                    })),
             )
             .child(
                 icon_button("delete-selection", t("删除所选项目"), "trash")

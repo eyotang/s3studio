@@ -1,3 +1,4 @@
+mod file_actions;
 use super::*;
 use crate::{appearance, i18n, model};
 use nsh_base::{SelectItem, combobox, dialog};
@@ -38,13 +39,18 @@ pub(super) fn active(store: Store) -> AnyElement {
                         .child(
                             scroll()
                                 .test_id("modal")
-                                .w(px(if matches!(current, Dialog::Trash | Dialog::Versions) {
-                                    700.0
-                                } else if matches!(current, Dialog::Account(_)) {
-                                    510.0
-                                } else {
-                                    460.0
-                                }))
+                                .w(px(
+                                    if matches!(
+                                        current,
+                                        Dialog::Trash | Dialog::Versions | Dialog::Files(_)
+                                    ) {
+                                        700.0
+                                    } else if matches!(current, Dialog::Account(_)) {
+                                        510.0
+                                    } else {
+                                        460.0
+                                    },
+                                ))
                                 .max_w(percentage(1.0))
                                 .max_h(percentage(1.0))
                                 .rounded(px(14.0))
@@ -114,6 +120,7 @@ fn body(store: Store, state: &Workspace, dialog: &Dialog) -> View {
 
 fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
     Some(match dialog {
+        Dialog::Files(action) => return file_actions::description(*action).map(str::to_owned),
         Dialog::Versions => {
             t("选择历史数据版本还原为新的当前版本；已有版本保留，当前内容将被替换。").into()
         }
@@ -188,6 +195,7 @@ fn description(state: &Workspace, dialog: &Dialog) -> Option<String> {
 
 fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> {
     let body = match dialog {
+        Dialog::Files(action)=>file_actions::form(store,state,*action),
         Dialog::RemoveS3Option(field, value) => column()
             .child(label(if field == "endpoint" { "Endpoint" } else { "Region" }, 12.0, MUTED))
             .child(label(value.clone(), 12.0, TEXT).selectable(true)),
@@ -250,7 +258,8 @@ fn form(store: Store, state: &Workspace, dialog: &Dialog) -> Option<AnyElement> 
             .child(label(t("跨平台 S3 文件工作空间"), 12.0, MUTED))
             .child(scroll().max_h(px(100.0)).child(label(include_str!("../../assets/icons/LICENSE-FLUENT"), 10.0, MUTED).selectable(true))),
         Dialog::Update => update_status(state),
-        Dialog::Upload | Dialog::RemoveAccount(_) | Dialog::CancelTransfer(_) | Dialog::ClearTransfers => return None,
+        Dialog::Upload=>file_actions::filters(store,state,false),
+        Dialog::RemoveAccount(_) | Dialog::CancelTransfer(_) | Dialog::ClearTransfers => return None,
     };
     Some(body.into_element())
 }
@@ -499,7 +508,40 @@ fn preferences(store: Store, state: &Workspace) -> View {
 fn actions(store: Store, state: &Workspace, dialog: &Dialog) -> View {
     let actions = row().justify_end().gap(px(7.0)).flex_wrap();
     match dialog {
+        Dialog::Files(action) => file_actions::actions(store, state, *action),
+        Dialog::Upload => actions
+            .child(
+                secondary("cancel-dialog", t("取消"))
+                    .on_press(store.action(Workspace::close_dialog)),
+            )
+            .child(
+                secondary("upload-folder", t("上传文件夹"))
+                    .on_press(store.open(Dialog::Files(model::FileAction::UploadFolder))),
+            )
+            .child(
+                primary("submit-dialog", dialog.submit_label(), false)
+                    .disabled(state.is_busy())
+                    .on_press(store.action(Workspace::submit)),
+            ),
         Dialog::Versions => actions
+            .child(
+                secondary("versions-download", t("下载所选版本"))
+                    .disabled(
+                        state.versions.marked.is_empty()
+                            || state.is_busy()
+                            || state
+                                .versions
+                                .entries
+                                .iter()
+                                .any(|v| v.deleted && state.versions.marked.contains(&v.id)),
+                    )
+                    .on_press(store.open(Dialog::Files(model::FileAction::DownloadVersions))),
+            )
+            .child(
+                secondary("versions-delete", t("永久删除所选版本"))
+                    .disabled(state.versions.marked.is_empty() || state.is_busy())
+                    .on_press(store.open(Dialog::Files(model::FileAction::DeleteVersions))),
+            )
             .when(state.versions.from_trash, |row| {
                 row.child(
                     secondary("versions-back", t("返回回收站"))
@@ -875,20 +917,13 @@ fn version_contents(store: Store, state: &Workspace) -> View {
                                     checkbox(
                                         &format!("version-check-{id}"),
                                         id.clone(),
-                                        versions.selected.as_ref() == Some(&id),
+                                        versions.marked.contains(&id),
                                         false,
                                     )
-                                    .disabled(
-                                        state.is_busy()
-                                            || versions.loading
-                                            || version.deleted
-                                            || version.latest,
-                                    )
+                                    .disabled(state.is_busy() || versions.loading)
                                     .on_change(
                                         move |checked: &bool| {
-                                            store.change(|s| {
-                                                s.versions.selected = checked.then(|| id.clone())
-                                            })
+                                            store.change(|s| s.toggle_version(&id, *checked))
                                         },
                                     ),
                                 )

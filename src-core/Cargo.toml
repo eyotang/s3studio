@@ -1,6 +1,6 @@
 [package]
 name = "s3-studio-core"
-version = "0.4.39"
+version = "0.4.40"
 edition = "2021"
 
 [dependencies]
@@ -17,6 +17,15 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 uuid = { version = "1", features = ["v4"] }
 rfd = "0.15"
 mime_guess = "2"
+chrono = "0.4"
+globset = "0.4"
+icu_normalizer = "2"
+tempfile = "3"
+csv = "1"
+parquet = { version = "60", default-features = false, features = ["snap", "brotli", "flate2-zlib-rs", "lz4", "zstd"] }
+bytes = "1"
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 url = "2"
 percent-encoding = "2"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream"] }

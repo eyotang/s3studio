@@ -56,7 +56,7 @@ Unter Übertragungen können Sie pausieren, fortsetzen, wiederholen oder abbrech
 
 Suchen Sie über das macOS-App-Menü oder die Versionsanzeige nach Updates. Veröffentlichte Versionen prüfen 20 Sekunden nach dem Start und danach alle 24 Stunden. Windows NSIS/MSI und Linux AppImage unterstützen geprüfte Updates in der App; pausieren oder beenden Sie zuvor alle Übertragungen. macOS und deb öffnen die Release-Seite zur manuellen Installation. Konten und Prüfpunkte bleiben erhalten.
 
-Uploads sind auf 5 TiB je Datei begrenzt; serverseitiges Kopieren eines Objekts folgt der 5-GB-Grenze von S3 CopyObject. Löschen entfernt keinen Versionsverlauf. SSO/AssumeRole, ACL- und Richtlinienbearbeitung, Versionsverwaltung, kontenübergreifendes Kopieren, Ordnersynchronisierung, Glacier-Wiederherstellung, Ordnerdownloads und CloudFront-Verwaltung sind nicht enthalten. Die S3-Kompatibilität hängt von der Dienstimplementierung ab.
+Unter **Dateiaktionen** stehen rekursive Übertragungen, Kopieren und Verschieben über Bucket- und Kontogrenzen hinweg, Umbenennen, Vorschau, lokales Bearbeiten, einseitige Ordnersynchronisierung, Filter, Freigabelinks und Objekteigenschaften zur Verfügung. Ausgewählte Versionen lassen sich herunterladen oder löschen. Uploads sind auf 5 TiB je Datei begrenzt. SSO/AssumeRole, Bucket-ACLs und Richtlinien, Glacier-Abruf und CloudFront-Verwaltung sind nicht enthalten.
 
 ## Entwicklung und Beiträge
 

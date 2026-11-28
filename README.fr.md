@@ -56,7 +56,7 @@ La section Transferts permet de mettre en pause, reprendre, réessayer ou annule
 
 Recherchez les mises à jour depuis le menu macOS ou le numéro de version. Les versions publiées vérifient après 20 secondes, puis toutes les 24 heures. Windows NSIS/MSI et Linux AppImage prennent en charge l’installation vérifiée dans l’application ; terminez ou mettez d’abord les transferts en pause. macOS et deb ouvrent la page des versions pour une installation manuelle. Comptes et points de reprise sont conservés.
 
-La limite de téléversement est de 5 TiB par fichier ; la copie serveur d’un objet suit la limite de 5 GB de S3 CopyObject. La suppression ne retire pas l’historique des versions. SSO/AssumeRole, édition des ACL et politiques, gestion des versions, copie entre comptes, synchronisation de dossiers, restauration Glacier, téléchargement de dossiers et gestion CloudFront ne sont pas inclus. La compatibilité S3 dépend de l’implémentation du service.
+Le menu **Actions sur les fichiers** propose les transferts récursifs, la copie et le déplacement entre compartiments et comptes, le renommage, les aperçus, l’édition locale, la synchronisation unidirectionnelle, les filtres, le partage groupé et les propriétés des objets. Vous pouvez télécharger ou supprimer les versions sélectionnées. La limite d’envoi est de 5 Tio par fichier. SSO/AssumeRole, la gestion des ACL et des politiques de compartiment, la récupération Glacier et l’administration CloudFront restent hors de cette version.
 
 ## Développement et contribution
 

@@ -4,3 +4,5 @@ pub mod transfer_commands;
 pub mod transfers;
 
 pub mod i18n;
+
+pub mod folders;

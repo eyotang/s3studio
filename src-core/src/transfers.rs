@@ -78,6 +78,8 @@ pub struct Job {
     upload_id: Option<String>,
     etag: Option<String>,
     version_id: Option<String>,
+    #[serde(default)]
+    remote_condition: Option<String>,
     completed: BTreeMap<u32, Part>,
 }
 #[derive(Clone, Serialize, Deserialize)]
@@ -384,6 +386,21 @@ impl Engine {
         key: String,
         local_path: PathBuf,
     ) -> Result<String, String> {
+        self.enqueue_pinned(direction, account_id, bucket, key, local_path, None, None)
+            .await
+    }
+
+    /// Pin historical reads and guard sync writes at the final S3 commit.
+    pub async fn enqueue_pinned(
+        &self,
+        direction: Direction,
+        account_id: String,
+        bucket: String,
+        key: String,
+        local_path: PathBuf,
+        version: Option<String>,
+        remote_condition: Option<String>,
+    ) -> Result<String, String> {
         if key.is_empty()
             || key.len() > 1024
             || (direction == Direction::Upload && key.ends_with('/'))
@@ -465,7 +482,8 @@ impl Engine {
             destination_stamp,
             upload_id: None,
             etag: None,
-            version_id: None,
+            version_id: version,
+            remote_condition,
             completed: BTreeMap::new(),
         };
         db.jobs.push(job.clone());
@@ -833,6 +851,7 @@ impl Engine {
                     .bucket(&job.view.bucket)
                     .key(&job.view.key)
                     .set_version_id(job.version_id.clone())
+                    .set_if_match(job.remote_condition.clone())
                     .send()
                     .await
                     .map_err(failure)
@@ -840,6 +859,11 @@ impl Engine {
             stop,
         )
         .await?;
+        if let Some(expected) = job.version_id.as_deref() {
+            if head.version_id() != Some(expected) {
+                return Err(crate::i18n::t("服务端未确认所选对象版本。").into());
+            }
+        }
         let total = head
             .content_length()
             .ok_or(crate::i18n::t("服务未返回对象大小。"))?;
@@ -860,7 +884,9 @@ impl Engine {
         job = self
             .edit(id, true, |j| {
                 j.etag = Some(etag);
-                j.version_id = head.version_id().map(str::to_owned);
+                if let Some(version) = head.version_id() {
+                    j.version_id = Some(version.into());
+                }
                 j.view.total = total as u64;
                 j.chunk = part_size(total as u64);
             })
@@ -1035,6 +1061,8 @@ impl Engine {
                     .bucket(&job.view.bucket)
                     .key(&job.view.key)
                     .metadata("s3studio-transfer-id", id)
+                    .set_if_match(job.remote_condition.clone().filter(|v| v != "*"))
+                    .set_if_none_match(job.remote_condition.clone().filter(|v| v == "*"))
                     .body(ByteStream::from_static(b""))
                     .send()
                     .await
@@ -1052,6 +1080,8 @@ impl Engine {
                     .collect();
                 let result = client
                     .complete_multipart_upload()
+                    .set_if_match(job.remote_condition.clone().filter(|v| v != "*"))
+                    .set_if_none_match(job.remote_condition.clone().filter(|v| v == "*"))
                     .bucket(&job.view.bucket)
                     .key(&job.view.key)
                     .upload_id(

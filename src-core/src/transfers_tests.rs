@@ -30,6 +30,7 @@ struct Remote {
     upload_counts: BTreeMap<u32, usize>,
     download_counts: BTreeMap<u32, usize>,
     etag: String,
+    read_versions: Vec<String>,
     aborted: usize,
     list_parts: usize,
     marker: String,
@@ -148,6 +149,9 @@ fn handle(
     let url = url::Url::parse(&format!("http://localhost{}", request.url())).unwrap();
     let query = url.query_pairs().into_owned().collect::<HashMap<_, _>>();
     let method = request.method().clone();
+    if let Some(version) = query.get("versionId") {
+        state.lock().unwrap().read_versions.push(version.clone());
+    }
     if method == Method::Head {
         let remote = state.lock().unwrap();
         let response = Response::new(
@@ -160,6 +164,11 @@ fn handle(
             Some(data.len()),
             None,
         );
+        let response = if let Some(version) = query.get("versionId") {
+            response.with_header(header("x-amz-version-id", version))
+        } else {
+            response
+        };
         let _ = request.respond(response.with_chunked_threshold(usize::MAX));
     } else if method == Method::Post && query.contains_key("uploads") {
         let id = Uuid::new_v4().to_string();
@@ -644,4 +653,33 @@ async fn restart_after_download_rename_recovers_without_redownloading() {
     engine.start(&id, mock.client()).await.unwrap();
     until(&engine, &id, |j| j.view.status == "done").await;
     assert_eq!(mock.state.lock().unwrap().download_counts[&1], 1);
+}
+
+#[tokio::test]
+async fn historical_download_pins_head_and_ranges_after_reopen() {
+    let ws = Workspace::new();
+    let server = Mock::new(1024);
+    let path = ws.0.join("historical.bin");
+    let engine = ws.engine();
+    let id = engine
+        .enqueue_pinned(
+            Direction::Download,
+            "account".into(),
+            "test-bucket".into(),
+            "file.bin".into(),
+            path.clone(),
+            Some("old-version".into()),
+            None,
+        )
+        .await
+        .unwrap();
+    drop(engine);
+    let engine = ws.engine();
+    engine.start(&id, server.client()).await.unwrap();
+    until(&engine, &id, |j| j.view.status == "done").await;
+    assert_eq!(std::fs::read(path).unwrap(), *server.data);
+    assert_eq!(
+        server.state.lock().unwrap().read_versions,
+        ["old-version", "old-version"]
+    );
 }

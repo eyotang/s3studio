@@ -1,3 +1,4 @@
+mod file_actions;
 use crate::{
     object_tree::{Totals, TreeListing, TreeOptions},
     tree_cache::{TreeCache, TreeChange, TreeScope},
@@ -29,10 +30,13 @@ pub enum Message {
     TreeRows(u64, Result<Option<TreeListing>, String>),
     TreeUpload(TreeScope, String),
     Transfer(Transfer),
+    FileNotice(String, bool),
     Update(crate::updater::Status),
     Restart(s3_studio_core::transfers::UpdateGuard),
 }
 struct Services {
+    sender: UnboundedSender<Message>,
+    editors: Arc<Mutex<HashMap<(String, String, String), tokio::sync::watch::Sender<bool>>>>,
     store: Arc<AccountStore>,
     engine: Engine,
     cache: Arc<TreeCache>,
@@ -111,6 +115,8 @@ impl Backend {
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
             (
                 Some(Arc::new(Services {
+                    sender: sender.clone(),
+                    editors: Default::default(),
                     store,
                     engine,
                     cache: cache.clone(),
@@ -367,7 +373,7 @@ async fn invalidate_tree_cache(
     }
 }
 
-fn data_directory() -> anyhow::Result<PathBuf> {
+pub(crate) fn data_directory() -> anyhow::Result<PathBuf> {
     // Keep the data directory and keyring service used by earlier installations.
     Ok(dirs::data_dir()
         .ok_or_else(|| anyhow::anyhow!(crate::i18n::t("无法定位应用数据目录")))?
@@ -383,6 +389,9 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
     let cache = &service.cache;
     let account = text("accountId");
     let bucket = text("bucket");
+    if command.starts_with("files_") {
+        return file_actions::dispatch(service, command, args).await;
+    }
     match command {
         "get_s3_defaults" => value(Ok(accounts::get_s3_defaults(store).await)),
         "set_s3_defaults" => {
@@ -601,7 +610,19 @@ async fn dispatch(service: &Services, command: &str, args: Value) -> Result<Valu
             value(s3::presign_object(store, account, bucket, text("key"), 3600).await)
         }
         "upload_files" => {
-            value(transfers::upload_files(engine, store, account, bucket, text("prefix")).await)
+            let filter = serde_json::from_value(args.get("filter").cloned().unwrap_or(json!({})))
+                .map_err(|e| e.to_string())?;
+            value(
+                transfers::upload_files_with_filter(
+                    engine,
+                    store,
+                    account,
+                    bucket,
+                    text("prefix"),
+                    &filter,
+                )
+                .await,
+            )
         }
         "download_object" => {
             value(transfers::download_object(engine, store, account, bucket, text("key")).await)
@@ -631,6 +652,9 @@ fn preview(
     args: Value,
     defaults: &mut accounts::S3Defaults,
 ) -> Result<Value, String> {
+    if command.starts_with("files_") {
+        return file_actions::preview(command, &args);
+    }
     match command {
         "get_s3_defaults" => value(Ok(&*defaults)),
         "set_s3_defaults" => {

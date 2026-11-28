@@ -8,8 +8,45 @@ pub enum Sort {
     Size,
     Modified,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileAction {
+    UploadFolder,
+    Download,
+    CopyTo,
+    MoveTo,
+    Rename,
+    Preview,
+    Edit,
+    Filter,
+    Share,
+    Properties,
+    Sync,
+    DeleteVersions,
+    DownloadVersions,
+}
+impl FileAction {
+    pub fn title(self) -> &'static str {
+        use crate::i18n::t;
+        match self {
+            Self::UploadFolder => t("上传文件夹"),
+            Self::Download => t("批量下载"),
+            Self::CopyTo => t("复制到"),
+            Self::MoveTo => t("移动到"),
+            Self::Rename => t("重命名"),
+            Self::Preview => t("内容预览"),
+            Self::Edit => t("本地编辑与回传"),
+            Self::Filter => t("筛选文件"),
+            Self::Share => t("批量分享"),
+            Self::Properties => t("编辑对象属性"),
+            Self::Sync => t("目录同步"),
+            Self::DeleteVersions => t("永久删除所选版本"),
+            Self::DownloadVersions => t("下载所选版本"),
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Dialog {
+    Files(FileAction),
     Account(Option<String>),
     Folder,
     Bucket,
@@ -32,6 +69,7 @@ pub enum Dialog {
 impl Dialog {
     pub fn title(&self) -> &'static str {
         match self {
+            Self::Files(a) => a.title(),
             Self::Account(Some(_)) => crate::i18n::t("账户设置"),
             Self::Account(None) => crate::i18n::t("连接一个新账户"),
             Self::Folder => crate::i18n::t("新建文件夹"),
@@ -55,6 +93,7 @@ impl Dialog {
     }
     pub fn submit_label(&self) -> &'static str {
         match self {
+            Self::Files(a) => a.title(),
             Self::LocatePath => crate::i18n::t("定位路径"),
             Self::Account(_) => crate::i18n::t("保存账户"),
             Self::Folder => crate::i18n::t("创建文件夹"),
@@ -78,6 +117,7 @@ impl Dialog {
         matches!(
             self,
             Self::Delete
+                | Self::Files(FileAction::DeleteVersions)
                 | Self::RemoveAccount(_)
                 | Self::RemoveS3Option(..)
                 | Self::ClearTransfers

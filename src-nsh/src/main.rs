@@ -9,6 +9,7 @@ mod i18n;
 mod list_cache;
 mod model;
 mod object_tree;
+mod sync_cli;
 mod tree_cache;
 mod ui;
 mod updater;
@@ -33,6 +34,20 @@ fn main() -> ExitCode {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     i18n::initialize();
     let _ = rustls::crypto::ring::default_provider().install_default();
+    let mut args = std::env::args_os().skip(1);
+    if args.next().is_some_and(|a| a == "sync") {
+        return match sync_cli::run(
+            &args
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+        ) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let preview = std::env::args_os().any(|arg| arg == "--preview");
     let appearance = appearance::preference();
     let mut window = main_window_options();

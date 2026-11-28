@@ -1,3 +1,6 @@
+pub mod edit;
+pub mod files;
+pub mod preview;
 pub mod trash;
 pub mod versions;
 
@@ -739,28 +742,21 @@ pub async fn copy_object(
     {
         return Err(crate::i18n::t("请输入不同且有效的目标对象键（最多 1024 字节）。").into());
     }
-    let client = bucket_client(&store, &account_id, &bucket).await?;
-    // Refuse to overwrite an existing destination, including permission errors.
-    match client
-        .head_object()
-        .bucket(&bucket)
-        .key(&destination)
-        .send()
-        .await
-    {
-        Ok(_) => return Err(crate::i18n::t("目标对象已存在，请换一个对象键。").into()),
-        Err(e) if e.raw_response().is_some_and(|r| r.status().as_u16() == 404) => {}
-        Err(e) => return Err(failure(e)),
-    }
-    client
-        .copy_object()
-        .bucket(&bucket)
-        .key(destination)
-        .copy_source(copy_source(&bucket, &key))
-        .send()
-        .await
-        .map_err(failure)?;
-    Ok(())
+    files::relocate(
+        store,
+        &account_id,
+        &bucket,
+        &[files::Selection { key, folder: false }],
+        &files::Destination {
+            account: account_id.clone(),
+            bucket: bucket.clone(),
+            path: destination,
+        },
+        false,
+        true,
+    )
+    .await
+    .map(|_| ())
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -971,10 +967,19 @@ pub async fn presign_object(
     key: String,
     expires: u64,
 ) -> Result<String, String> {
+    let client = bucket_client(&store, &account_id, &bucket).await?;
+    presign_with_client(&client, &bucket, &key, expires).await
+}
+
+pub async fn presign_with_client(
+    client: &Client,
+    bucket: &str,
+    key: &str,
+    expires: u64,
+) -> Result<String, String> {
     if !(60..=604800).contains(&expires) {
         return Err(crate::i18n::t("有效期需为 60 秒到 7 天。").into());
     }
-    let client = bucket_client(&store, &account_id, &bucket).await?;
     let request = client
         .get_object()
         .bucket(bucket)
@@ -986,10 +991,10 @@ pub async fn presign_object(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::transfers::part_size;
-    fn test_client(endpoint: String) -> Client {
+    pub(crate) fn test_client(endpoint: String) -> Client {
         Client::from_conf(
             aws_sdk_s3::Config::builder()
                 .behavior_version(BehaviorVersion::latest())

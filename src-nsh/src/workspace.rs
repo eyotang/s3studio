@@ -1,3 +1,4 @@
+mod file_actions;
 use crate::{
     backend::{Backend, Message, TreeTask},
     model::{self, Dialog, Sort},
@@ -22,6 +23,8 @@ use std::{
 };
 
 enum Pending {
+    FileAction(&'static str, u64),
+    Filtered(u64),
     TrashEnabled(u64),
     Versions(u64, bool),
     RestoreVersion,
@@ -190,6 +193,7 @@ pub struct TrashBrowser {
 
 #[derive(Default)]
 pub struct VersionBrowser {
+    pub marked: BTreeSet<String>,
     pub key: String,
     pub entries: Vec<s3_studio_core::s3::versions::ObjectVersion>,
     pub selected: Option<String>,
@@ -201,6 +205,7 @@ pub struct VersionBrowser {
 }
 
 pub struct Workspace {
+    pub files: file_actions::FileState,
     pub versions: VersionBrowser,
     pub trash: TrashBrowser,
     pub trash_available: Option<bool>,
@@ -264,6 +269,7 @@ pub struct Workspace {
 impl Workspace {
     fn new(backend: Backend) -> Self {
         let mut this = Self {
+            files: Default::default(),
             versions: VersionBrowser::default(),
             trash: TrashBrowser::default(),
             trash_available: None,
@@ -457,6 +463,7 @@ impl Workspace {
         self.load_buckets(None);
     }
     fn load_buckets(&mut self, select: Option<String>) {
+        self.files.filter = None;
         self.trash_scope = None;
         self.trash_available = None;
         self.trash_check_revision += 1;
@@ -487,6 +494,7 @@ impl Workspace {
         if self.is_busy() || (self.bucket == bucket && self.prefix == prefix) {
             return;
         }
+        self.files.filter = None;
         self.bucket = bucket;
         self.prefix = prefix;
         self.clear_search();
@@ -517,6 +525,11 @@ impl Workspace {
         self.error.clear();
         if self.active_id.is_empty() || self.bucket.is_empty() {
             self.tree.clear();
+            return;
+        }
+        if let Some(filter) = self.files.filter.as_ref() {
+            self.loading = true;
+            self.request("files_filter",json!({"accountId":self.active_id,"bucket":self.bucket,"prefix":self.prefix,"filter":filter}),Pending::Filtered(self.object_revision));
             return;
         }
         let scope = self.tree_scope();
@@ -595,6 +608,9 @@ impl Workspace {
     }
 
     pub fn set_object_view(&mut self, view: ObjectView) {
+        if view == ObjectView::Tree {
+            self.files.filter = None;
+        }
         if self.object_view == view {
             return;
         }
@@ -1080,6 +1096,7 @@ impl Workspace {
             self.versions.cursor.clone()
         } else {
             self.versions.selected = None;
+            self.versions.marked.clear();
             None
         };
         self.request("list_versions", json!({"accountId":self.active_id,"bucket":self.bucket,"key":self.versions.key,"cursor":cursor}), Pending::Versions(self.dialog_revision, append));
@@ -1277,6 +1294,7 @@ impl Workspace {
     }
 
     fn reveal_path(&mut self, bucket: String, target: PathTarget, preserve_search: bool) {
+        self.files.filter = None;
         let (prefix, located) = match target {
             PathTarget::Directory { prefix } => (prefix, None),
             PathTarget::Object { object, info } => {
@@ -1289,6 +1307,7 @@ impl Workspace {
         };
         self.object_view = ObjectView::List;
         self.tree.cancel_query();
+        self.files.filter = None;
         self.bucket = bucket;
         self.prefix = prefix;
         if preserve_search {
@@ -1324,6 +1343,8 @@ impl Workspace {
         self.form.locate_object_only = false;
         self.form.s3_options = self.s3_defaults.clone().unwrap_or_default();
         match &dialog {
+            Dialog::Files(action) => self.prepare_files(*action),
+            Dialog::Upload => self.prepare_files(model::FileAction::UploadFolder),
             Dialog::Account(id) => {
                 let account = id.as_ref().and_then(|id| self.account_by_id(id)).cloned();
                 self.form.path_style = account.as_ref().map(|a| a.path_style).unwrap_or(true);
@@ -1517,6 +1538,10 @@ impl Workspace {
             return;
         }
         let command = match &dialog {
+            Dialog::Files(action) => {
+                self.submit_files(*action);
+                return;
+            }
             Dialog::RemoveS3Option(field, value) => {
                 let field = match field.as_str() {
                     "endpoint" => S3Option::Endpoint,
@@ -1598,6 +1623,13 @@ impl Workspace {
                 "delete_objects"
             }
             Dialog::Upload => {
+                match self.draft_filter() {
+                    Ok(filter) => args["filter"] = json!(filter),
+                    Err(e) => {
+                        self.dialog_error = e;
+                        return;
+                    }
+                }
                 args["prefix"] = json!(self.prefix);
                 self.close_dialog();
                 "upload_files"
@@ -1719,6 +1751,27 @@ impl Workspace {
         let Some(pending) = self.pending.remove(&id) else {
             return;
         };
+        if let Pending::FileAction(command, rev) = pending {
+            if rev == self.dialog_revision {
+                self.busy = false;
+                self.finish_files(command, result);
+            }
+            return;
+        }
+        if let Pending::Filtered(rev) = pending {
+            if rev == self.object_revision {
+                self.loading = false;
+                match result.and_then(|v| serde_json::from_value(v).map_err(|e| e.to_string())) {
+                    Ok(rows) => {
+                        self.objects = rows;
+                        self.list_loaded = true;
+                        self.next_token = None;
+                    }
+                    Err(e) => self.error = e,
+                }
+            }
+            return;
+        }
         if let Pending::TreeLevel(revision, prefix) = pending {
             self.receive_tree_level(revision, prefix, result);
             return;
@@ -2099,7 +2152,9 @@ impl Workspace {
                     .transfers
                     .retain(|t| !matches!(t.status.as_str(), "done" | "cancelled")),
                 Pending::Control(_) | Pending::Download | Pending::Update => {}
-                Pending::TrashEnabled(..)
+                Pending::FileAction(..)
+                | Pending::Filtered(..)
+                | Pending::TrashEnabled(..)
                 | Pending::TreeLevel(..)
                 | Pending::AutoLocatePath { .. } => unreachable!(),
             }
@@ -2213,6 +2268,15 @@ impl Store {
 
     fn receive(self, message: Message) {
         match message {
+            Message::FileNotice(message, failed) => self.change(|s| {
+                if failed {
+                    s.error = message;
+                } else {
+                    s.list_cache.clear();
+                    s.refresh_objects();
+                    s.notify(message);
+                }
+            }),
             Message::Transfer(transfer) => {
                 let (refresh, structure_changed) = self.write(|workspace| {
                     // Progress arrives frequently. Rebuilding the panel here unmounts

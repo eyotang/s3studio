@@ -56,7 +56,7 @@ Use Transfers to pause, resume, retry, or cancel. Completed parts are retained w
 
 Check for updates from the macOS app menu or the version label. Release builds check after 20 seconds and every 24 hours. Windows NSIS/MSI and Linux AppImage support verified in-app installation; finish or pause transfers first. macOS and deb installations open the release page for manual installation. Accounts and checkpoints are retained.
 
-Uploads are limited to 5 TiB per file; server-side single-object copying uses S3 CopyObject’s 5 GB limit. Deletion does not remove version history. SSO/AssumeRole, ACL/policy editing, version management, cross-account copying, directory sync, Glacier restore, folder downloads, and CloudFront management are not included. S3-compatible service behavior depends on its implementation.
+Open **File actions** for recursive transfers, copy and move across buckets and accounts, rename, paged previews, local editing, one-way folder sync, filters, batch sharing and object properties. Version history supports downloading or deleting selected versions. Single-file uploads support up to 5 TiB. SSO/AssumeRole, bucket ACL and policy editing, Glacier retrieval and CloudFront administration remain outside this release.
 
 ## Development and contribution
 

@@ -49,6 +49,25 @@ pub async fn upload_files(
     bucket: String,
     prefix: String,
 ) -> Result<usize, String> {
+    upload_files_with_filter(
+        engine,
+        store,
+        account_id,
+        bucket,
+        prefix,
+        &crate::s3::files::Filter::default(),
+    )
+    .await
+}
+pub async fn upload_files_with_filter(
+    engine: &Engine,
+    store: &AccountStore,
+    account_id: String,
+    bucket: String,
+    prefix: String,
+    filter: &crate::s3::files::Filter,
+) -> Result<usize, String> {
+    let matcher = filter.compile()?;
     let Some(files) = rfd::AsyncFileDialog::new()
         .set_title(crate::i18n::t("选择上传到 S3 的文件"))
         .pick_files()
@@ -61,6 +80,17 @@ pub async fn upload_files(
     let mut count = 0;
     let mut errors = Vec::new();
     for file in files {
+        if filter != &crate::s3::files::Filter::default() {
+            let meta = tokio::fs::metadata(file.path())
+                .await
+                .map_err(|e| e.to_string())?;
+            let date =
+                chrono::DateTime::<chrono::Utc>::from(meta.modified().map_err(|e| e.to_string())?)
+                    .to_rfc3339();
+            if !matcher.matches(&file.file_name(), meta.len(), &date, "") {
+                continue;
+            }
+        }
         let result = async {
             let id = engine
                 .enqueue(

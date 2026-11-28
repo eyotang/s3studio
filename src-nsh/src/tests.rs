@@ -814,8 +814,8 @@ fn version_history_restores_selected_data_versions_and_opens_from_recycle_bin() 
     app.press("id:object-check-Brand guidelines.pdf").unwrap();
     app.press("id:versions-selection").unwrap();
     app.wait_for("id:version-check-older-data").unwrap();
-    assert!(!app.screen().enabled("id:version-check-current").unwrap());
-    assert!(!app.screen().enabled("id:version-check-old-marker").unwrap());
+    assert!(app.screen().enabled("id:version-check-current").unwrap());
+    assert!(app.screen().enabled("id:version-check-old-marker").unwrap());
     assert!(!app.screen().enabled("id:versions-restore").unwrap());
     app.press("id:version-check-older-data").unwrap();
     app.press("id:versions-restore").unwrap();
@@ -1029,4 +1029,30 @@ fn framework_menu_shares_existing_header_and_opens_with_keyboard() {
     app.wait_for_gone("id:application-settings", WAIT).unwrap();
     app.press_key("ctrl+,").unwrap();
     app.wait_for("id:settings-language-system").unwrap();
+}
+
+#[test]
+fn file_actions_preview_and_recursive_filter_are_reachable() {
+    let mut app = preview();
+    app.press("id:file-actions").unwrap();
+    app.wait_for("id:files-filter").unwrap();
+    app.press("id:files-filter").unwrap();
+    app.wait_for("id:pattern").unwrap();
+    app.type_text("id:pattern", "*.pdf").unwrap();
+    app.press("id:file-submit").unwrap();
+    app.wait_for("id:object-Brand assets/Guides/Usage.pdf")
+        .unwrap();
+    assert!(!app.screen().matches("id:object-Welcome.md").unwrap());
+    app.wait_for("id:clear-advanced-filter").unwrap();
+    app.press("id:clear-advanced-filter").unwrap();
+    app.wait_for("id:object-Brand assets/").unwrap();
+    app.press("id:object-check-Project manifest.json").unwrap();
+    app.press("id:file-actions").unwrap();
+    app.press("id:files-preview").unwrap();
+    app.wait_for("id:preview-mode").unwrap();
+    app.press("id:file-submit").unwrap();
+    app.press("id:file-actions").unwrap();
+    app.press("id:files-sync").unwrap();
+    app.wait_for("id:sync-save").unwrap();
+    assert!(app.screen().matches("id:sync-run").unwrap());
 }
