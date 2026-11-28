@@ -6721,7 +6721,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "s3-studio-core"
-version = "0.4.40"
+version = "0.4.41"
 dependencies = [
  "aws-credential-types",
  "aws-sdk-s3",
@@ -6754,7 +6754,7 @@ dependencies = [
 
 [[package]]
 name = "s3-studio-nsh"
-version = "0.4.40"
+version = "0.4.41"
 dependencies = [
  "anyhow",
  "chrono",

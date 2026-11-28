@@ -11,7 +11,81 @@ use s3_studio_core::{
 use std::collections::BTreeMap;
 
 #[derive(Default)]
+pub struct FileScope {
+    pub account: String,
+    pub bucket: String,
+    pub prefix: String,
+    pub items: Vec<Selection>,
+    pub whole_folder: bool,
+    complete: bool,
+    pub version_key: String,
+    pub versions: BTreeSet<String>,
+}
+impl FileScope {
+    fn capture(workspace: &Workspace, action: FileAction) -> Self {
+        let count = workspace.selection_count();
+        let range_action = matches!(
+            action,
+            FileAction::CopyTo | FileAction::MoveTo | FileAction::Download
+        );
+        let whole_folder = range_action
+            && count == 0
+            && workspace.files.filter.is_none()
+            && workspace.search_query().is_empty();
+        let chosen = workspace.chosen();
+        let complete = chosen.len() == count
+            && !(range_action
+                && count == 0
+                && workspace.object_view == ObjectView::Tree
+                && !workspace.search_query().is_empty());
+        let objects = if range_action && count == 0 && !whole_folder {
+            workspace
+                .visible()
+                .into_iter()
+                .filter(|o| !o.folder)
+                .collect()
+        } else {
+            chosen
+        };
+        let items = if whole_folder {
+            vec![Selection {
+                key: workspace.prefix.clone(),
+                folder: true,
+            }]
+        } else {
+            objects
+                .into_iter()
+                .map(|o| Selection {
+                    key: o.key,
+                    folder: o.folder,
+                })
+                .collect()
+        };
+        Self {
+            account: workspace.active_id.clone(),
+            bucket: workspace.bucket.clone(),
+            prefix: workspace.prefix.clone(),
+            items,
+            whole_folder,
+            complete,
+            version_key: workspace.versions.key.clone(),
+            versions: workspace.versions.marked.clone(),
+        }
+    }
+    pub fn first_key(&self) -> &str {
+        if let [item] = self.items.as_slice() {
+            &item.key
+        } else {
+            ""
+        }
+    }
+    fn args(&self) -> Value {
+        json!({"accountId":self.account,"bucket":self.bucket,"prefix":self.prefix,"key":self.first_key(),"items":self.items})
+    }
+}
+#[derive(Default)]
 pub struct FileState {
+    pub scope: FileScope,
     pub filter: Option<Filter>,
     pub preview: Option<Preview>,
     pub page: u64,
@@ -22,6 +96,7 @@ pub struct FileState {
 }
 impl Workspace {
     pub fn prepare_files(&mut self, action: FileAction) {
+        self.files.scope = FileScope::capture(self, action);
         self.files.notice.clear();
         self.files.page = 0;
         self.files.hex = false;
@@ -98,18 +173,15 @@ impl Workspace {
         if self.is_busy() {
             return;
         }
-        let mut args = self.args();
-        args["key"] = json!(self.first().map(|o| o.key).unwrap_or_default());
-        args["prefix"] = json!(self.prefix);
-        args["items"] = json!(
-            self.chosen()
-                .into_iter()
-                .map(|o| Selection {
-                    key: o.key,
-                    folder: o.folder
-                })
-                .collect::<Vec<_>>()
-        );
+        if matches!(
+            command,
+            "files_relocate" | "files_download" | "files_properties" | "files_share"
+        ) && (!self.files.scope.complete || self.files.scope.items.is_empty())
+        {
+            self.dialog_error = t("请选择文件或文件夹").into();
+            return;
+        }
+        let mut args = self.files.scope.args();
         if let Value::Object(extra) = extra {
             for (k, v) in extra {
                 args[k] = v;
@@ -178,9 +250,9 @@ impl Workspace {
         };
         let job = SyncJob {
             name: self.input("job").trim().into(),
-            account: self.active_id.clone(),
-            bucket: self.bucket.clone(),
-            prefix: self.prefix.clone(),
+            account: self.files.scope.account.clone(),
+            bucket: self.files.scope.bucket.clone(),
+            prefix: self.files.scope.prefix.clone(),
             local: self.input("local").into(),
             direction: if self.files.sync_download {
                 Direction::Download
@@ -250,13 +322,7 @@ impl Workspace {
                     "files_upload_folder",
                     json!({"filter":self.draft_filter()?}),
                 )),
-                Download => {
-                    let mut args = json!({"filter":self.draft_filter()?});
-                    if self.selection_count() == 0 {
-                        args["items"] = json!([{"key":self.prefix,"folder":true}]);
-                    }
-                    Some(("files_download", args))
-                }
+                Download => Some(("files_download", json!({"filter":self.draft_filter()?}))),
                 Share => {
                     let until = self.input("until").trim();
                     let expires = if until.is_empty() {
@@ -277,16 +343,18 @@ impl Workspace {
                         if path.is_empty() || path.contains('/') {
                             return Err(t("对象键无效。").into());
                         }
-                        let source = self.first().ok_or(t("请选择文件或文件夹"))?;
+                        let source = self
+                            .files
+                            .scope
+                            .items
+                            .first()
+                            .ok_or(t("请选择文件或文件夹"))?;
                         if let Some((parent, _)) = source.key.trim_end_matches('/').rsplit_once('/')
                         {
                             path = format!("{parent}/{path}");
                         }
                     }
-                    let mut args = json!({"target":{"account":self.input("targetAccount"),"bucket":self.input("targetBucket"),"path":path},"moving":action!=CopyTo,"exact":action==Rename});
-                    if self.selection_count() == 0 {
-                        args["items"] = json!([{"key":self.prefix,"folder":true}]);
-                    }
+                    let args = json!({"target":{"account":self.input("targetAccount"),"bucket":self.input("targetBucket"),"path":path},"moving":action!=CopyTo,"exact":action==Rename});
                     Some(("files_relocate", args))
                 }
                 Edit => Some(("files_edit", Value::Null)),
@@ -315,7 +383,7 @@ impl Workspace {
                     } else {
                         "files_version_download"
                     },
-                    json!({"key":self.versions.key,"versions":self.versions.marked}),
+                    json!({"key":self.files.scope.version_key,"versions":self.files.scope.versions}),
                 )),
             })
         })();
@@ -429,7 +497,7 @@ impl Workspace {
             "files_version_delete" | "files_version_download" => {
                 self.list_cache.clear();
                 self.load_objects(false);
-                let key = self.versions.key.clone();
+                let key = self.files.scope.version_key.clone();
                 let back = self.versions.from_trash;
                 self.open_versions(key);
                 self.versions.from_trash = back;
@@ -443,5 +511,60 @@ impl Workspace {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn workspace() -> Workspace {
+        let (backend, _) = Backend::open(true).unwrap();
+        let mut ws = Workspace::new(backend);
+        ws.active_id = "a".into();
+        ws.bucket = "bucket".into();
+        ws.prefix = "dir/".into();
+        for key in ["dir/one", "dir/two"] {
+            ws.objects.push(S3Object {
+                key: key.into(),
+                size: 1,
+                folder: false,
+                modified: String::new(),
+                storage_class: String::new(),
+            });
+        }
+        ws
+    }
+    #[test]
+    fn failed_move_retry_keeps_the_original_object_scope_after_refresh() {
+        let mut ws = workspace();
+        ws.selected.insert("dir/one".into());
+        ws.open_dialog(Dialog::Files(FileAction::MoveTo));
+        let args = ws.files.scope.args();
+        assert_eq!(args["items"], json!([{"key":"dir/one","folder":false}]));
+        ws.finish_files("files_relocate", Err("conflict".into()));
+        assert!(ws.selected.is_empty());
+        ws.active_id = "other".into();
+        ws.bucket = "other".into();
+        ws.prefix.clear();
+        assert_eq!(args, ws.files.scope.args());
+        assert!(!ws.files.scope.whole_folder);
+    }
+    #[test]
+    fn directory_scope_is_explicit_and_empty_filtered_results_stay_empty() {
+        let mut ws = workspace();
+        ws.open_dialog(Dialog::Files(FileAction::CopyTo));
+        assert!(ws.files.scope.whole_folder);
+        assert_eq!(
+            ws.files.scope.args()["items"],
+            json!([{"key":"dir/","folder":true}])
+        );
+        ws.close_dialog();
+        ws.files.filter = Some(Filter::default());
+        ws.objects.clear();
+        ws.open_dialog(Dialog::Files(FileAction::CopyTo));
+        ws.submit();
+        assert!(!ws.files.scope.whole_folder);
+        assert!(!ws.busy);
+        assert!(!ws.dialog_error.is_empty());
     }
 }

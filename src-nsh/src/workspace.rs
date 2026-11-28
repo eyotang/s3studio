@@ -1207,6 +1207,8 @@ impl Workspace {
             return;
         }
         self.dialog = None;
+        self.files.scope = Default::default();
+        self.files.preview = None;
         self.form.inputs.clear();
     }
 

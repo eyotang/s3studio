@@ -56,20 +56,13 @@ pub(super) fn form(store: Store, s: &Workspace, action: FileAction) -> View {
                 .gap(px(8.0))
                 .child(label(t("目标工作空间"), 12.0, TEXT))
                 .child(accounts)
-                .when(s.selection_count() == 0, |v| {
-                    v.child(label(
-                        format!("{} · s3://{}/{}", t("当前目录"), s.bucket, s.prefix),
-                        12.0,
-                        TEXT,
-                    ))
-                })
                 .child(field(store, s, "targetBucket", t("目标存储桶"), false))
                 .child(field(store, s, "path", t("目标目录"), false))
         }
         Rename => field(store, s, "path", t("新名称"), true),
         Preview => {
             let mut body = column().gap(px(8.0)).child(label(
-                s.first().map(|o| o.key).unwrap_or_default(),
+                s.files.scope.first_key().to_owned(),
                 12.0,
                 TEXT,
             ));
@@ -154,11 +147,7 @@ pub(super) fn form(store: Store, s: &Workspace, action: FileAction) -> View {
                     ),
             )
         }
-        Edit => column().child(label(
-            s.first().map(|o| o.key).unwrap_or_default(),
-            12.0,
-            TEXT,
-        )),
+        Edit => column().child(label(s.files.scope.first_key().to_owned(), 12.0, TEXT)),
         Share => column()
             .gap(px(6.0))
             .child(field(store, s, "minutes", t("链接有效期（分钟）"), true))
@@ -174,9 +163,10 @@ pub(super) fn form(store: Store, s: &Workspace, action: FileAction) -> View {
             label(
                 format!(
                     "{}\n{}",
-                    s.versions.key,
-                    s.versions
-                        .marked
+                    s.files.scope.version_key,
+                    s.files
+                        .scope
+                        .versions
                         .iter()
                         .cloned()
                         .collect::<Vec<_>>()
@@ -190,7 +180,10 @@ pub(super) fn form(store: Store, s: &Workspace, action: FileAction) -> View {
         Sync => {
             let mut saved = row().gap(px(4.0)).flex_wrap();
             for (name, job) in &s.files.jobs {
-                if job.account == s.active_id && job.bucket == s.bucket && job.prefix == s.prefix {
+                if job.account == s.files.scope.account
+                    && job.bucket == s.files.scope.bucket
+                    && job.prefix == s.files.scope.prefix
+                {
                     let name = name.clone();
                     saved = saved.child(
                         secondary(&format!("sync-job-{name}"), name.clone())
@@ -200,7 +193,11 @@ pub(super) fn form(store: Store, s: &Workspace, action: FileAction) -> View {
             }
             column()
                 .gap(px(7.0))
-                .child(label(format!("s3://{}/{}", s.bucket, s.prefix), 12.0, TEXT))
+                .child(label(
+                    format!("s3://{}/{}", s.files.scope.bucket, s.files.scope.prefix),
+                    12.0,
+                    TEXT,
+                ))
                 .child(saved)
                 .child(field(store, s, "job", t("任务名称"), true))
                 .child(
@@ -231,7 +228,36 @@ pub(super) fn form(store: Store, s: &Workspace, action: FileAction) -> View {
                 .child(filters(store, s, s.files.sync_download))
         }
     };
-    body.when(!s.files.notice.is_empty(), |v| {
+    body.when(
+        matches!(
+            action,
+            FileAction::Download
+                | FileAction::CopyTo
+                | FileAction::MoveTo
+                | FileAction::Properties
+                | FileAction::Share
+        ),
+        |body| {
+            let scope = &s.files.scope;
+            let summary = if scope.whole_folder {
+                format!("{} · s3://{}/{}", t("当前目录"), scope.bucket, scope.prefix)
+            } else {
+                format!(
+                    "{}\n{}",
+                    crate::lf!("已选 {} 项", scope.items.len()),
+                    scope
+                        .items
+                        .iter()
+                        .take(6)
+                        .map(|i| i.key.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            };
+            body.child(label(summary, 11.0, MUTED).selectable(true))
+        },
+    )
+    .when(!s.files.notice.is_empty(), |v| {
         v.child(
             scroll()
                 .max_h(px(150.0))
